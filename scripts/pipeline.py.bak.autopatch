@@ -1,0 +1,1347 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+FantasyAI end-to-end pipeline (CDP-only, no Selenium)
+- Structured prompts for Google Veo
+- Trends (pytrends if available, with fallbacks)
+- Safe PromptScorer (sklearn optional; has heuristic fallback)
+- CDP-only automation to an existing Chromium with --remote-debugging-port
+- Filesystem polling for MP4 download
+- Optional ffmpeg "edit", TikTok sanity checks, DRY-RUN scheduling
+"""
+
+import os
+import re
+import json
+import time
+import base64
+import queue
+import random
+import logging
+import pathlib
+import urllib.parse
+import threading
+import subprocess
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+
+import requests
+import websocket  # pip install websocket-client
+
+# ---------- Optional libs ----------
+try:
+    import numpy as np
+except Exception:
+    np = None
+
+try:
+    import pandas as pd
+except Exception:
+    pd = None
+
+try:
+    import joblib
+except Exception:
+    joblib = None
+
+try:
+    import emoji as _emoji_mod
+except Exception:
+    _emoji_mod = None
+
+# ---------- Optional: pytrends ----------
+try:
+    from pytrends.request import TrendReq
+    PYTRENDS_AVAILABLE = True
+except Exception:
+    PYTRENDS_AVAILABLE = False
+
+# ---------- Feature flags ----------
+USE_LIGHT_MODE = os.getenv("FA_SAFE_MODE", "0") == "1"
+SAVE_PROMPT_JSON = os.getenv("SAVE_PROMPT_JSON", "1") == "1"
+DO_CAPCUT = os.getenv("DO_CAPCUT", "0") == "1"
+POST_TIKTOK = os.getenv("POST_TIKTOK", "0") == "1"
+POST_YOUTUBE = os.getenv("POST_YOUTUBE", "0") == "1"
+PRINT_PROMPT = os.getenv("PRINT_PROMPT", "0") in ("1", "true", "yes")
+
+# ---------- Paths ----------
+HOME = os.path.expanduser("~")
+BASE_DIR = os.path.expanduser(os.getenv("BASE_DIR", "~/FantasyAI"))
+OUTPUT_DIR = os.path.expanduser(os.getenv("OUTPUT_DIR", os.path.join(BASE_DIR, "outputs")))
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
+DATA_DIR = os.path.join(BASE_DIR, "data")
+MODELS_DIR = os.path.join(BASE_DIR, "models")
+PROMPTS_DIR = os.path.join(DATA_DIR, "prompts")
+METRICS_CSV = os.path.join(DATA_DIR, "metrics.csv")
+
+for d in (OUTPUT_DIR, ASSETS_DIR, DATA_DIR, MODELS_DIR, PROMPTS_DIR):
+    os.makedirs(d, exist_ok=True)
+
+# ---------- Veo / Chromium ----------
+DEFAULT_VEO_URL = "https://deepmind.google/veo"
+GOOGLE_VEO_URL = os.getenv("VEO_URL", DEFAULT_VEO_URL)
+CHROME_REMOTE = os.getenv("CHROME_REMOTE", "127.0.0.1:9222")
+VEO_USE_CDP = os.getenv("VEO_USE_CDP", "1") == "1"
+
+# ---------- Ollama (optional rewrite step) ----------
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434/api/generate")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral")
+
+# ---------- Prompt generation knobs ----------
+PROMPT_CANDIDATES = int(os.getenv("PROMPT_CANDIDATES", "3"))
+PROMPT_SCORE_THRESHOLD = float(os.getenv("PROMPT_SCORE_THRESHOLD", "0.0"))
+
+# ---------- Logging ----------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler(os.path.join(BASE_DIR, "pipeline.log")),
+        logging.StreamHandler()
+    ],
+)
+logger = logging.getLogger("FantasyAI")
+
+
+# ================================================================
+# Helpers
+# ================================================================
+def get_latest_file(directory: str, ext: str):
+    try:
+        files = [f for f in os.listdir(directory) if f.endswith(ext)]
+        if not files:
+            return None
+        paths = [os.path.join(directory, f) for f in files]
+        return max(paths, key=os.getctime)
+    except Exception:
+        return None
+
+
+def _count_emojis_safe(text: str) -> int:
+    if not text:
+        return 0
+    if _emoji_mod is None:
+        return sum(1 for ch in text if ord(ch) >= 0x1F300)
+    try:
+        # emoji >= 2.x
+        return sum(1 for ch in text if _emoji_mod.is_emoji(ch))
+    except Exception:
+        try:
+            table = getattr(_emoji_mod, "UNICODE_EMOJI", {})
+            emap = table.get("en", table) if isinstance(table, dict) else {}
+            return sum(1 for ch in text if ch in emap)
+        except Exception:
+            return sum(1 for ch in text if ord(ch) >= 0x1F300)
+
+
+# ================================================================
+# Trends
+# ================================================================
+class TrendAnalyzer:
+    def __init__(self):
+        self.trend_data = self._load_trend_data()
+
+    def _load_trend_data(self):
+        p = os.path.join(DATA_DIR, "trend_data.json")
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return {"trends": [], "performance": {}}
+
+    def _save_trend_data(self):
+        p = os.path.join(DATA_DIR, "trend_data.json")
+        try:
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(self.trend_data, f)
+        except Exception:
+            pass
+
+    def _fetch_google_trends(self):
+        if not PYTRENDS_AVAILABLE:
+            return []
+        region_env = os.getenv("TRENDS_REGION", "").strip()
+        region_candidates = [region_env] if region_env else []
+        region_candidates += ["united_states", "global"]
+        out = []
+        for reg in region_candidates:
+            try:
+                pt = TrendReq(hl='en-US', tz=360)
+                df = pt.trending_searches(pn=reg) if reg != "global" else pt.trending_searches()
+                out += [str(x) for x in df[0].tolist()][:30]
+                if out:
+                    break
+            except Exception:
+                continue
+        # de-dupe, preserve order
+        seen, uniq = set(), []
+        for t in out:
+            tl = t.strip()
+            if tl and tl not in seen:
+                seen.add(tl)
+                uniq.append(tl)
+        return uniq
+
+    def _fallback_lists(self):
+        return [
+            "Animal Challenges", "Pet Reactions", "Wildlife Facts", "Nature Beauty",
+            "Funny Animal Moments", "Cute Pet Compilation", "AI Generated Animals",
+            "Fantasy Creatures", "Mythical Beasts", "Animal Documentaries", "Pet Training",
+            "Wildlife Conservation", "Nature Sounds", "Funny Animal Videos",
+            "Cute Animal Compilations"
+        ]
+
+    def fetch_trends(self):
+        trends = self._fetch_google_trends()
+        if not trends:
+            trends = self._fallback_lists()
+        niche_keywords = ["animal", "pet", "wildlife", "nature", "funny", "cute",
+                          "yeti", "bear", "cat", "fantasy", "ai", "viral"]
+        filtered = [t for t in trends if any(k in t.lower() for k in niche_keywords)]
+        return filtered or trends
+
+    def _load_recent(self):
+        p = os.path.join(DATA_DIR, "recent_trends.json")
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        return []
+
+    def _update_recent(self, t):
+        p = os.path.join(DATA_DIR, "recent_trends.json")
+        r = self._load_recent()
+        r.append(t)
+        try:
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(r[-10:], f)
+        except Exception:
+            pass
+
+    def _select_best(self, trends):
+        if not trends:
+            return "Cute Pet Compilation"
+        perf = self.trend_data.get("performance", {})
+        best_trend, best_score = trends[0], -1
+        for t in trends:
+            score = perf.get(t, {}).get("score", 0)
+            if score > best_score:
+                best_score, best_trend = score, t
+        return best_trend
+
+    def cluster_trends(self, trends):
+        if not trends:
+            trends = self._fallback_lists()
+        # Light mode: just pick something novel or best
+        recent = self._load_recent()
+        available = [t for t in trends if t not in recent] or trends
+        best = self._select_best(available)
+        self._update_recent(best)
+        return best
+
+    def update_performance(self, trend, views, likes, shares):
+        perf = self.trend_data.setdefault("performance", {})
+        meta = perf.setdefault(trend, {"views": [], "likes": [], "shares": [], "score": 0})
+        meta["views"].append(views); meta["likes"].append(likes); meta["shares"].append(shares)
+        if np is not None:
+            avg_v = np.mean(meta["views"][-5:]) if meta["views"] else 0
+            avg_l = np.mean(meta["likes"][-5:]) if meta["likes"] else 0
+            avg_s = np.mean(meta["shares"][-5:]) if meta["shares"] else 0
+            meta["score"] = (avg_v * 0.5 + avg_l * 0.3 + avg_s * 0.2)
+        self._save_trend_data()
+
+
+# ================================================================
+# Structured Prompt Generator
+# ================================================================
+@dataclass
+class SceneSpec:
+    location: str
+    time_of_day: str
+    lighting: str
+    weather: str
+    props: list
+    camera_mode: str
+    sound_design: str
+    tone: str
+
+class PromptGeneratorStructured:
+    TEMPLATE_PATH = os.path.join(DATA_DIR, "prompt_structure.json")
+
+    def __init__(self):
+        self.segment_counter = 1
+        self.templates = self._load_templates()
+        self.characters_catalog = {
+            "Yeti": {
+                "short": "🧍‍♂️ Yeti (camera wrangler / deadpan): 7' tall, pale-gray fur; hi-viz vest; surprisingly delicate thumbs."
+            },
+            "Kitty": {
+                "short": "🐈 Kitty (operations / razor sarcasm): Upright gray tabby; tiny padded vest; ears flick at every micro-sound."
+            },
+            "Bear": {
+                "short": "🐻 Bear (logistics / hungry): Massive brown; neon pack strapped too tight; patient until snacks run out."
+            },
+        }
+        self.SCENE_BANK = {
+            "nature": [
+                SceneSpec("mossy ravine with a trickling creek", "late afternoon", "soft dappled sun through canopy", "misty air", ["abandoned trail cam", "ripped topo map"], "selfie-stick", "birds, water gurgle, distant woodpecker", "docu"),
+                SceneSpec("alpine meadow near snow patches", "golden hour", "warm side-light", "breezy", ["weathered signpost", "forgotten thermos"], "tripod-static", "wind hiss, fabric flap, cowbells far away", "awe"),
+                SceneSpec("switchback trail above treeline", "blue hour", "cool ambient + headlamp spill", "thin air", ["trekking poles", "discarded energy gel"], "chest-cam", "breath, gravel crunch, occasional radio chirp", "tense"),
+            ],
+            "urban": [
+                SceneSpec("dimly lit bodega aisle", "evening", "flicker from old fluorescents", "stale indoor", ["security convex mirror", "handwritten SALE sign"], "selfie-stick", "buzz of lights, fridge hum, street muffled", "comedy"),
+                SceneSpec("multi-story parking garage Level 4B", "night", "sodium vapor pools + dark corners", "echoey", ["orange traffic cone", "abandoned shopping cart"], "body-cam", "footsteps slap, distant engine revs", "tense"),
+                SceneSpec("subway platform endcap", "rush hour", "tube lighting, moving train strobes", "clammy", ["service notice poster", "discarded coffee"], "tripod-static", "PA chimes, wind blast as train arrives", "docu"),
+            ],
+            "domestic/odd": [
+                SceneSpec("laundromat between cycles", "afternoon", "chrome reflections, soft overhead", "dry lint smell", ["lost sock board", "change machine"], "selfie-stick", "washer thrum, coin clinks", "comedy"),
+                SceneSpec("community rec center gym", "morning", "flat gym LEDs", "squeak of shoes", ["broken basketball", "scuffed scoreboard"], "drone-follow", "HVAC hum, distant whistle", "light"),
+                SceneSpec("backyard patio with string lights", "sunset", "warm fairy-light bokeh", "grill smoke in air", ["folding chairs", "tippy cooler"], "handheld-to-tripod", "ice clink, neighbor dog bark", "cozy"),
+            ],
+            "nightvision/horror": [
+                SceneSpec("deep pine stand with pooled mud", "2:15 a.m.", "harsh night vision wash", "humid fog", ["plastic lawn chair", "boot/paw prints"], "selfie-stick", "branch creaks, insects on mic", "tense")
+            ],
+            "absurd/fantasy": [
+                SceneSpec("abandoned animatronic warehouse", "midnight", "moving spotlights, dust motes", "stale", ["half-assembled mascot head", "loose servos"], "gimbal-handheld", "relay clicks, servo whine", "surreal"),
+                SceneSpec("neon mushroom cave", "unknown", "bioluminescent bloom", "dripping stalactites", ["glowing spores", "ancient warning glyphs"], "drone-orbit", "water drips, sub-bass rumble", "awe"),
+            ],
+        }
+        self.TREND_ROUTING = {
+            "Nature Beauty": ("nature", ["awe", "docu", "light"]),
+            "Wildlife Facts": ("nature", ["docu", "tense", "comedy"]),
+            "Animal Documentaries": ("nature", ["docu", "awe"]),
+            "Funny Animal Moments": ("domestic/odd", ["comedy", "light"]),
+            "Cute Animal Compilations": ("domestic/odd", ["comedy", "cozy"]),
+            "Pet Reactions": ("domestic/odd", ["comedy"]),
+            "AI Generated Animals": ("absurd/fantasy", ["surreal", "awe", "comedy"]),
+            "Fantasy Creatures": ("absurd/fantasy", ["surreal", "tense", "awe"]),
+            "Mythical Beasts": ("absurd/fantasy", ["surreal", "docu"]),
+            "Pet Training": ("urban", ["docu", "comedy"]),
+            "Wildlife Conservation": ("nature", ["docu"]),
+            "Nature Sounds": ("nature", ["awe", "cozy"]),
+            "__default__": ("urban", ["comedy", "docu", "tense"]),
+        }
+
+    def _load_templates(self):
+        if os.path.exists(self.TEMPLATE_PATH):
+            try:
+                with open(self.TEMPLATE_PATH, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.warning("Could not parse %s: %s; using defaults.", self.TEMPLATE_PATH, e)
+        return {
+            "segment_header": "🎬 Segment {segment_number} - '{title}' ({camera_mode} POV)",
+            "environment": "📍 Environment:\n{environment_text}",
+            "characters": "⸻\n🧍 Characters:\n\n{character_blocks}",
+            "dialogue": "⸻\n🎤 Dialogue (Fully Lip-Synced, Human Realism):\n{dialogue_blocks}",
+            "camera": "⸻\n🎥 Camera Movement:\n{camera_text}",
+            "vibe": "⸻\n🎭 Vibe:\n{vibe_text}"
+        }
+
+    def _route_trend(self, trend: str):
+        for key, val in self.TREND_ROUTING.items():
+            if key.lower() in trend.lower():
+                return val
+        return self.TREND_ROUTING["__default__"]
+
+    def _pick_scene(self, trend: str) -> SceneSpec:
+        bucket, tones = self._route_trend(trend)
+        pool = self.SCENE_BANK.get(bucket, self.SCENE_BANK["urban"])
+        candidates = [s for s in pool if s.tone in tones] or pool
+        spec = random.choice(candidates)
+        return SceneSpec(
+            location=spec.location,
+            time_of_day=random.choice([spec.time_of_day, "morning", "afternoon", "night", "blue hour", "golden hour"]),
+            lighting=spec.lighting,
+            weather=random.choice([spec.weather, "clear", "light drizzle", "windy", "humid", "crisp cold"]),
+            props=spec.props[:],
+            camera_mode=spec.camera_mode,
+            sound_design=spec.sound_design,
+            tone=spec.tone,
+        )
+
+    def _compose_environment(self, s: SceneSpec) -> str:
+        if s.props:
+            props_txt = ", ".join(s.props[:-1]) + f", and {s.props[-1]}" if len(s.props) > 1 else s.props[0]
+        else:
+            props_txt = "odd debris"
+        return (
+            f"{s.location.capitalize()} at {s.time_of_day}. "
+            f"Lighting: {s.lighting}. Weather: {s.weather}. "
+            f"Foreground props: {props_txt}. Ambient sound: {s.sound_design}."
+        )
+
+    def _compose_characters(self, character_set) -> str:
+        blocks = []
+        for c in character_set:
+            desc = self.characters_catalog.get(c, {}).get("short", c)
+            blocks.append(desc)
+        return "\n\n".join(blocks)
+
+    def _compose_dialogue(self, s: SceneSpec) -> str:
+        bank = {
+            "comedy": [
+                ("Yeti", "Okay but who put a {prop} here-urban druid meetup?"),
+                ("Kitty", "Focus. If a camera can see us, so can rent prices."),
+                ("Bear", "If nobody claims the {prop}, can it be a snack? Hypothetically."),
+            ],
+            "tense": [
+                ("Yeti", "Do not love that echo. Feels like we're being measured."),
+                ("Kitty", "Shh. Something just matched our cadence three steps back."),
+                ("Bear", "I smell ozone...or someone's cheap fog machine."),
+            ],
+            "docu": [
+                ("Yeti", "Field note: {location}. {time}. Recording ambient behavior."),
+                ("Kitty", "Observe the {prop}. Classic sign of recent activity."),
+                ("Bear", "Control your breath. Mic's clipping at peaks."),
+            ],
+            "awe": [
+                ("Yeti", "Whoa. That light roll-real or refracted?"),
+                ("Kitty", "Every hair is a sensor. This place is loud even when it's quiet."),
+                ("Bear", "Kinda beautiful. Don't let it trick you."),
+            ],
+            "surreal": [
+                ("Yeti", "Physics took a coffee break right here."),
+                ("Kitty", "If a cave glows on its own, we leave politely."),
+                ("Bear", "New rule: if it hums in a language, we don't poke it."),
+            ],
+            "cozy": [
+                ("Yeti", "Ambient noise is perfect. Feels like a loopable vibe."),
+                ("Kitty", "Don't jinx it. Nothing's thrown a chair at us yet."),
+                ("Bear", "I can nap here. Post first, nap second."),
+            ],
+            "light": [
+                ("Yeti", "Okay crew, quick sweep, soft feet."),
+                ("Kitty", "Levels are clean. Try not to breathe directly into the mic."),
+                ("Bear", "If we find snacks, we log them. Scientifically."),
+            ],
+        }.get(s.tone, [])
+        if not bank:
+            bank = [("Yeti", "Logging environment..."), ("Kitty", "Levels are clean."), ("Bear", "Proceeding.")]
+        lines, last = [], None
+        for _ in range(random.randint(3, 5)):
+            spk, text = random.choice(bank)
+            if spk == last:
+                spk, text = random.choice(bank)
+            last = spk
+            text = text.format(location=s.location, prop=random.choice(s.props) if s.props else "this thing", time=s.time_of_day)
+            icon = "🧍‍♂️" if spk == "Yeti" else "🐈" if spk == "Kitty" else "🐻"
+            lines.append(f"{icon} {spk}: {text}")
+        return "\n\n".join(lines)
+
+    def _compose_camera(self, s: SceneSpec) -> str:
+        camera_bank = {
+            "selfie-stick": "Hand extends out of frame; slight pendulum sway; occasional thumb over the lens.",
+            "chest-cam": "Stable center mass; footfalls visible; roll when hopping obstacles.",
+            "body-cam": "Jittery shoulder bounce; quick yaw on peripheral sounds.",
+            "tripod-static": "Locked composition; characters enter/exit; rack-focus moments.",
+            "handheld-to-tripod": "Handheld establishing wobble, then snap to locked tripod for dialogue.",
+            "gimbal-handheld": "Floaty walk-through with controlled pans; orbit around speaker during punchlines.",
+            "drone-follow": "High-angle follow with gentle altitude changes; orbit on emphasis.",
+            "drone-orbit": "Slow 360° orbit revealing environment scale; dips to foreground props.",
+        }
+        motion = camera_bank.get(s.camera_mode, "Handheld framing; small imperfections sell realism.")
+        glitches = random.sample([
+            "brief lens smear clean with a thumb",
+            "micro-jitter as grip adjusts",
+            "auto-exposure hunts when a highlight enters frame",
+            "focus snaps to a foreground prop before correcting",
+            "audio clips when someone laughs too close to the mic",
+            "drone GPS hiccup causes a small bob",
+        ], k=2)
+        return f"{motion} Incidental imperfections: {glitches[0]}; {glitches[1]}."
+
+    def _compose_vibe(self, s: SceneSpec, trend: str) -> str:
+        labels = {
+            "comedy": "dry absurdism with grounded staging",
+            "tense": "documentary tension without jump scares",
+            "docu": "field-note realism with crisp detail",
+            "awe": "cinematic wonder, slow reveals",
+            "surreal": "dream-logic visuals, stay deadpan",
+            "cozy": "loopable ambience, soft cadence",
+            "light": "gentle curiosity, low stakes",
+        }
+        tag = labels.get(s.tone, "grounded realism")
+        return (
+            f"FantasyLab.ai vlog energy featuring Yeti, Kitty, and Bear. "
+            f"Trend: {trend}. Tone: {s.tone} - {tag}. "
+            f"Keep hyper-real texture; never over-stage the comedy."
+        )
+
+    def generate_prompt(self, trend: str, character_set=None):
+        if character_set is None:
+            character_set = ["Yeti", "Kitty", "Bear"]
+        seg = self.segment_counter
+        scene = self._pick_scene(trend)
+        title = f"{trend} - Pt. {seg}"
+        environment_text = self._compose_environment(scene)
+        character_blocks = self._compose_characters(character_set)
+        dialogue_blocks = self._compose_dialogue(scene)
+        camera_text = self._compose_camera(scene)
+        vibe_text = self._compose_vibe(scene, trend)
+        t = self.templates
+        parts = [
+            t["segment_header"].format(segment_number=seg, title=title, camera_mode=scene.camera_mode.replace("-", " ")),
+            t["environment"].format(environment_text=environment_text),
+            t["characters"].format(character_blocks=character_blocks),
+            t["dialogue"].format(dialogue_blocks=dialogue_blocks),
+            t["camera"].format(camera_text=camera_text),
+            t["vibe"].format(vibe_text=vibe_text),
+        ]
+        final_prompt = "\n\n".join(parts)
+        prompt_json = {
+            "segment_number": seg,
+            "title": title,
+            "trend": trend,
+            "scene": scene.__dict__,
+            "character_set": character_set,
+            "environment_text": environment_text,
+            "characters": {c: self.characters_catalog.get(c, {}) for c in character_set},
+            "dialogue": dialogue_blocks,
+            "camera": camera_text,
+            "vibe": vibe_text,
+            "final_prompt": final_prompt
+        }
+        self.segment_counter += 1
+        return final_prompt, prompt_json
+        
+    def generate_enhanced_prompt(self, trend: str, character_set=None):
+        if character_set is None:
+            character_set = ["Yeti", "Kitty", "Bear"]
+        
+        seg = self.segment_counter
+        scene = self._pick_scene(trend)
+        title = f"{trend}"
+        segment_title = random.choice(["The Discovery", "The Investigation", "The Reaction", "The Aftermath", "The Revelation"])
+        
+        # Enhanced environment with specific times and sensory details
+        time_details = random.choice([
+            f"{random.randint(6,7)}:{random.randint(15,45)} {'AM' if random.random() > 0.5 else 'PM'}",
+            f"Golden hour, {random.randint(5,7)}:{random.randint(30,59)} PM",
+            f"Blue hour, {random.randint(8,9)}:{random.randint(15,45)} PM"
+        ])
+        
+        sensory_details = random.choice([
+            "Cicadas buzz faintly in the background",
+            "Distant traffic hum mixes with forest sounds",
+            "The air smells of damp earth and pine resin",
+            "A faint metallic tang hangs in the air",
+            "Temperature drops noticeably in the shade"
+        ])
+        
+        environment_text = (f"{scene.location.capitalize()}, {time_details}. {scene.lighting}. {sensory_details}. "
+                           f"Ground covered with {random.choice(['damp leaves', 'cracked asphalt', 'pine needles', 'gravel'])}. "
+                           f"Foreground: {', '.join(scene.props)}. Ambient: {scene.sound_design}.")
+        
+        # Enhanced raw dialogue with swearing
+        enhanced_bank = {
+            "comedy": [
+                ("Yeti", "What the actual fuck is that thing?"),
+                ("Kitty", "I'm not touching that shit with a ten-foot pole."),
+                ("Bear", "This is either genius or a fucking disaster waiting to happen."),
+                ("Yeti", "No way this ends well, but the content will be fire."),
+                ("Kitty", "If we die, at least the footage will be epic.")
+            ],
+            "tense": [
+                ("Yeti", "The fuck was that noise?"),
+                ("Kitty", "We shouldn't be here. This is bad fucking news."),
+                ("Bear", "Every hair on my body is standing up. This ain't right."),
+                ("Yeti", "I've got a real bad feeling about this place."),
+                ("Kitty", "We need to get the fuck out of here. Now.")
+            ],
+            "docu": [
+                ("Yeti", "Documenting unusual activity at coordinates. This is some weird shit."),
+                ("Kitty", "The patterns don't match any known behavior. What the hell?"),
+                ("Bear", "Environmental readings are off the charts. This is fucking bizarre."),
+                ("Yeti", "Never seen anything like this in fifteen years of fieldwork."),
+                ("Kitty", "This changes everything we thought we knew. Holy shit.")
+            ]
+        }
+        
+        # Use enhanced bank if available for the tone, otherwise use regular dialogue generation
+        current_bank = enhanced_bank.get(scene.tone, [])
+        
+        # Add some raw reactions
+        raw_reactions = [
+            "The fuck?",
+            "No goddamn way...",
+            "You seeing this shit?",
+            "This can't be real...",
+            "What in the actual hell?"
+        ]
+        
+        lines, last = [], None
+        for _ in range(random.randint(3, 5)):
+            if current_bank:
+                # Use enhanced bank if available
+                spk, text = random.choice(current_bank)
+                if spk == last:
+                    spk, text = random.choice(current_bank)
+            else:
+                # Fall back to regular dialogue generation
+                regular_dialogue = self._compose_dialogue(scene)
+                # Parse the regular dialogue to extract speaker and text
+                dialogue_lines = regular_dialogue.split('\n\n')
+                if dialogue_lines:
+                    line = random.choice(dialogue_lines)
+                    if ': ' in line:
+                        icon_spk, text = line.split(': ', 1)
+                        # Extract speaker from icon and speaker text
+                        if ' ' in icon_spk:
+                            spk = icon_spk.split(' ', 1)[1]
+                        else:
+                            spk = "Unknown"
+                    else:
+                        spk, text = "Unknown", line
+                else:
+                    spk, text = "Unknown", "No dialogue available"
+            
+            last = spk
+            
+            # Format text if it contains placeholders
+            if "{prop}" in text:
+                text = text.format(prop=random.choice(scene.props) if scene.props else "this thing")
+            elif "{location}" in text:
+                text = text.format(location=scene.location)
+            elif "{time}" in text:
+                text = text.format(time=scene.time_of_day)
+            
+            # Occasionally add raw reactions
+            if random.random() > 0.7:
+                text += f" {random.choice(raw_reactions)}"
+                
+            icon = "🧍‍♂️" if spk == "Yeti" else "🐈" if spk == "Kitty" else "🐻"
+            lines.append(f"{icon} {spk}: {text}")
+        
+        dialogue_blocks = "\n\n".join(lines)
+        
+        # Enhanced camera details
+        camera_details = random.choice([
+            "Handheld vlog, clutched in Yeti's paw-hand. Paw pads squeeze worn foam selfie stick, claws pressing grooves into the surface.",
+            "Body-cam mounted on chest harness, capturing natural movement and perspective shifts.",
+            "Stabilized gimbal with occasional manual override for intentional camera shakes.",
+            "Drone follow-cam with smooth orbital movements and occasional altitude adjustments."
+        ])
+        
+        camera_imperfections = random.sample([
+            "Autofocus wobbles between subjects",
+            "Lens flare from off-angle light source",
+            "Moisture condensation on lens edge",
+            "Shadow of operator visible in frame",
+            "Mic pop on plosive sounds",
+            "Wind buffeting mic during outdoor shots"
+        ], 2)
+        
+        camera_text = f"{camera_details} Artifacts: {camera_imperfections[0]}; {camera_imperfections[1]}."
+        
+        # Artifacts section
+        artifacts = random.sample([
+            "Sunlight flares across lens during pan",
+            "Operator's breathing audible in quiet moments",
+            "Clothing rustle against body mic",
+            "Random lens specks from environment",
+            "Subtle camera shake during movement"
+        ], 3)
+        
+        artifacts_text = "\n".join(artifacts)
+        
+        # Compose the final prompt with enhanced structure
+        parts = [
+            f"🎬 {title}\n📋 Segment {seg} - {segment_title}",
+            f"Environment\n{environment_text}",
+            f"Camera\n{camera_text}",
+            f"Characters\n\n{self._compose_characters(character_set)}",
+            f"Dialogue ({random.randint(8,15)}s)\n{dialogue_blocks}",
+            f"Artifacts\n{artifacts_text}",
+            f"Vibe\nFantasyLab.ai raw footage. Trend: {trend}. Tone: {scene.tone} - keep it authentic, never staged."
+        ]
+        
+        final_prompt = "\n\n".join(parts)
+        
+        prompt_json = {
+            "segment_number": seg,
+            "title": title,
+            "segment_title": segment_title,
+            "trend": trend,
+            "scene": scene.__dict__,
+            "character_set": character_set,
+            "environment_text": environment_text,
+            "characters": {c: self.characters_catalog.get(c, {}) for c in character_set},
+            "dialogue": dialogue_blocks,
+            "camera": camera_text,
+            "artifacts": artifacts_text,
+            "final_prompt": final_prompt
+        }
+        
+        self.segment_counter += 1
+        return final_prompt, prompt_json
+# ================================================================
+# PromptScorer (safe)
+# ================================================================
+class _DummyRegressor:
+    def fit(self, X, y):  # noqa
+        return self
+    def predict(self, X):  # noqa
+        return [0.0 for _ in range(len(X))]
+
+class PromptScorer:
+    def __init__(self):
+        self.model_path = os.path.join(MODELS_DIR, "prompt_scorer.pkl")
+        self.model = self._load_model()
+
+    def _load_model(self):
+        if joblib and os.path.exists(self.model_path):
+            try:
+                return joblib.load(self.model_path)
+            except Exception:
+                pass
+        try:
+            from sklearn.ensemble import RandomForestRegressor  # noqa: F401
+            from sklearn.ensemble import RandomForestRegressor as RF
+            return RF(n_estimators=100, random_state=42)
+        except Exception:
+            return _DummyRegressor()
+
+    def _features(self, text: str):
+        length = len(text or "")
+        num_emojis = _count_emojis_safe(text or "")
+        num_hashtags = (text or "").count("#")
+        return [length, num_emojis, num_hashtags]
+
+    def _to_Xy(self, df):
+        cols = list(df.columns)
+        need = {"length", "num_emojis", "num_hashtags", "views"}
+        if not need.issubset(cols) and "final_prompt" in cols and "views" in cols:
+            df = df.copy()
+            df["length"] = df["final_prompt"].fillna("").map(len)
+            df["num_emojis"] = df["final_prompt"].fillna("").map(_count_emojis_safe)
+            df["num_hashtags"] = df["final_prompt"].fillna("").map(lambda s: s.count("#"))
+            cols = list(df.columns)
+        if not need.issubset(cols):
+            return None, None
+        X = df[["length", "num_emojis", "num_hashtags"]].values
+        y = df["views"].values
+        return X, y
+
+    def maybe_train_from_csv(self, csv_path=None):
+        if pd is None:
+            return False, "pandas not available"
+        if not csv_path:
+            csv_path = METRICS_CSV
+        if not os.path.exists(csv_path):
+            return False, f"no CSV at {csv_path}"
+        try:
+            df = pd.read_csv(csv_path)
+        except Exception as e:
+            return False, f"csv read error: {e}"
+        X, y = self._to_Xy(df)
+        if X is None:
+            return False, "CSV missing required columns"
+        # Only train if sklearn exists
+        try:
+            from sklearn.ensemble import RandomForestRegressor as RF
+        except Exception:
+            return False, "sklearn not available"
+        try:
+            rf = RF(n_estimators=100, random_state=42).fit(X, y)
+            self.model = rf
+            if joblib:
+                joblib.dump(self.model, self.model_path)
+            return True, "trained"
+        except Exception as e:
+            return False, f"train error: {e}"
+
+    def predict(self, prompt_json):
+        text = (prompt_json or {}).get("final_prompt", "") or ""
+        feats = self._features(text)
+        try:
+            return float(self.model.predict([feats])[0])
+        except Exception:
+            # heuristic fallback
+            length, emo, tags = feats
+            base = max(0.0, 1000 - max(0, length - 600) * 0.5)
+            boost = emo * 50 + tags * 80
+            return float(base + boost)
+
+
+# ================================================================
+# Hailo / Ollama (optional rewrite step)
+# ================================================================
+class HailoInference:
+    def _ollama_url(self) -> str:
+        url = os.getenv("OLLAMA_URL", OLLAMA_URL)
+        if url and url != "disabled":
+            return url.replace("localhost", "127.0.0.1")
+        host = os.getenv("OLLAMA_HOST", "127.0.0.1:11434")
+        return f"http://{host}/api/generate"
+
+    def _post(self, url, payload, timeout_s):
+        return requests.post(url, json=payload, timeout=timeout_s)
+
+    def generate_text(self, text, max_tokens=120):
+        if os.getenv("USE_OLLAMA", "1").lower() in ("0", "false", "no") or OLLAMA_URL == "disabled":
+            if PRINT_PROMPT:
+                logger.info("📝 Prompt (OLLAMA DISABLED):\n%s", text)
+            return text
+        url = self._ollama_url()
+        model = os.getenv("OLLAMA_MODEL", OLLAMA_MODEL)
+        timeout_s = int(os.getenv("OLLAMA_TIMEOUT", "8"))
+        start_ctx = int(os.getenv("OLLAMA_NUM_CTX", "2048"))
+        ctx_candidates = [start_ctx] + [c for c in (3072, 2048, 1536, 1024) if c < start_ctx]
+        if PRINT_PROMPT:
+            logger.info("📝 Prompt (to Ollama, model=%s, try ctx=%s):\n%s", model, ctx_candidates, text)
+        last_err = None
+        for num_ctx in ctx_candidates:
+            payload = {
+                "model": model,
+                "prompt": text,
+                "stream": False,
+                "options": {"num_predict": max_tokens, "temperature": 0.7, "num_ctx": num_ctx},
+            }
+            for attempt in (1, 2):
+                try:
+                    r = self._post(url, payload, timeout_s)
+                    if r.status_code != 200:
+                        body = r.text[:500]
+                        if "more system memory" in body or "out of memory" in body.lower():
+                            logger.warning("Ollama OOM at num_ctx=%s; shrinking context…", num_ctx)
+                            raise RuntimeError("oom")
+                        if PRINT_PROMPT:
+                            logger.error("Ollama HTTP %s: %s", r.status_code, body)
+                    r.raise_for_status()
+                    data = r.json()
+                    resp = (data.get("response") or "").strip()
+                    if resp:
+                        logger.info("🧠 Ollama used (ctx=%s)", num_ctx)
+                        return resp
+                except Exception as e:
+                    last_err = e
+                    if attempt == 1:
+                        time.sleep(1)
+                    else:
+                        break
+        logger.error("Ollama text generation failed: %s; using original structured text.", last_err)
+        return text
+
+
+# ================================================================
+# CDP utilities
+# ================================================================
+def _cdp_http(base: str, path: str, params: dict | None = None, timeout=5):
+    url = f"http://{base}{path}"
+    if params:
+        url = f"{url}?{urllib.parse.urlencode(params)}"
+    return requests.get(url, timeout=timeout)
+
+def _get_browser_ws(base: str) -> str:
+    r = _cdp_http(base, "/json/version")
+    r.raise_for_status()
+    return r.json().get("webSocketDebuggerUrl")
+
+def _list_targets(base: str) -> list[dict]:
+    r = _cdp_http(base, "/json/list")
+    r.raise_for_status()
+    return r.json()
+
+def _open_new_tab(base: str, url: str) -> dict:
+    r = _cdp_http(base, "/json/new/" + urllib.parse.quote(url, safe=""))
+    r.raise_for_status()
+    return r.json()
+
+class _CDPConn:
+    def __init__(self, ws_url: str, timeout=10):
+        self.ws = websocket.create_connection(ws_url, timeout=timeout)
+        self._id = 0
+        self._pending = {}
+        self._running = True
+        t = threading.Thread(target=self._recv_loop, daemon=True)
+        t.start()
+
+    def _recv_loop(self):
+        try:
+            while self._running:
+                msg = self.ws.recv()
+                data = json.loads(msg)
+                if "id" in data:
+                    fut = self._pending.pop(data["id"], None)
+                    if fut:
+                        fut.put(data)
+        except Exception:
+            pass
+
+    def call(self, method: str, params: dict | None = None, timeout=10):
+        self._id += 1
+        mid = self._id
+        fut = queue.Queue()
+        self._pending[mid] = fut
+        payload = {"id": mid, "method": method, "params": params or {}}
+        self.ws.send(json.dumps(payload))
+        try:
+            res = fut.get(timeout=timeout)
+        except Exception:
+            self._pending.pop(mid, None)
+            raise TimeoutError(f"CDP call timed out: {method}")
+        if "error" in res:
+            raise RuntimeError(f"CDP error in {method}: {res['error']}")
+        return res.get("result", {})
+
+    def close(self):
+        self._running = False
+        try:
+            self.ws.close()
+        except Exception:
+            pass
+
+
+def _cdp_debug_dump(conn: _CDPConn, tag: str, outdir: str):
+    try:
+        r = conn.call("Runtime.evaluate", {
+            "expression": "document.documentElement.outerHTML",
+            "returnByValue": True
+        })
+        html = r.get("result", {}).get("value", "")
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        with open(os.path.join(outdir, f"veo_debug_{tag}_{ts}.html"), "w", encoding="utf-8") as f:
+            f.write(html)
+        try:
+            s = conn.call("Page.captureScreenshot", {"format": "png"})
+            b = base64.b64decode(s.get("data", ""))
+            with open(os.path.join(outdir, f"veo_debug_{tag}_{ts}.png"), "wb") as f:
+                f.write(b)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+# ================================================================
+# Veo generation (CDP-only)
+# ================================================================
+def generate_veo_video_cdp(prompt_text: str) -> str:
+    base = os.getenv("CHROME_REMOTE", CHROME_REMOTE)
+    veo_url = os.getenv("VEO_URL", GOOGLE_VEO_URL)
+
+    logger.info("🎥 (CDP) Connecting to Chromium at %s …", base)
+    browser_ws = _get_browser_ws(base)
+    bconn = _CDPConn(browser_ws)
+
+    # Try to allow downloads at browser-level (older/newer variants)
+    for method in ("Browser.setDownloadBehavior", "Page.setDownloadBehavior"):
+        try:
+            bconn.call(method, {"behavior": "allow", "downloadPath": OUTPUT_DIR})
+        except Exception:
+            pass
+
+    # Find or open Veo tab
+    target_patterns = [str(os.getenv("VEO_URL","")).strip().lower(), "veo", "deepmind.google", "labs.google"]
+    deadline = time.time() + 120
+    target = None
+    while time.time() < deadline and target is None:
+        try:
+            for t in _list_targets(base):
+                L = f"{t.get('url','').lower()} {t.get('title','').lower()}"
+                if any(p and p in L for p in target_patterns):
+                    target = t
+                    break
+            if target is None and veo_url:
+                target = _open_new_tab(base, veo_url)
+        except Exception:
+            pass
+        if target is None:
+            time.sleep(2)
+
+    if target is None:
+        bconn.close()
+        raise RuntimeError("No matching Veo tab found; open your Veo project and try again.")
+
+    ws_url = target["webSocketDebuggerUrl"]
+    tconn = _CDPConn(ws_url)
+
+    # Enable domains and set tab-level download path
+    for dom in ("Page.enable", "Runtime.enable", "DOM.enable"):
+        try:
+            tconn.call(dom if "." in dom else f"{dom}.enable", {})
+        except Exception:
+            pass
+    try:
+        tconn.call("Page.setDownloadBehavior", {"behavior": "allow", "downloadPath": OUTPUT_DIR})
+    except Exception:
+        pass
+
+    # Focus an editor and set text
+    js_focus = r"""
+    (function(){
+      function visible(el){
+        if(!el) return false;
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        return r.width>0 && r.height>0 && s.visibility!=='hidden' && s.display!=='none' && !el.disabled;
+      }
+      const sels = ['textarea','[contenteditable="true"]','[role="textbox"]'];
+      for(const sel of sels){
+        const el = document.querySelector(sel);
+        if(el && visible(el)){ el.focus(); return true; }
+      }
+      for(const f of document.querySelectorAll('iframe')){
+        try{
+          const doc = f.contentDocument;
+          if(!doc) continue;
+          for(const sel of sels){
+            const el = doc.querySelector(sel);
+            if(el && visible(el)){ el.focus(); return true; }
+          }
+        }catch(e){}
+      }
+      return false;
+    })();
+    """
+    focused = tconn.call("Runtime.evaluate", {"expression": js_focus, "returnByValue": True}).get("result", {}).get("value")
+    if not focused:
+        _cdp_debug_dump(tconn, "no-editor", OUTPUT_DIR)
+        tconn.close(); bconn.close()
+        raise RuntimeError("Could not locate Veo prompt editor; open the project page and try again.")
+
+    # Insert text (full Unicode)
+    try:
+        tconn.call("Input.insertText", {"text": prompt_text})
+    except Exception:
+        js_set = "(function(txt){let el=document.activeElement;if(!el)return false;const ce=el.isContentEditable||el.getAttribute&&el.getAttribute('contenteditable');if(el.tagName==='TEXTAREA'||el.tagName==='INPUT'){el.value=txt;el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return true;}if(ce){el.textContent=txt;el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));return true;}return false;})(`" + prompt_text.replace("`","\\`") + "`);"
+        tconn.call("Runtime.evaluate", {"expression": js_set, "returnByValue": True})
+
+    # Commit (Enter) and click a Generate-like CTA
+    try:
+        tconn.call("Input.dispatchKeyEvent", {"type":"keyDown","key":"Enter","code":"Enter","windowsVirtualKeyCode":13,"nativeVirtualKeyCode":13})
+        tconn.call("Input.dispatchKeyEvent", {"type":"keyUp","key":"Enter"})
+    except Exception:
+        pass
+
+    js_click = r"""
+    (function(){
+      function visible(el){
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        return r.width>0 && r.height>0 && s.visibility!=='hidden' && s.display!=='none' && !el.disabled;
+      }
+      const re = /(Generate|Generate video|Create|Create video|Run|Render)/i;
+      const btns = Array.from(document.querySelectorAll('button,[role="button"]'));
+      for(const b of btns){
+        const txt = (b.innerText||b.textContent||'').trim();
+        const aria = (b.getAttribute && b.getAttribute('aria-label'))||'';
+        if(re.test(txt) || re.test(aria)){
+          if(visible(b)){ b.click(); return true; }
+        }
+      }
+      const more = Array.from(document.querySelectorAll('button,[role="button"]')).find(b=>{
+        const t=(b.innerText||b.textContent||'').trim();
+        return /(More|⋯|…)/i.test(t);
+      });
+      if(more){ more.click(); }
+      const menu = Array.from(document.querySelectorAll('[role="menuitem"],button,[role="button"]'));
+      for(const b of menu){
+        const txt=(b.innerText||b.textContent||'').trim();
+        if(re.test(txt) && visible(b)){ b.click(); return true; }
+      }
+      return false;
+    })();
+    """
+    clicked = tconn.call("Runtime.evaluate", {"expression": js_click, "returnByValue": True}).get("result", {}).get("value")
+    if not clicked:
+        js_busy = r"""
+        (function(){
+          const xp = /(Generating|Rendering|Queued|Processing)/i;
+          const bars = document.querySelectorAll('[role="progressbar"], .progress, .spinner, .loading');
+          if(bars.length) return true;
+          const all = document.querySelectorAll('body *');
+          for(const el of all){
+            const t=(el.innerText||'') + ' ' + (el.textContent||'');
+            if(xp.test(t)) return true;
+          }
+          return false;
+        })();
+        """
+        busy = tconn.call("Runtime.evaluate", {"expression": js_busy, "returnByValue": True}).get("result", {}).get("value")
+        if not busy:
+            _cdp_debug_dump(tconn, "no-generate-button", OUTPUT_DIR)
+            tconn.close(); bconn.close()
+            raise RuntimeError("No Generate/Create/Run/Render button found.")
+
+    # Ensure downloads allowed again (belt & suspenders)
+    for method in ("Browser.setDownloadBehavior", "Page.setDownloadBehavior"):
+        try:
+            tconn.call(method, {"behavior": "allow", "downloadPath": OUTPUT_DIR})
+        except Exception:
+            pass
+
+    # Poll for .mp4
+    logger.info("⏳ Waiting for MP4 in %s …", OUTPUT_DIR)
+    start_ts = time.time()
+    deadline = time.time() + 900
+    out = None
+    while time.time() < deadline:
+        latest = get_latest_file(OUTPUT_DIR, ".mp4")
+        if latest:
+            try:
+                if os.path.getmtime(latest) >= start_ts - 1:
+                    out = latest
+                    break
+            except Exception:
+                pass
+        time.sleep(2)
+
+    tconn.close(); bconn.close()
+
+    if not out:
+        raise RuntimeError("Timed out waiting for download; check outputs/ for debug dumps.")
+    logger.info("✅ Downloaded: %s", out)
+    return out
+
+
+# ================================================================
+# Editing / Validation / Social
+# ================================================================
+def edit_with_capcut(video_path: str) -> str:
+    # default path: ffmpeg transcode or copy
+    out = os.path.join(OUTPUT_DIR, f"edited_{int(time.time())}.mp4")
+    try:
+        cmd = ['ffmpeg', '-y', '-i', video_path, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+               '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', out]
+        subprocess.run(cmd, check=True)
+        return out
+    except Exception as e:
+        logger.warning("ffmpeg edit failed (%s). Copying original.", e)
+        try:
+            import shutil
+            shutil.copy2(video_path, out)
+            return out
+        except Exception:
+            return video_path
+
+def validate_video_for_tiktok(video_path):
+    try:
+        cmd = ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', video_path]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        info = json.loads(result.stdout)
+        ok, reasons = True, []
+        if float(info['format'].get('size', 0.0)) >= 287.6 * 1024 * 1024:
+            ok = False; reasons.append("file too large")
+        dur = float(info['format'].get('duration', 0.0))
+        if not (5 <= dur <= 600):
+            ok = False; reasons.append("duration out of range")
+        v = next((s for s in info.get('streams', []) if s.get('codec_type') == 'video'), {})
+        if v.get('codec_name') != 'h264':
+            ok = False; reasons.append("video codec not h264")
+        w, h = int(v.get('width', 0)), int(v.get('height', 0))
+        ar = (w / h) if h else 0
+        if not any(abs(ar - x) < 0.01 for x in (9/16, 1/1, 16/9)):
+            ok = False; reasons.append("aspect ratio not 9:16/1:1/16:9")
+        return ok, "ok" if ok else f"failed: {', '.join(reasons)}"
+    except Exception as e:
+        return False, f"ffprobe error: {e}"
+
+class SocialMediaManager:
+    def __init__(self):
+        self.optimal = {
+            "tiktok": {"weekday": ["09:00","12:00","15:00","18:00","21:00"],
+                       "weekend": ["10:00","13:00","16:00","19:00","22:00"]},
+            "youtube":{"weekday": ["10:00","14:00","18:00","20:00"],
+                       "weekend": ["11:00","15:00","19:00","21:00"]}
+        }
+
+    def _next(self, platform):
+        now = datetime.now()
+        is_weekend = now.weekday() >= 5
+        day = "weekend" if is_weekend else "weekday"
+        for ts in self.optimal[platform][day]:
+            h, m = map(int, ts.split(":"))
+            t = now.replace(hour=h, minute=m, second=0, microsecond=0)
+            if t > now:
+                return t
+        tomorrow = now + timedelta(days=1)
+        h, m = map(int, self.optimal[platform][day][0].split(":"))
+        return tomorrow.replace(hour=h, minute=m, second=0, microsecond=0)
+
+    def schedule_tiktok(self, video_path, caption, when=None):
+        when = when or self._next("tiktok")
+        delay = max(0, (when - datetime.now()).total_seconds())
+        if POST_TIKTOK:
+            threading.Timer(delay, self.upload_tiktok, args=[video_path, caption]).start()
+            logger.info("Scheduled TikTok at %s", when)
+        else:
+            logger.info("[DRY RUN] Would schedule TikTok at %s", when)
+        return when
+
+    def schedule_youtube(self, video_path, caption, when=None):
+        when = when or self._next("youtube")
+        delay = max(0, (when - datetime.now()).total_seconds())
+        if POST_YOUTUBE:
+            threading.Timer(delay, self.upload_youtube, args=[video_path, caption]).start()
+            logger.info("Scheduled YouTube at %s", when)
+        else:
+            logger.info("[DRY RUN] Would schedule YouTube at %s", when)
+        return when
+
+    def upload_tiktok(self, video_path, caption):
+        logger.info("[DRY RUN] Upload TikTok: %s | %s", video_path, caption[:80])
+        return True
+
+    def upload_youtube(self, video_path, caption):
+        logger.info("[DRY RUN] Upload YouTube: %s | %s", video_path, caption[:80])
+        return True
+
+
+# ================================================================
+# Pipeline
+# ================================================================
+class FantasyAIPipeline:
+    def __init__(self):
+        self.trend_analyzer = TrendAnalyzer()
+        self.prompt_builder = PromptGeneratorStructured()
+        self.hailo = HailoInference()
+        self.social = SocialMediaManager()
+        self.scorer = PromptScorer()
+        # optional train if metrics exist
+        try:
+            self.scorer.maybe_train_from_csv(METRICS_CSV)
+        except Exception:
+            pass
+
+    def _save_prompt_json(self, prompt_json: dict):
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out = os.path.join(PROMPTS_DIR, f"prompt_{ts}.json")
+        try:
+            with open(out, "w", encoding="utf-8") as f:
+                json.dump(prompt_json, f, ensure_ascii=False, indent=2)
+            logger.info("📝 Saved prompt JSON → %s", out)
+        except Exception as e:
+            logger.warning("Could not save prompt JSON: %s", e)
+        return out
+
+    def _caption(self, trend, character_set):
+        character_slug = "".join(c[0] for c in character_set)
+        hashtags = [
+            "#FantasyLabAI", f"#{character_slug}Vlog", f"#{trend.replace(' ','')}",
+            "#AIgenerated", "#ViralVideo", "#Trending", "#AIContent"
+        ]
+        lines = [
+            f"{', '.join(character_set)} take on {trend}! 🤩",
+            f"Night vision mayhem: {', '.join(character_set)} vs {trend}! 👀",
+            f"{', '.join(character_set)} explore {trend} — chaos ensues. 🔥",
+        ]
+        return random.choice(lines) + "\n\n" + " ".join(hashtags)
+
+    def _best_prompt_for_trend(self, trend, character_set):
+        candidates = []
+        for _ in range(max(1, PROMPT_CANDIDATES)):
+            # Use enhanced prompt generation instead of regular
+            ptxt, pjson = self.prompt_builder.generate_enhanced_prompt(trend, character_set=character_set)
+            score = self.scorer.predict(pjson)
+            pjson["score"] = score
+            candidates.append((score, ptxt, pjson))
+        
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        best = candidates[0]
+        logger.info("🏅 Best prompt score=%.3f (of %d candidates)", best[0], len(candidates))
+        
+        if PROMPT_SCORE_THRESHOLD > 0 and best[0] < PROMPT_SCORE_THRESHOLD:
+            logger.warning("Top prompt score %.3f below threshold %.2f", best[0], PROMPT_SCORE_THRESHOLD)
+        
+        return best[1], best[2], candidates    
+
+    def run(self):
+        logger.info("🚀 Starting FantasyAI Pipeline")
+        trends = self.trend_analyzer.fetch_trends()
+        selected = self.trend_analyzer.cluster_trends(trends)
+        logger.info("📊 Selected trend: %s", selected)
+
+        final_prompt, prompt_json, all_cands = self._best_prompt_for_trend(selected, character_set=["Yeti", "Kitty"])
+
+        if SAVE_PROMPT_JSON:
+            self._save_prompt_json(prompt_json)
+            try:
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                cpath = os.path.join(PROMPTS_DIR, f"prompt_candidates_{ts}.json")
+                with open(cpath, "w", encoding="utf-8") as f:
+                    out = [{"score": float(s), "final_prompt": p, "title": pj.get("title","")} for (s,p,pj) in all_cands]
+                    json.dump(out, f, ensure_ascii=False, indent=2)
+                logger.info("🧪 Saved %d prompt candidates → %s", len(all_cands), cpath)
+            except Exception:
+                pass
+        # Enhanced animal/creature focused trends
+        enhanced_trends = {
+            "trends": [
+                "Wild Animal Encounters", "Mysterious Forest Creatures", "Cryptid Sightings",
+                "Animal Intelligence", "Predator vs Prey", "Wildlife Conservation",
+                "Animal Behavior", "Creature Features", "Wildlife Documentaries",
+                "Animal Reactions", "Forest Mysteries", "Wildlife Photography",
+                "Animal Rescue", "Wildlife Rehabilitation", "Animal Training",
+                "Wildlife Sounds", "Animal Communication", "Forest Exploration",
+                "Wildlife Research", "Animal Documentaries", "Creature Discoveries",
+                "Wildlife Adventures", "Animal Conservation", "Forest Wildlife",
+                "Wildlife Protection", "Animal Habitats", "Wildlife Sanctuaries",
+                "Animal Encounters", "Wildlife Behavior", "Forest Creatures",
+                "Animal Research", "Wildlife Studies", "Animal Behavior",
+                "Wildlife Observations", "Animal Sightings", "Forest Animals",
+                "Wildlife Footage", "Animal Documentaries", "Creature Behavior"
+            ],
+            "performance": {
+                "Wild Animal Encounters": {"views": [15000, 18000, 22000], "likes": [1200, 1500, 1800], "shares": [300, 400, 500], "score": 1850},
+                "Mysterious Forest Creatures": {"views": [22000, 25000, 28000], "likes": [2000, 2300, 2600], "shares": [600, 700, 800], "score": 2550},
+                "Cryptid Sightings": {"views": [30000, 35000, 40000], "likes": [2800, 3200, 3800], "shares": [900, 1100, 1300], "score": 3450},
+                "Animal Intelligence": {"views": [12000, 15000, 18000], "likes": [1000, 1300, 1600], "shares": [250, 350, 450], "score": 1550},
+                "Wildlife Documentaries": {"views": [18000, 21000, 24000], "likes": [1500, 1800, 2100], "shares": [400, 500, 600], "score": 2100}
+            }
+        }
+        return enhanced_trends
+
+    def _fetch_enhanced_trends(self):
+        """Fetch enhanced animal/creature focused trends"""
+        data = self._load_trend_data()
+        return data.get("trends", [])[:20]  # Return top 20 trends
+
+        if PRINT_PROMPT:
+            logger.info("📝 Final prompt:\n%s", final_prompt)
+
+        if not VEO_USE_CDP:
+            raise RuntimeError("This build is CDP-only. Set VEO_USE_CDP=1 and run Chromium with --remote-debugging-port.")
+
+        video_path = generate_veo_video_cdp(final_prompt)
+        if not video_path:
+            raise RuntimeError("Video generation failed (no file path).")
+
+        edited = edit_with_capcut(video_path)
+
+        caption = self._caption(selected, prompt_json["character_set"])
+        ok, msg = validate_video_for_tiktok(edited)
+        if not ok:
+            logger.warning("TikTok check: %s", msg)
+
+        # DRY RUN schedules unless POST_* flags are 1
+        self.social.schedule_tiktok(edited, caption)
+        self.social.schedule_youtube(edited, caption)
+
+        logger.info("✅ Pipeline finished.")
+        if POST_TIKTOK or POST_YOUTUBE:
+            logger.info("⏳ Waiting for scheduled uploads (Ctrl+C to exit)…")
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                logger.info("Exiting.")
+        else:
+            logger.info("DRY RUN complete (no uploads enabled).")
+
+
+# ================================================================
+# Entrypoint
+# ================================================================
+if __name__ == "__main__":
+    try:
+        FantasyAIPipeline().run()
+    except Exception as e:
+        logger.error("❌ Pipeline failed: %s", e)
+        raise

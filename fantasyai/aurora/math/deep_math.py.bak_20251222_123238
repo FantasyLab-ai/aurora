@@ -1,0 +1,376 @@
+
+from __future__ import annotations
+
+from typing import Any, Dict, Optional, List
+import numpy as np
+import pandas as pd
+
+# stdlib imports that have caused NameError in the past
+import re
+import math
+import json
+## WORLDCLASS_IMPORT_GUARD
+# Optional-module guard: deep_math should never fail import if optional math modules aren't ready yet.
+# We degrade gracefully and report missing modules in output instead of crashing the runner.
+_OPTIONAL_IMPORT_ERRORS = {}
+
+def _optional_import(name: str):
+    try:
+        module = __import__(name, fromlist=["*"])
+        return module
+    except Exception as e:
+        _OPTIONAL_IMPORT_ERRORS[name] = f"{type(e).__name__}:{e}"
+        return None
+try:
+    from .forecasting import forecast_with_bands
+except Exception as e:
+    forecast_with_bands = None
+    _OPTIONAL_IMPORT_ERRORS['fantasyai.aurora.math.forecasting'] = f"{type(e).__name__}:{e}"
+try:
+    from .regimes import detect_regimes
+except Exception as e:
+    detect_regimes = None
+    _OPTIONAL_IMPORT_ERRORS['fantasyai.aurora.math.regimes'] = f"{type(e).__name__}:{e}"
+from .uncertainty import bootstrap_corr_ci, monte_carlo_risk_surface
+try:
+    from .causal import causal_what_if_linear
+except Exception as e:
+    causal_what_if_linear = None
+    _OPTIONAL_IMPORT_ERRORS['fantasyai.aurora.math.causal'] = f"{type(e).__name__}:{e}"
+from .optimization import solve_linear_program, minimize_nonlinear
+from .simulation import simulate_counterfactuals_from_regression
+
+def _numeric_cols(df: pd.DataFrame, max_cols: int = 30) -> List[str]:
+    cols = []
+    for c in df.columns:
+        if len(cols) >= max_cols:
+            break
+        v = pd.to_numeric(df[c], errors="coerce")
+        # keep if non-trivial numeric content
+        if v.notna().mean() > 0.6 and (np.nanstd(v.values.astype(float)) if v.notna().any() else 0.0) > 1e-12:
+            cols.append(c)
+    return cols
+
+def _infer_time_col(df: pd.DataFrame) -> Optional[str]:
+    # prefer common names
+    for cand in ["date", "datetime", "timestamp", "time", "ds"]:
+        if cand in df.columns:
+            dt = pd.to_datetime(df[cand], errors="coerce")
+            if dt.notna().mean() > 0.6:
+                return cand
+    # scan first 40 columns
+    for c in df.columns[:40]:
+        dt = pd.to_datetime(df[c], errors="coerce")
+        if dt.notna().mean() > 0.6:
+            return c
+    return None
+
+def _infer_target(df: pd.DataFrame, numeric_cols: List[str]) -> Optional[str]:
+    # heuristic: pick a numeric column with highest variance and low missingness
+    best = None
+    best_score = -1.0
+    for c in numeric_cols:
+        v = pd.to_numeric(df[c], errors="coerce")
+        miss = 1.0 - float(v.notna().mean())
+        if miss > 0.3:
+            continue
+        sd = float(np.nanstd(v.values.astype(float)))
+        score = sd * (1.0 - miss)
+        if score > best_score:
+            best_score = score
+            best = c
+    return best
+
+def compute_deep_math_v3(
+    df: pd.DataFrame,
+    seed: int = 0,
+    target_col: Optional[str] = None,
+    time_col: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Holy-shit level module:
+    - forecasting + bands + backtests (if time series present)
+    - regimes (changepoints + drift)
+    - uncertainty (bootstrap CI + MC risk surface)
+    - causal what-if (regression-based, explainable)
+    - optimization + simulation demos (MATLAB-style hooks)
+    """
+    rng = np.random.default_rng(seed)
+    out: Dict[str, Any] = {
+        "version": "deep_math_v3",
+        "seed": int(seed),
+        "rows": int(df.shape[0]),
+        "cols": int(df.shape[1]),
+    }
+
+    numeric_cols = _numeric_cols(df, max_cols=35)
+    out["numeric_cols_used"] = numeric_cols
+    out["numeric_cols_n"] = int(len(numeric_cols))
+
+    if not numeric_cols:
+        out["error"] = "no_numeric_cols"
+        return out
+
+    # choose time + target
+    tcol = time_col or _infer_time_col(df)
+    ycol = target_col or _infer_target(df, numeric_cols) or numeric_cols[0]
+    out["time_col"] = tcol
+    out["target_col"] = ycol
+
+    # 1) Forecasting (only if time column looks real)
+    if tcol is not None:
+        try:
+            out["forecasting"] = forecast_with_bands(df, target_col=ycol, time_col=tcol, horizon=24, seasonal_periods=None, seed=seed)
+        except Exception as e:
+            out["forecasting"] = {"error": f"{type(e).__name__}: {e}"}
+    else:
+        out["forecasting"] = {"note": "no_time_col_detected"}
+
+    # 2) Regimes (works with or without time; uses target series)
+    try:
+        out["regimes"] = detect_regimes(df, target_col=ycol)
+    except Exception as e:
+        out["regimes"] = {"error": f"{type(e).__name__}: {e}"}
+
+    # 3) Hypothesis + uncertainty: pick top few pairs and bootstrap their corr CI
+    #    (lightweight, stable, no massive O(n^2) explosion)
+    try:
+        pairs = []
+        cols = numeric_cols[:10]
+        arr = {c: pd.to_numeric(df[c], errors="coerce").values.astype(float) for c in cols}
+        for i in range(len(cols)):
+            for j in range(i+1, len(cols)):
+                x = arr[cols[i]]; y = arr[cols[j]]
+                m = np.isfinite(x) & np.isfinite(y)
+                if m.sum() < 120:
+                    continue
+                r = float(np.corrcoef(x[m], y[m])[0,1]) if (np.nanstd(x[m])>1e-12 and np.nanstd(y[m])>1e-12) else np.nan
+                if np.isfinite(r):
+                    pairs.append((cols[i], cols[j], abs(r), r, int(m.sum())))
+        pairs.sort(key=lambda t: t[2], reverse=True)
+        top = pairs[:8]
+
+        boot = []
+        for a,b,ab, r, n in top:
+            ci = bootstrap_corr_ci(arr[a], arr[b], B=500, alpha=0.05, seed=seed)
+            boot.append({"a": a, "b": b, "n": n, "pearson_r": float(r), "pearson_ci95": [ci.get("lo"), ci.get("hi")], "bootstrap": ci})
+        out["uncertainty"] = {"top_corr_bootstrap": boot}
+    except Exception as e:
+        out["uncertainty"] = {"error": f"{type(e).__name__}: {e}"}
+
+    # MC risk surface on target
+    try:
+        y = pd.to_numeric(df[ycol], errors="coerce").values.astype(float)
+        out["risk_surface"] = monte_carlo_risk_surface(y, horizon=24, n_sims=2000, seed=seed)
+    except Exception as e:
+        out["risk_surface"] = {"error": f"{type(e).__name__}: {e}"}
+
+    # 4) Causal what-if (explainable “counterfactual under assumptions”)
+    try:
+        # choose feature: strongest corr with target among numeric cols
+        best_feat = None
+        best_abs = -1.0
+        y = pd.to_numeric(df[ycol], errors="coerce").values.astype(float)
+        for c in numeric_cols:
+            if c == ycol: 
+                continue
+            x = pd.to_numeric(df[c], errors="coerce").values.astype(float)
+            m = np.isfinite(x) & np.isfinite(y)
+            if m.sum() < 200:
+                continue
+            if np.nanstd(x[m]) < 1e-12 or np.nanstd(y[m]) < 1e-12:
+                continue
+            r = float(np.corrcoef(x[m], y[m])[0,1])
+            if abs(r) > best_abs:
+                best_abs = abs(r); best_feat = c
+        if best_feat:
+            cw = causal_what_if_linear(df, target_col=ycol, feature_col=best_feat, controls=[], delta_x=1.0)
+            out["causal_what_if"] = cw
+            if "beta" in cw and "beta_ci95" in cw:
+                out["simulation"] = simulate_counterfactuals_from_regression(cw["beta"], cw["beta_ci95"], delta_x_grid=[-2,-1,-0.5,0.5,1,2])
+        else:
+            out["causal_what_if"] = {"note": "no_feature_found"}
+    except Exception as e:
+        out["causal_what_if"] = {"error": f"{type(e).__name__}: {e}"}
+
+    # 5) Optimization hook (demo). In product, this becomes “solve under constraints”
+    try:
+        out["optimization_demo"] = {
+            "lp_example": solve_linear_program(c=[1,2], A_ub=[[1,1],[-1,2]], b_ub=[3,2], bounds=[(0,None),(0,None)]),
+            "nonlinear_example": minimize_nonlinear(fun_name="quadratic_bowl", x0=[0,0]),
+        }
+    except Exception as e:
+        out["optimization_demo"] = {"error": f"{type(e).__name__}: {e}"}
+
+    return out
+
+# Backward compatible aliases so your runner never breaks again:
+compute_deep_math_v2 = compute_deep_math_v3
+compute_deep_math_v1 = compute_deep_math_v3
+
+# ------------------------------
+def compute_deep_math_v3(df, seed: int = 0, max_corrs: int = 200):
+    """Stable deep-math entrypoint used by the dataset runner."""
+
+    # Prefer v2/v1 if they exist
+    if "compute_deep_math_v2" in globals() and callable(globals().get("compute_deep_math_v2")):
+        return globals()["compute_deep_math_v2"](df, seed=seed, max_corrs=max_corrs)
+    if "compute_deep_math_v1" in globals() and callable(globals().get("compute_deep_math_v1")):
+        return globals()["compute_deep_math_v1"](df, seed=seed)
+
+    # Minimal fallback: correlations + BH-FDR on numeric columns
+    import numpy as np
+    import pandas as pd
+    from scipy import stats as st
+
+    out = {"version": "deep_math_v3_fallback", "seed": int(seed), "rows": int(len(df))}
+
+    cols = []
+    for c in df.columns:
+        v = pd.to_numeric(df[c], errors="coerce")
+        if v.notna().sum() >= 10 and v.nunique(dropna=True) > 1:
+            cols.append(c)
+
+    out["numeric_cols_used"] = cols
+    out["numeric_cols_n"] = len(cols)
+
+    pairs = []
+    for i in range(len(cols)):
+        for j in range(i + 1, len(cols)):
+            a, b = cols[i], cols[j]
+            x = pd.to_numeric(df[a], errors="coerce").to_numpy()
+            y = pd.to_numeric(df[b], errors="coerce").to_numpy()
+            m = np.isfinite(x) & np.isfinite(y)
+            n = int(m.sum())
+            if n < 25:
+                continue
+            try:
+                r, p = st.pearsonr(x[m], y[m])
+            except Exception:
+                continue
+            pairs.append((abs(float(r)), a, b, float(r), float(p), n))
+
+    pairs.sort(reverse=True)
+    pairs = pairs[: int(max_corrs)]
+
+    ps = np.array([p for _, _, _, _, p, _ in pairs], dtype=float)
+    q_full = np.ones_like(ps)
+    if len(ps):
+        order = np.argsort(ps)
+        ranked = ps[order]
+        m = len(ps)
+        q = np.empty_like(ranked)
+        prev = 1.0
+        for k in range(m - 1, -1, -1):
+            val = ranked[k] * m / (k + 1)
+            prev = min(prev, val)
+            q[k] = prev
+        q_full[order] = q
+
+    top = []
+    for idx, item in enumerate(pairs):
+        _, a, b, r, p, n = item
+        qv = float(q_full[idx]) if len(q_full) else 1.0
+        top.append(
+            {
+                "a": a,
+                "b": b,
+                "n": n,
+                "pearson_r": r,
+                "pearson_p": p,
+                "pearson_q": qv,
+                "pearson_reject_fdr05": qv <= 0.05,
+            }
+        )
+
+    out["hypothesis_testing"] = {"note": "fallback", "fdr": {"alpha": 0.05, "method": "BH"}, "top_correlations": top}
+    return out
+
+# Runner uses this alias
+compute_deep_math = compute_deep_math_v3
+
+# ------------------------------
+# Canonical deep-math entrypoint
+# ------------------------------
+def compute_deep_math_v3(df, seed: int = 0, max_corrs: int = 200):
+    """Stable deep-math entrypoint used by the dataset runner."""
+
+    # Prefer v2/v1 if present
+    fn2 = globals().get("compute_deep_math_v2")
+    if callable(fn2):
+        return fn2(df, seed=seed, max_corrs=max_corrs)
+
+    fn1 = globals().get("compute_deep_math_v1")
+    if callable(fn1):
+        return fn1(df, seed=seed)
+
+    # Minimal fallback: correlations + BH-FDR on numeric columns
+    import numpy as np
+    import pandas as pd
+    from scipy import stats as st
+
+    out = {"version": "deep_math_v3_fallback", "seed": int(seed), "rows": int(len(df))}
+
+    cols = []
+    for c in df.columns:
+        v = pd.to_numeric(df[c], errors="coerce")
+        if v.notna().sum() >= 10 and v.nunique(dropna=True) > 1:
+            cols.append(c)
+
+    out["numeric_cols_used"] = cols
+    out["numeric_cols_n"] = len(cols)
+
+    pairs = []
+    for i in range(len(cols)):
+        for j in range(i + 1, len(cols)):
+            a, b = cols[i], cols[j]
+            x = pd.to_numeric(df[a], errors="coerce").to_numpy()
+            y = pd.to_numeric(df[b], errors="coerce").to_numpy()
+            m = np.isfinite(x) & np.isfinite(y)
+            n = int(m.sum())
+            if n < 25:
+                continue
+            try:
+                r, p = st.pearsonr(x[m], y[m])
+            except Exception:
+                continue
+            pairs.append((abs(float(r)), a, b, float(r), float(p), n))
+
+    pairs.sort(reverse=True)
+    pairs = pairs[: int(max_corrs)]
+
+    ps = np.array([p for _, _, _, _, p, _ in pairs], dtype=float)
+    q_full = np.ones_like(ps)
+    if len(ps):
+        order = np.argsort(ps)
+        ranked = ps[order]
+        m = len(ps)
+        q = np.empty_like(ranked)
+        prev = 1.0
+        for k in range(m - 1, -1, -1):
+            val = ranked[k] * m / (k + 1)
+            prev = min(prev, val)
+            q[k] = prev
+        q_full[order] = q
+
+    top = []
+    for idx, item in enumerate(pairs):
+        _, a, b, r, p, n = item
+        qv = float(q_full[idx]) if len(q_full) else 1.0
+        top.append(
+            {
+                "a": a,
+                "b": b,
+                "n": n,
+                "pearson_r": r,
+                "pearson_p": p,
+                "pearson_q": qv,
+                "pearson_reject_fdr05": qv <= 0.05,
+            }
+        )
+
+    out["hypothesis_testing"] = {"note": "fallback", "fdr": {"alpha": 0.05, "method": "BH"}, "top_correlations": top}
+    return out
+
+# Runner uses this alias
+compute_deep_math = compute_deep_math_v3

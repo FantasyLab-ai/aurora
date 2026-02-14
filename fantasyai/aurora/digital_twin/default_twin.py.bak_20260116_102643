@@ -1,0 +1,90 @@
+import numpy as np
+from typing import Optional, Dict, Any
+
+
+def _pick_target(contract: dict, df_numeric) -> str:
+    """
+    Pick a target column robustly.
+
+    Supports recommended_targets as:
+      - ["colA", "colB"]
+      - [{"col":"colA"}, {"name":"colB"}, {"target":"colC"}]
+
+    Falls back to first numeric column.
+    """
+    targets = (contract or {}).get("recommended_targets", []) or []
+
+    for t in targets:
+        if isinstance(t, str) and t in df_numeric.columns:
+            return t
+        if isinstance(t, dict):
+            c = (
+                t.get("col")
+                or t.get("name")
+                or t.get("target")
+                or t.get("column")
+            )
+            if isinstance(c, str) and c in df_numeric.columns:
+                return c
+
+    # Fallback: first numeric column
+    return df_numeric.columns[0]
+
+
+def run_default_digital_twin(
+    schema_contract: dict,
+    df_numeric,
+    structure_contract: Optional[dict] = None,
+    seed: int = 42,
+    horizon: int = 24,
+    n_sims: int = 2000,
+) -> Dict[str, Any]:
+    """
+    Minimal but correct Digital Twin baseline:
+    - schema/structure-driven target selection
+    - fast Monte Carlo rollout
+    - uncertainty-aware outputs
+    """
+
+    rng = np.random.default_rng(seed)
+
+    if df_numeric is None or df_numeric.shape[1] == 0:
+        return {
+            "status": "skipped",
+            "reason": "no_numeric_data",
+        }
+
+    # Prefer structure_contract when present
+    contract_for_targeting = structure_contract or schema_contract
+
+    target = _pick_target(contract_for_targeting, df_numeric)
+
+    series = df_numeric[target].dropna().values
+    if len(series) < 10:
+        return {
+            "status": "skipped",
+            "reason": "insufficient_target_history",
+            "target": target,
+        }
+
+    mu = float(np.mean(series))
+    sigma = float(np.std(series) + 1e-9)
+
+    sims = rng.normal(mu, sigma, size=(n_sims, horizon))
+
+    return {
+        "status": "ok",
+        "target": target,
+        "chosen_model": "gaussian_baseline",
+        "risk_surface": {
+            "p05": np.percentile(sims, 5, axis=0).tolist(),
+            "p50": np.percentile(sims, 50, axis=0).tolist(),
+            "p95": np.percentile(sims, 95, axis=0).tolist(),
+            "terminal": {
+                "min": float(np.min(sims)),
+                "max": float(np.max(sims)),
+            },
+        },
+        "schema_contract": schema_contract,
+        "structure_contract": structure_contract,
+    }

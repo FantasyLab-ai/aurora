@@ -1,0 +1,483 @@
+from __future__ import annotations
+import re
+
+def _safe_mad(x):
+    """Median absolute deviation with a floor to avoid divide-by-zero blowups."""
+    import numpy as np
+    x = np.asarray(x, dtype=float)
+    med = np.nanmedian(x)
+    mad = np.nanmedian(np.abs(x - med))
+    # floor: if MAD is 0/NaN, treat as non-informative scale
+    if not np.isfinite(mad) or mad <= 1e-12:
+        return med, None
+    return med, mad
+
+def _robust_z(x, med, mad, cap=50.0):
+    """Robust z with optional cap; returns 0 when scale is undefined."""
+    import numpy as np
+    x = np.asarray(x, dtype=float)
+    if mad is None:
+        return np.zeros_like(x, dtype=float)
+    z = (x - med) / mad
+    z = np.where(np.isfinite(z), z, 0.0)
+    return np.clip(z, -cap, cap)
+
+
+
+
+def _select_numeric_for_deep_math(df, max_cols: int = 40, min_non_na_frac: float = 0.60):
+    import numpy as np
+    import pandas as pd
+
+    num = df.select_dtypes(include="number").copy()
+    if num.shape[1] == 0:
+        return num, []
+
+    # Drop "Unnamed:" garbage columns (common CSV artifacts)
+    drop_unnamed = [c for c in num.columns if str(c).strip().lower().startswith("unnamed:")]
+    if drop_unnamed:
+        num = num.drop(columns=drop_unnamed, errors="ignore")
+
+    # Coerce everything numeric (safe)
+    for c in list(num.columns):
+        num[c] = pd.to_numeric(num[c], errors="coerce")
+
+    # Drop columns with too many missing
+    non_na = num.notna().mean()
+    keep = non_na[non_na >= float(min_non_na_frac)].index.tolist()
+    num = num[keep]
+
+    # Drop all-NaN / constant
+    keep2 = []
+    for c in num.columns:
+        s = num[c]
+        s2 = s.dropna()
+        if len(s2) < 10:
+            continue
+        # constant / near-constant
+        if s2.nunique(dropna=True) <= 1:
+            continue
+        keep2.append(c)
+
+    num = num[keep2]
+
+    # Limit cols to avoid O(n^2) blowups
+    cols = list(num.columns[:max_cols])
+    return num[cols], cols
+
+
+import math
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
+
+# SciPy / statsmodels / sklearn are already in your environment based on logs
+import scipy.stats as st
+import statsmodels.api as sm
+from statsmodels.stats.diagnostic import het_breuschpagan
+from statsmodels.stats.stattools import jarque_bera
+from statsmodels.tsa.stattools import adfuller
+from sklearn.decomposition import PCA
+from sklearn.linear_model import LogisticRegression
+from sklearn.cluster import KMeans
+
+
+def _sha(x: str) -> str:
+    import hashlib
+    return hashlib.sha256(x.encode("utf-8")).hexdigest()[:12]
+
+
+def _drop_junk_cols(df: pd.DataFrame) -> pd.DataFrame:
+    # Drop columns like "Unnamed: 15" that are artifacts
+    junk = [c for c in df.columns if re.match(r"^Unnamed:\s*\d+$", str(c))]
+    if junk:
+        df = df.drop(columns=junk, errors="ignore")
+    return df
+
+
+def _numeric_hygiene(df: pd.DataFrame) -> pd.DataFrame:
+    df = _drop_junk_cols(df.copy())
+    # Replace inf with NaN
+    df = df.replace([np.inf, -np.inf], np.nan)
+
+    # Attempt numeric coercion for object columns (safe)
+    for c in df.columns:
+        if df[c].dtype == "object":
+            v = pd.to_numeric(df[c], errors="coerce")
+            # If coercion produced a numeric dtype (or many numerics), adopt it
+            if pd.api.types.is_numeric_dtype(v):
+                df[c] = v
+    return df
+
+
+def _select_numeric(df: pd.DataFrame, min_nonnull: float = 0.70, max_cols: int = 30) -> Tuple[pd.DataFrame, List[str]]:
+    num = df.select_dtypes(include="number").copy()
+    if num.shape[1] == 0:
+        return num, []
+
+    keep = []
+    for c in num.columns:
+        frac = float(num[c].notna().mean())
+        if frac >= min_nonnull:
+            # drop constant / near-constant
+            vc = num[c].dropna()
+            if vc.nunique() <= 1:
+                continue
+            keep.append(c)
+
+    keep = keep[:max_cols]
+    return num[keep].copy(), keep
+
+
+def _bh_fdr(pvals: np.ndarray, alpha: float = 0.05) -> Tuple[np.ndarray, np.ndarray]:
+    """Benjamini–Hochberg FDR: returns (qvals, reject_mask)."""
+    p = np.asarray(pvals, dtype=float)
+    n = p.size
+    order = np.argsort(p)
+    ranked = p[order]
+    q = np.empty(n, dtype=float)
+    prev = 1.0
+    for i in range(n - 1, -1, -1):
+        rank = i + 1
+        val = ranked[i] * n / rank
+        prev = min(prev, val)
+        q[i] = prev
+    qvals = np.empty(n, dtype=float)
+    qvals[order] = q
+    reject = qvals <= alpha
+    return qvals, reject
+
+
+def _top_correlations_with_tests(X: pd.DataFrame) -> List[Dict[str, Any]]:
+    cols = list(X.columns)
+    out = []
+    for i in range(len(cols)):
+        for j in range(i + 1, len(cols)):
+            a, b = cols[i], cols[j]
+            x = X[a].to_numpy()
+            y = X[b].to_numpy()
+            m = np.isfinite(x) & np.isfinite(y)
+            n = int(m.sum())
+            if n < 80:
+                continue
+            # handle constant input safely
+            if np.nanstd(x[m]) == 0 or np.nanstd(y[m]) == 0:
+                continue
+            pr, pp = st.pearsonr(x[m], y[m])
+            sr, sp = st.spearmanr(x[m], y[m])
+            out.append({"a": a, "b": b, "n": n, "pearson_r": float(pr), "pearson_p": float(pp),
+                        "spearman_r": float(sr), "spearman_p": float(sp)})
+    if not out:
+        return []
+    # FDR on pearson p
+    pvals = np.array([d["pearson_p"] for d in out], dtype=float)
+    qvals, reject = _bh_fdr(pvals, alpha=0.05)
+    for d, q, rj in zip(out, qvals, reject):
+        d["pearson_q"] = float(q)
+        d["pearson_reject_fdr05"] = bool(rj)
+    out.sort(key=lambda d: abs(d["pearson_r"]), reverse=True)
+    return out[:40]
+
+
+def _pca_block(X: pd.DataFrame, seed: int = 0) -> Dict[str, Any]:
+    # standardize
+    Z = (X - X.mean()) / (X.std(ddof=0) + 1e-9)
+    Z = Z.fillna(0.0)
+    k = min(6, Z.shape[1])
+    pca = PCA(n_components=k, random_state=seed)
+    pca.fit(Z)
+    comps = []
+    for i in range(k):
+        load = pca.components_[i]
+        top = np.argsort(np.abs(load))[::-1][:6]
+        comps.append({
+            "component": i + 1,
+            "explained_variance_ratio": float(pca.explained_variance_ratio_[i]),
+            "top_loadings": [{"feature": Z.columns[t], "loading": float(load[t])} for t in top],
+        })
+    return {"note": "ok", "rows_used": int(Z.shape[0]), "components": comps}
+
+
+def _vif_block(X: pd.DataFrame) -> Dict[str, Any]:
+    # simple VIF approximation via R^2 of each feature ~ others
+    Z = (X - X.mean()) / (X.std(ddof=0) + 1e-9)
+    Z = Z.fillna(0.0)
+    feats = list(Z.columns)
+    rows = []
+    for i, f in enumerate(feats):
+        y = Z[f].to_numpy()
+        Xo = Z.drop(columns=[f]).to_numpy()
+        if Xo.shape[1] == 0:
+            rows.append({"feature": f, "vif": 1.0, "r2_explained_by_others": 0.0})
+            continue
+        Xo = sm.add_constant(Xo, has_constant="add")
+        try:
+            m = sm.OLS(y, Xo).fit()
+            r2 = float(m.rsquared) if np.isfinite(m.rsquared) else 0.0
+        except Exception:
+            r2 = 0.0
+        vif = 1.0 / max(1e-6, (1.0 - r2))
+        rows.append({"feature": f, "vif": float(vif), "r2_explained_by_others": float(r2)})
+    rows.sort(key=lambda d: d["vif"], reverse=True)
+    return {"note": "ok", "vif_top": rows[:20]}
+
+
+def _assumptions_testing(df: pd.DataFrame, X: pd.DataFrame) -> Dict[str, Any]:
+    out: Dict[str, Any] = {"note": "ok"}
+    # Normality on a representative numeric column (highest variance)
+    if X.shape[1] == 0:
+        return {"note": "no_numeric"}
+    vari = X.var(numeric_only=True).sort_values(ascending=False)
+    col = vari.index[0]
+    v = X[col].dropna().to_numpy()
+    if v.size >= 20:
+        jb_stat, jb_p, skew, kurt = jarque_bera(v)
+        out["normality"] = {"column": col, "jarque_bera_p": float(jb_p), "skew": float(skew), "kurtosis": float(kurt)}
+    # If a datetime-like index exists, we can attempt stationarity on the same column
+    # (lightweight; won't throw if fails)
+    try:
+        adf = adfuller(pd.Series(v).astype(float).values, autolag="AIC")
+        out["stationarity_adf"] = {"column": col, "adf_p": float(adf[1])}
+    except Exception:
+        out["stationarity_adf"] = {"column": col, "adf_p": None, "note": "adf_failed_or_not_applicable"}
+    return out
+
+
+def _regime_detection(X: pd.DataFrame, seed: int = 0) -> Dict[str, Any]:
+    # Lightweight regime detection: cluster rows into regimes using KMeans on standardized numerics.
+    if X.shape[0] < 200 or X.shape[1] < 3:
+        return {"note": "insufficient_rows_or_cols"}
+    Z = (X - X.mean()) / (X.std(ddof=0) + 1e-9)
+    Z = Z.fillna(0.0)
+    k = 3
+    km = KMeans(n_clusters=k, random_state=seed, n_init=10)
+    lab = km.fit_predict(Z.to_numpy())
+    counts = {str(i): int((lab == i).sum()) for i in range(k)}
+    # top driver features: centroid spread
+    cent = km.cluster_centers_
+    spread = np.std(cent, axis=0)
+    top = np.argsort(spread)[::-1][:8]
+    return {
+        "note": "ok",
+        "k": k,
+        "counts": counts,
+        "top_regime_drivers": [{"feature": Z.columns[i], "centroid_spread": float(spread[i])} for i in top],
+    }
+
+
+def _bootstrap_uncertainty(X: pd.DataFrame, seed: int = 0, B: int = 120) -> Dict[str, Any]:
+    rng = np.random.default_rng(seed)
+    if X.shape[1] < 2 or X.shape[0] < 200:
+        return {"note": "insufficient_data"}
+    cols = list(X.columns)
+    # pick strongest observed pair
+    best = None
+    for i in range(len(cols)):
+        for j in range(i + 1, len(cols)):
+            a, b = cols[i], cols[j]
+            x = X[a].to_numpy()
+            y = X[b].to_numpy()
+            m = np.isfinite(x) & np.isfinite(y)
+            if m.sum() < 200:
+                continue
+            if np.nanstd(x[m]) == 0 or np.nanstd(y[m]) == 0:
+                continue
+            r, _ = st.pearsonr(x[m], y[m])
+            if best is None or abs(r) > abs(best[2]):
+                best = (a, b, float(r))
+    if best is None:
+        return {"note": "no_valid_pair"}
+    a, b, r0 = best
+    x = X[a].to_numpy()
+    y = X[b].to_numpy()
+    m = np.isfinite(x) & np.isfinite(y)
+    x = x[m]; y = y[m]
+    n = x.size
+    rs = []
+    for _ in range(B):
+        idx = rng.integers(0, n, size=n)
+        xb = x[idx]; yb = y[idx]
+        if np.std(xb) == 0 or np.std(yb) == 0:
+            continue
+        r, _ = st.pearsonr(xb, yb)
+        rs.append(float(r))
+    if not rs:
+        return {"note": "bootstrap_failed"}
+    lo, hi = np.quantile(rs, [0.025, 0.975])
+    stable_top10 = float(np.mean(np.abs(np.array(rs)) >= np.quantile(np.abs(rs), 0.90)))
+    return {"note": "ok", "pair": {"a": a, "b": b, "r_observed": r0}, "bootstrap": {"B": int(len(rs)), "ci95": [float(lo), float(hi)], "stability_score": stable_top10}}
+
+
+def _safe_causal_inference(df: pd.DataFrame, X: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Very conservative: only runs if we can find a binary 'treatment' column
+    AND a numeric outcome that isn't ID-like.
+    """
+    # binary treatment candidates
+    t_candidates = []
+    for c in X.columns:
+        v = X[c].dropna()
+        u = sorted(v.unique().tolist())
+        if len(u) == 2 and set(u).issubset({0, 1}):
+            # ensure not ultra-imbalanced
+            p = float(v.mean())
+            if 0.1 <= p <= 0.9:
+                t_candidates.append(c)
+
+    if not t_candidates:
+        return {"note": "no_binary_treatment_found"}
+
+    # outcome candidates: numeric, not near-unique, not ending with ID, not integer codes with huge cardinality
+    y_candidates = []
+    for c in X.columns:
+        if c in t_candidates:
+            continue
+        v = X[c].dropna()
+        if v.size < 200:
+            continue
+        nun = int(v.nunique())
+        if nun <= 10:
+            continue
+        if nun >= int(0.95 * v.size):
+            continue  # likely ID-like
+        if re.search(r"id$", str(c), flags=re.IGNORECASE):
+            continue
+        y_candidates.append((c, float(v.var())))
+
+    if not y_candidates:
+        return {"note": "no_reasonable_outcome_found", "treatment_candidates": t_candidates[:6]}
+
+    # pick highest variance outcome
+    y_candidates.sort(key=lambda t: t[1], reverse=True)
+    y_col = y_candidates[0][0]
+    t_col = t_candidates[0]
+
+    # confounders: remaining numerics
+    conf = [c for c in X.columns if c not in (t_col, y_col)]
+    if len(conf) < 2:
+        return {"note": "insufficient_confounders", "treatment": t_col, "outcome": y_col}
+
+    Z = X[[t_col, y_col] + conf].dropna()
+    t = Z[t_col].astype(int).to_numpy()
+    y = Z[y_col].astype(float).to_numpy()
+    W = Z[conf].to_numpy()
+    # standardize confounders
+    W = (W - W.mean(axis=0)) / (W.std(axis=0) + 1e-9)
+
+    # propensity model
+    lr = LogisticRegression(max_iter=200)
+    lr.fit(W, t)
+    ps = np.clip(lr.predict_proba(W)[:, 1], 1e-3, 1 - 1e-3)
+
+    # IPW ATE
+    w = (t / ps) + ((1 - t) / (1 - ps))
+    ate = float(np.average(y * (2 * t - 1), weights=w))
+
+    return {
+        "note": "ok_ipw",
+        "treatment": t_col,
+        "outcome": y_col,
+        "n": int(Z.shape[0]),
+        "ate_ipw": ate,
+        "overlap": {"ps_min": float(ps.min()), "ps_max": float(ps.max())},
+        "confounders_n": int(len(conf)),
+    }
+
+
+def compute_deep_math_v2(df: pd.DataFrame, seed: int = 0) -> Dict[str, Any]:
+    out: Dict[str, Any] = {"version": "deep_math_v2", "seed": int(seed)}
+    df2 = _numeric_hygiene(df)
+    X, used = _select_numeric(df2, min_nonnull=0.70, max_cols=30)
+
+    out["rows"] = int(df2.shape[0])
+    out["numeric_cols_n"] = int(len(used))
+    out["numeric_cols_used"] = used
+
+    if X.shape[1] < 2 or X.shape[0] < 200:
+        out["note"] = "insufficient_numeric_data"
+        return out
+
+    out["hypothesis_testing"] = {
+        "note": "ok",
+        "fdr": {"alpha": 0.05, "method": "BH"},
+        "top_correlations": _top_correlations_with_tests(X),
+    }
+
+    out["dimensionality_reduction"] = _pca_block(X, seed=seed)
+    out["multivariate_modeling"] = {"note": "ok", "vif": _vif_block(X)}
+
+    out["formal_assumptions_testing"] = _assumptions_testing(df2, X)
+    out["regime_detection"] = _regime_detection(X, seed=seed)
+    out["model_uncertainty"] = _bootstrap_uncertainty(X, seed=seed, B=120)
+
+    out["causal_inference"] = _safe_causal_inference(df2, X)
+
+    return out
+
+
+# ---- Backward-compat alias: v1 -> v2 ----
+def compute_deep_math_v1(df, seed: int = 42):
+
+    # drop fully-empty columns (common in CSV exports like Unnamed: 15/16)
+    df = df.dropna(axis=1, how="all")
+    return compute_deep_math_v2(df, seed=seed)
+
+
+# ------------------------------
+# Fallbacks when sklearn is absent
+# ------------------------------
+# If sklearn didn't import, the code sets PCA/StandardScaler=None.
+# Later calling PCA(...) would crash with: TypeError: 'NoneType' object is not callable.
+# These lightweight fallbacks keep Deep Math working without extra deps.
+
+if "StandardScaler" in globals() and StandardScaler is None:
+    class StandardScaler:  # type: ignore
+        def __init__(self, with_mean: bool = True, with_std: bool = True):
+            self.with_mean = with_mean
+            self.with_std = with_std
+            self.mean_ = None
+            self.scale_ = None
+
+        def fit_transform(self, X):
+            import numpy as np
+            X = np.asarray(X, dtype=float)
+            mu = np.nanmean(X, axis=0) if self.with_mean else 0.0
+            sd = np.nanstd(X, axis=0) if self.with_std else 1.0
+            sd = np.where(sd == 0, 1.0, sd)
+            self.mean_ = mu
+            self.scale_ = sd
+            return (X - mu) / sd
+
+if "PCA" in globals() and PCA is None:
+    class PCA:  # type: ignore
+        def __init__(self, n_components=2, random_state=None):
+            self.n_components = int(n_components)
+            self.random_state = random_state
+            self.components_ = None
+            self.explained_variance_ratio_ = None
+
+        def fit_transform(self, X):
+            import numpy as np
+            X = np.asarray(X, dtype=float)
+            # mean-center (ignore nans by imputing with col mean)
+            col_mu = np.nanmean(X, axis=0)
+            X2 = X.copy()
+            nan_mask = np.isnan(X2)
+            if nan_mask.any():
+                X2[nan_mask] = np.take(col_mu, np.where(nan_mask)[1])
+            X2 = X2 - col_mu
+
+            # SVD PCA
+            U, S, Vt = np.linalg.svd(X2, full_matrices=False)
+            comps = Vt[: self.n_components]
+            self.components_ = comps
+
+            # explained variance ratio
+            var = (S ** 2) / (max(len(X2) - 1, 1))
+            total = var.sum() if var.size else 0.0
+            evr = (var[: self.n_components] / total) if total > 0 else None
+            self.explained_variance_ratio_ = evr
+            return X2 @ comps.T
+

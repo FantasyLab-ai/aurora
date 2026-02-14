@@ -1,0 +1,291 @@
+from __future__ import annotations
+
+import re
+import py_compile
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+PHYS = ROOT / "fantasyai" / "aurora" / "math" / "physics.py"
+DEEP = ROOT / "fantasyai" / "aurora" / "math" / "deep_math.py"
+
+PHYSICS_CLEAN = r'''from __future__ import annotations
+
+from typing import Any, Dict, Optional, Tuple
+import numpy as np
+import pandas as pd
+
+
+def _safe_datetime(s: "pd.Series") -> Optional["pd.Series"]:
+    try:
+        dt = pd.to_datetime(s, errors="coerce", dayfirst=True)
+        # reject if everything becomes NaT
+        if dt.notna().mean() <= 0.2:
+            return None
+        return dt
+    except Exception:
+        return None
+
+
+def _is_mostly_numeric(s: "pd.Series") -> bool:
+    """True if a series is mostly numeric (or numeric-like strings)."""
+    try:
+        if pd.api.types.is_numeric_dtype(s):
+            return True
+        c = pd.to_numeric(s.astype(str).str.replace(",", ".", regex=False), errors="coerce")
+        return float(c.notna().mean()) > 0.85
+    except Exception:
+        return False
+
+
+def _infer_time_col(df: pd.DataFrame) -> Optional[str]:
+    """
+    Robust time-axis inference:
+      - Prefer AirQualityUCI Date+Time pairing
+      - Never select mostly-numeric sensor columns as time
+      - Require high parse success for datetime candidates
+    Returns either:
+      - "Date+Time" sentinel (caller should construct datetime from Date + Time), OR
+      - column name, OR
+      - None
+    """
+    # 0) Prefer Date + Time pair (AirQualityUCI)
+    if ("Date" in df.columns) and ("Time" in df.columns):
+        try:
+            comb = (df["Date"].astype(str).str.strip() + " " + df["Time"].astype(str).str.strip())
+            dt2 = pd.to_datetime(comb, errors="coerce", dayfirst=True)
+            if dt2.notna().mean() > 0.6:
+                return "Date+Time"
+        except Exception:
+            pass
+
+    # 1) Prefer explicit datetime-ish names, reject numeric
+    lower_map = {c.lower(): c for c in df.columns}
+    for cand in ["datetime", "timestamp", "time", "date", "ds"]:
+        if cand in lower_map:
+            col = lower_map[cand]
+            if _is_mostly_numeric(df[col]):
+                continue
+            dtc = _safe_datetime(df[col])
+            if dtc is not None and dtc.notna().mean() > 0.8:
+                return col
+
+    # 2) Fallback scan: only non-numeric columns, require very high parse rate
+    for c in list(df.columns)[:50]:
+        if _is_mostly_numeric(df[c]):
+            continue
+        dtc = _safe_datetime(df[c])
+        if dtc is not None and dtc.notna().mean() > 0.85:
+            return c
+
+    return None
+
+
+def _get_time_series(df: pd.DataFrame, time_col: Optional[str]) -> Tuple[Optional[np.ndarray], Optional[str]]:
+    if time_col is None:
+        return None, None
+
+    if time_col == "Date+Time" and ("Date" in df.columns) and ("Time" in df.columns):
+        comb = (df["Date"].astype(str).str.strip() + " " + df["Time"].astype(str).str.strip())
+        t = pd.to_datetime(comb, errors="coerce", dayfirst=True)
+        return t.values, "Date+Time"
+
+    t = pd.to_datetime(df[time_col], errors="coerce", dayfirst=True)
+    return t.values, time_col
+
+
+def _robust_dt_seconds(t: np.ndarray) -> Optional[float]:
+    try:
+        tt = t.astype("datetime64[ns]")
+        d = np.diff(tt).astype("timedelta64[ns]").astype(np.int64) / 1e9
+        d = d[np.isfinite(d)]
+        if d.size < 5:
+            return None
+        med = float(np.median(d))
+        if not np.isfinite(med) or med <= 0:
+            return None
+        return med
+    except Exception:
+        return None
+
+
+def _fit_linear_ode(y: np.ndarray, dt_s: float) -> Dict[str, Any]:
+    """
+    Fit dy/dt = a*y + b using least squares.
+    Returns a, b, fit metrics, and stability classification.
+    """
+    y = y.astype(float)
+    m = np.isfinite(y)
+    y = y[m]
+    if y.size < 300:
+        return {"note": "skipped", "error": "physics:not_enough_finite_samples"}
+
+    dy = np.gradient(y, dt_s)
+
+    X = np.column_stack([y, np.ones_like(y)])
+    beta, *_ = np.linalg.lstsq(X, dy, rcond=None)
+    a = float(beta[0])
+    b = float(beta[1])
+
+    pred = a * y + b
+    resid = dy - pred
+    ss_res = float(np.sum(resid ** 2))
+    ss_tot = float(np.sum((dy - float(np.mean(dy))) ** 2)) + 1e-12
+    r2 = 1.0 - ss_res / ss_tot
+    rmse = float(np.sqrt(np.mean(resid ** 2)))
+
+    stable = (a < 0)
+    tau = float(-1.0 / a) if stable and abs(a) > 1e-12 else None
+
+    return {
+        "note": "ok",
+        "error": None,
+        "model": "dy_dt = a*y + b",
+        "a": a,
+        "b": b,
+        "stable": bool(stable),
+        "time_constant_seconds": tau,
+        "r2": float(r2),
+        "rmse": rmse,
+        "n": int(y.size),
+    }
+
+
+def physics_diagnostics(
+    df: pd.DataFrame,
+    target_col: str,
+    time_col: Optional[str] = None,
+    seed: int = 0,
+) -> Dict[str, Any]:
+    """
+    Physics-inspired diagnostics layer (safe, never raises):
+      - infer time axis if available
+      - estimate sampling cadence
+      - fit simple linear ODE dy/dt = a*y + b
+    """
+    try:
+        tc = time_col or _infer_time_col(df)
+        t_arr, used_time = _get_time_series(df, tc) if tc is not None else (None, None)
+
+        y = pd.to_numeric(df[target_col], errors="coerce").replace([np.inf, -np.inf], np.nan).values.astype(float)
+
+        if t_arr is None:
+            dt_s = 1.0
+            fit = _fit_linear_ode(y, dt_s=dt_s)
+            fit["time_axis"] = "index"
+            fit["dt_seconds"] = dt_s
+            fit["time_col"] = None
+            return fit
+
+        dt_s = _robust_dt_seconds(t_arr)
+        if dt_s is None:
+            dt_s = 1.0
+            axis_note = "datetime_unusable_fallback_index_dt1"
+        else:
+            axis_note = "datetime"
+
+        fit = _fit_linear_ode(y, dt_s=dt_s)
+        fit["time_axis"] = axis_note
+        fit["dt_seconds"] = float(dt_s)
+        fit["time_col"] = used_time
+        return fit
+
+    except Exception as e:
+        return {"note": "failed", "error": f"physics_failed:{type(e).__name__}:{e}"}
+'''
+
+def backup(path: Path, tag: str) -> Path:
+    b = path.with_suffix(path.suffix + f".bak_{tag}")
+    b.write_bytes(path.read_bytes())
+    return b
+
+def patch_deep_math_time_infer(text: str) -> str:
+    # Inject helper if missing
+    if "_is_mostly_numeric" not in text:
+        insert_at = text.find("def _infer_time_col")
+        helper = r'''
+def _is_mostly_numeric(s: "pd.Series") -> bool:
+    """True if a series is mostly numeric (or numeric-like strings)."""
+    try:
+        if pd.api.types.is_numeric_dtype(s):
+            return True
+        c = pd.to_numeric(s.astype(str).str.replace(",", ".", regex=False), errors="coerce")
+        return float(c.notna().mean()) > 0.85
+    except Exception:
+        return False
+
+'''
+        text = text[:insert_at] + helper + text[insert_at:]
+
+    # Replace _infer_time_col body with safe version (keep signature)
+    pat = re.compile(r"def _infer_time_col\(df: pd\.DataFrame\) -> Optional\[str\]:.*?\n\s*return None\n", re.S)
+    m = pat.search(text)
+    if not m:
+        raise RuntimeError("Could not locate deep_math._infer_time_col block to patch")
+
+    repl = r'''def _infer_time_col(df: pd.DataFrame) -> Optional[str]:
+    """
+    Robust time-axis inference:
+      - Prefer Date+Time pairing if present
+      - Prefer explicit datetime-ish column names
+      - Never select mostly-numeric sensor columns as time
+      - Require high datetime parse success rate
+    """
+    # 0) Prefer Date + Time pair (AirQualityUCI)
+    if ("Date" in df.columns) and ("Time" in df.columns):
+        try:
+            comb = (df["Date"].astype(str).str.strip() + " " + df["Time"].astype(str).str.strip())
+            dt2 = pd.to_datetime(comb, errors="coerce", dayfirst=True)
+            if dt2.notna().mean() > 0.6:
+                return "Date+Time"
+        except Exception:
+            pass
+
+    lower_map = {c.lower(): c for c in df.columns}
+
+    # 1) Prefer explicit datetime-ish names, reject numeric
+    for cand in ["date", "datetime", "timestamp", "time", "ds"]:
+        if cand in lower_map:
+            col = lower_map[cand]
+            if _is_mostly_numeric(df[col]):
+                continue
+            dt = pd.to_datetime(df[col], errors="coerce", dayfirst=True)
+            if dt.notna().mean() > 0.8:
+                return col
+
+    # 2) Fallback scan: only non-numeric columns, require very high parse rate
+    for c in list(df.columns)[:40]:
+        if _is_mostly_numeric(df[c]):
+            continue
+        dt = pd.to_datetime(df[c], errors="coerce", dayfirst=True)
+        if dt.notna().mean() > 0.85:
+            return c
+
+    return None
+'''
+    text = text[:m.start()] + repl + text[m.end():]
+    return text
+
+def main():
+    if not PHYS.exists():
+        raise SystemExit(f"Missing: {PHYS}")
+    if not DEEP.exists():
+        raise SystemExit(f"Missing: {DEEP}")
+
+    # 1) Restore physics.py
+    b1 = backup(PHYS, "restore_clean_physics")
+    PHYS.write_text(PHYSICS_CLEAN, encoding="utf-8")
+    py_compile.compile(str(PHYS), doraise=True)
+    print(f"[OK] physics.py restored (backup: {b1.name})")
+
+    # 2) Patch deep_math.py time inference
+    deep_text = DEEP.read_text(encoding="utf-8")
+    b2 = backup(DEEP, "timeaxis_fix")
+    deep_new = patch_deep_math_time_infer(deep_text)
+    DEEP.write_text(deep_new, encoding="utf-8")
+    py_compile.compile(str(DEEP), doraise=True)
+    print(f"[OK] deep_math.py patched time inference (backup: {b2.name})")
+
+    print("[DONE] physics + timeaxis fixes compiled clean")
+
+if __name__ == "__main__":
+    main()

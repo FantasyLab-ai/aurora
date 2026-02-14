@@ -1,0 +1,408 @@
+import json
+import os
+from pathlib import Path
+from typing import Optional, Tuple, List
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+
+
+# -----------------------------
+# Styling helpers (dark glossy)
+# -----------------------------
+def _style_ax(ax, title: str):
+    ax.set_title(title, fontsize=16, weight="bold", pad=12)
+    ax.grid(True, alpha=0.10)
+    for spine in ax.spines.values():
+        spine.set_alpha(0.15)
+    ax.tick_params(labelsize=10)
+    # Transparent figure works best over your dark UI cards
+    ax.set_facecolor((0, 0, 0, 0))
+
+
+def _save(fig, out_path: Path):
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.patch.set_alpha(0.0)
+    fig.savefig(out_path, dpi=180, bbox_inches="tight", transparent=True)
+    plt.close(fig)
+
+
+def _read_json(path: Path) -> dict:
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _safe_float(x, default=np.nan):
+    try:
+        return float(x)
+    except Exception:
+        return default
+
+
+# -----------------------------
+# Data extraction
+# -----------------------------
+def _resolve_run_dir(run_dir: str) -> Path:
+    p = Path(run_dir)
+    if p.exists():
+        return p
+    # Allow passing a folder containing _RUN_META.json
+    raise FileNotFoundError(f"Run dir not found: {run_dir}")
+
+
+def _get_dataset_path(run_meta: dict) -> Optional[str]:
+    # Your _RUN_META.json structure puts this in runner_stdout.table
+    rs = run_meta.get("runner_stdout") or {}
+    return rs.get("table") or rs.get("dataset") or rs.get("dataset_path")
+
+
+def _load_dataset(csv_path: str, time_col: Optional[str]) -> pd.DataFrame:
+    # Keep it robust: read as pandas with low_memory False
+    df = pd.read_csv(csv_path, low_memory=False)
+
+    if time_col and time_col in df.columns:
+        # Attempt datetime parse
+        df[time_col] = pd.to_datetime(df[time_col], errors="coerce")
+        df = df.sort_values(time_col)
+
+    return df
+
+
+def _pick_target(df: pd.DataFrame, deep_math: dict) -> Tuple[str, pd.Series]:
+    target = deep_math.get("target_col")
+    if target and target in df.columns:
+        s = pd.to_numeric(df[target], errors="coerce")
+        return target, s
+
+    # fallback: choose a numeric column with highest variance
+    numeric_cols = []
+    for c in df.columns:
+        s = pd.to_numeric(df[c], errors="coerce")
+        if s.notna().sum() > 100:
+            numeric_cols.append((c, float(np.nanvar(s.values))))
+    if not numeric_cols:
+        raise ValueError("No numeric target column found.")
+    numeric_cols.sort(key=lambda t: t[1], reverse=True)
+    best = numeric_cols[0][0]
+    return best, pd.to_numeric(df[best], errors="coerce")
+
+
+# -----------------------------
+# Insight plot builders
+# -----------------------------
+def build_forecast_insight(run_dir: Path, df: pd.DataFrame, deep_math: dict):
+    plots_dir = run_dir / "plots"
+    plots_dir.mkdir(parents=True, exist_ok=True)
+
+    time_col = deep_math.get("time_col")
+    target_name, target = _pick_target(df, deep_math)
+    target = target.dropna()
+
+    if len(target) < 200:
+        # still plot, but with what we have
+        hist_n = min(len(target), 120)
+    else:
+        hist_n = 240
+
+    y_hist = target.values[-hist_n:]
+    x_hist = np.arange(-hist_n + 1, 1)
+
+    # Use deep_math forecasting horizon if present
+    fc = deep_math.get("forecasting") or {}
+    horizon = int(fc.get("horizon") or 24)
+
+    # --- Build a better forecast than "flat 0" ---
+    # Fit a simple trend on last window for demo-grade interpretability.
+    w = min(120, len(y_hist))
+    y_fit = y_hist[-w:]
+    x_fit = np.arange(w)
+
+    # linear regression
+    A = np.vstack([x_fit, np.ones_like(x_fit)]).T
+    m, b = np.linalg.lstsq(A, y_fit, rcond=None)[0]
+
+    x_f = np.arange(1, horizon + 1)
+    y_mean = (m * (w - 1 + x_f)) + b
+
+    # uncertainty from residuals, widening with sqrt(h)
+    resid = y_fit - (m * x_fit + b)
+    sigma = float(np.nanstd(resid)) if np.isfinite(np.nanstd(resid)) else 1.0
+    z = 1.96  # ~95%
+    band = z * sigma * np.sqrt(x_f / max(1, x_f[-1]))
+
+    y_lo = y_mean - band
+    y_hi = y_mean + band
+
+    # simple risk threshold: 10th percentile of history
+    thr = float(np.nanpercentile(y_hist, 10))
+    # approximate risk of crossing below threshold using normal approx at horizon
+    last_mu = float(y_mean[-1])
+    last_sd = float(band[-1] / 1.96) if band[-1] > 0 else sigma
+    p_below = 0.5
+    if last_sd > 1e-9:
+        from math import erf, sqrt
+        zscore = (thr - last_mu) / (last_sd)
+        p_below = 0.5 * (1 + erf(zscore / sqrt(2)))
+
+    # callouts
+    delta = float(y_mean[-1] - y_hist[-1])
+    ci_w = float((y_hi[-1] - y_lo[-1]) / 2.0)
+
+    fig = plt.figure(figsize=(10.2, 5.6))
+    ax = fig.add_subplot(111)
+
+    # history
+    ax.plot(x_hist, y_hist, linewidth=2.0, alpha=0.55, label="History")
+
+    # now marker
+    ax.axvline(0, linewidth=1.2, alpha=0.25)
+
+    # forecast band + mean
+    ax.fill_between(x_f, y_lo, y_hi, alpha=0.18, label="95% interval")
+    ax.plot(x_f, y_mean, linewidth=2.6, marker="o", markersize=4.5, label="Forecast mean")
+
+    # threshold
+    ax.axhline(thr, linewidth=1.3, alpha=0.35)
+    ax.text(
+        0.01, 0.05,
+        f"Alert threshold (p10 hist): {thr:.2f}",
+        transform=ax.transAxes, fontsize=10, alpha=0.85
+    )
+
+    # labels
+    title = f"Forecast • {target_name} • horizon={horizon}"
+    _style_ax(ax, title)
+    ax.set_xlabel("Horizon step (0 = now)")
+    ax.set_ylabel(target_name)
+
+    # insight box
+    # also pull regimes + physics consistency if present
+    regimes = deep_math.get("regimes") or {}
+    regime_count = regimes.get("regime_count")
+    phys = deep_math.get("physics_consistency_score")
+    extra = []
+    if regime_count is not None:
+        extra.append(f"Regimes: {regime_count}")
+    if phys is not None:
+        extra.append(f"Physics consistency: {float(phys):.2f}")
+
+    ax.text(
+        0.01, 0.93,
+        f"Mean change to horizon: {delta:+.2f}\n"
+        f"95% band @ horizon: ±{ci_w:.2f}\n"
+        f"P(value < threshold) @ horizon: {p_below*100:.0f}%\n"
+        + (" • ".join(extra) if extra else ""),
+        transform=ax.transAxes,
+        fontsize=11,
+        va="top",
+        bbox=dict(boxstyle="round,pad=0.5", alpha=0.12)
+    )
+
+    ax.legend(loc="upper right", framealpha=0.15)
+    _save(fig, plots_dir / "forecast_insight.png")
+
+
+def build_anomalies_insight(run_dir: Path, math_results: dict):
+    plots_dir = run_dir / "plots"
+    plots_dir.mkdir(parents=True, exist_ok=True)
+
+    top = math_results.get("top_anomalies") or []
+    if not top:
+        return
+
+    # Expect: list of dicts with idx/score/col maybe
+    # Handle multiple shapes gracefully
+    labels = []
+    scores = []
+    for i, item in enumerate(top[:20]):
+        if isinstance(item, dict):
+            idx = item.get("idx") or item.get("row") or item.get("observation") or i
+            col = item.get("col") or item.get("feature") or ""
+            s = item.get("score") or item.get("z") or item.get("anomaly_score")
+            labels.append(f"{idx}" + (f" • {col}" if col else ""))
+            scores.append(_safe_float(s, default=np.nan))
+        else:
+            labels.append(str(i))
+            scores.append(_safe_float(item, default=np.nan))
+
+    scores = np.array(scores, dtype=float)
+    # Sort descending
+    order = np.argsort(-scores)
+    labels = [labels[i] for i in order]
+    scores = scores[order]
+
+    fig = plt.figure(figsize=(10.2, 5.6))
+    ax = fig.add_subplot(111)
+    ax.bar(range(len(scores)), scores, alpha=0.85)
+
+    _style_ax(ax, "Top anomalies • highest severity observations")
+    ax.set_xlabel("Ranked anomaly")
+    ax.set_ylabel("Score")
+    ax.set_xticks(range(len(scores)))
+    ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=9)
+
+    # insight callouts
+    med = float(np.nanmedian(scores))
+    p90 = float(np.nanpercentile(scores, 90))
+    ax.text(
+        0.01, 0.93,
+        f"Median top-20 score: {med:.2f}\n"
+        f"90th percentile: {p90:.2f}\n"
+        f"Tail severity elevated: {'YES' if scores[0] > p90 else 'NO'}",
+        transform=ax.transAxes,
+        fontsize=11,
+        va="top",
+        bbox=dict(boxstyle="round,pad=0.5", alpha=0.12)
+    )
+
+    _save(fig, plots_dir / "anomalies_insight.png")
+
+
+def build_correlations_insight(run_dir: Path, math_results: dict):
+    plots_dir = run_dir / "plots"
+    plots_dir.mkdir(parents=True, exist_ok=True)
+
+    top = math_results.get("top_correlations") or []
+    if not top:
+        return
+
+    labels = []
+    vals = []
+    for item in top[:12]:
+        if isinstance(item, dict):
+            a = item.get("a") or item.get("x") or item.get("col_a") or ""
+            b = item.get("b") or item.get("y") or item.get("col_b") or ""
+            v = item.get("corr") or item.get("value") or item.get("r")
+            labels.append(f"{a} ↔ {b}".strip(" ↔"))
+            vals.append(_safe_float(v, default=np.nan))
+        else:
+            labels.append(str(item))
+            vals.append(np.nan)
+
+    vals = np.array(vals, dtype=float)
+    order = np.argsort(np.abs(vals))[::-1]
+    labels = [labels[i] for i in order]
+    vals = vals[order]
+
+    fig = plt.figure(figsize=(10.2, 5.6))
+    ax = fig.add_subplot(111)
+
+    y = np.arange(len(vals))
+    ax.barh(y, vals, alpha=0.85)
+    ax.set_yticks(y)
+    ax.set_yticklabels(labels, fontsize=10)
+    ax.invert_yaxis()
+
+    _style_ax(ax, "Top correlations • strongest relationships")
+    ax.set_xlabel("Correlation (r)")
+    ax.set_ylabel("Pair")
+
+    # insight callout
+    best = float(vals[0]) if len(vals) else np.nan
+    ax.text(
+        0.01, 0.93,
+        f"Strongest pair r: {best:.2f}\n"
+        f"Note: correlations indicate coupling, not causality",
+        transform=ax.transAxes,
+        fontsize=11,
+        va="top",
+        bbox=dict(boxstyle="round,pad=0.5", alpha=0.12)
+    )
+
+    _save(fig, plots_dir / "correlations_insight.png")
+
+
+def build_missingness_insight(run_dir: Path, math_results: dict):
+    plots_dir = run_dir / "plots"
+    plots_dir.mkdir(parents=True, exist_ok=True)
+
+    top = math_results.get("missing_top") or []
+    if not top:
+        return
+
+    cols = []
+    pct = []
+    for item in top[:12]:
+        if isinstance(item, dict):
+            c = item.get("col") or item.get("name") or ""
+            v = item.get("pct") or item.get("percent") or item.get("missing_pct")
+            cols.append(c)
+            pct.append(_safe_float(v, default=np.nan))
+        else:
+            cols.append(str(item))
+            pct.append(np.nan)
+
+    pct = np.array(pct, dtype=float)
+    order = np.argsort(-pct)
+    cols = [cols[i] for i in order]
+    pct = pct[order]
+
+    fig = plt.figure(figsize=(10.2, 5.6))
+    ax = fig.add_subplot(111)
+    ax.barh(np.arange(len(pct)), pct, alpha=0.85)
+    ax.set_yticks(np.arange(len(pct)))
+    ax.set_yticklabels(cols, fontsize=10)
+    ax.invert_yaxis()
+
+    _style_ax(ax, "Top missingness • data quality risk")
+    ax.set_xlabel("% missing")
+    ax.set_ylabel("Column")
+
+    # callout
+    worst = float(pct[0]) if len(pct) else np.nan
+    ax.text(
+        0.01, 0.93,
+        f"Worst column missing: {worst:.1f}%\n"
+        f"Recommendation: impute or drop high-missing fields",
+        transform=ax.transAxes,
+        fontsize=11,
+        va="top",
+        bbox=dict(boxstyle="round,pad=0.5", alpha=0.12)
+    )
+
+    _save(fig, plots_dir / "missingness_insight.png")
+
+
+# -----------------------------
+# Main entry
+# -----------------------------
+def main(run_dir: str):
+    run_dir = _resolve_run_dir(run_dir)
+
+    run_meta_path = run_dir / "_RUN_META.json"
+    deep_math_path = run_dir / "deep_math.json"
+    math_results_path = run_dir / "math_results.json"
+
+    if not run_meta_path.exists():
+        raise FileNotFoundError(f"Missing: {run_meta_path}")
+    if not deep_math_path.exists():
+        raise FileNotFoundError(f"Missing: {deep_math_path}")
+    if not math_results_path.exists():
+        raise FileNotFoundError(f"Missing: {math_results_path}")
+
+    run_meta = _read_json(run_meta_path)
+    deep_math = _read_json(deep_math_path)
+    math_results = _read_json(math_results_path)
+
+    csv_path = _get_dataset_path(run_meta)
+    if not csv_path or not Path(csv_path).exists():
+        raise FileNotFoundError(f"Dataset CSV not found from _RUN_META.json: {csv_path}")
+
+    time_col = deep_math.get("time_col")
+    df = _load_dataset(csv_path, time_col=time_col)
+
+    build_forecast_insight(run_dir, df, deep_math)
+    build_anomalies_insight(run_dir, math_results)
+    build_correlations_insight(run_dir, math_results)
+    build_missingness_insight(run_dir, math_results)
+
+    print(f"✅ Insight plots written to: {run_dir / 'plots'}")
+
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) < 2:
+        print("Usage: python scripts/make_insight_plots.py <RUN_DIR>")
+        sys.exit(2)
+    main(sys.argv[1])

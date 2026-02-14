@@ -1,0 +1,419 @@
+﻿import os
+import argparse
+from pprint import pprint
+
+import numpy as np
+import pandas as pd
+from scipy.optimize import curve_fit
+
+from fantasyai.config import DATA_DIR
+
+DATA_ROOT = DATA_DIR  # typically fantasyai/data
+
+
+# ---------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------
+def _safe_head(df: pd.DataFrame, n: int = 5):
+    return df.head(n).to_dict(orient="list")
+
+
+def _print_section(title: str):
+    print("=" * 80)
+    print(title)
+    print("=" * 80)
+
+
+# ---------------------------------------------------------------------
+# 1) TCGA-like expression (demo only)
+# ---------------------------------------------------------------------
+def run_tcga_expression_demo():
+    path = os.path.join(DATA_ROOT, "tcga_expression.csv")
+    _print_section("[AURORA x TCGA] Expression demo")
+
+    if not os.path.exists(path):
+        print(f"[TCGA] Skipping: {path} not found.")
+        print("  -> To enable, drop a TCGA-like expression CSV at that path.")
+        print()
+        return
+
+    df = pd.read_csv(path)
+    info = {
+        "meta": {
+            "expression_path": path,
+            "num_samples": len(df),
+            "columns": df.columns.tolist(),
+        },
+        "note": "Expression table loaded; basic stats computed.",
+        "summary": {
+            "shape": df.shape,
+            "head": _safe_head(df),
+        },
+    }
+    pprint(info)
+    print()
+
+
+# ---------------------------------------------------------------------
+# 2) Toy dose optimization (keep simple / unchanged)
+# ---------------------------------------------------------------------
+def run_tcga_toy_dose_demo():
+    _print_section("[AURORA x TCGA] Toy dose optimization")
+
+    # Toy objective: f(d) = (d-3)^2 + 0.5 * d^2
+    # This has minimum near d = 2.0
+    def obj(d):
+        return (d - 3.0) ** 2 + 0.5 * (d ** 2)
+
+    from scipy.optimize import minimize
+
+    res = minimize(obj, x0=[0.0], bounds=[(0.0, 10.0)])
+    sol = {
+        "success": bool(res.success),
+        "numeric": {"d": float(res.x[0])},
+        "diagnostics": {
+            "fun": float(res.fun),
+            "status": int(res.status),
+            "message": str(res.message),
+            "nfev": int(res.nfev),
+            "nit": int(res.nit),
+        },
+        "explanation": (
+            "Aurora solved a toy dose optimization problem: minimize "
+            "(d-3)^2 + 0.5*d^2 over d in [0,10]. The optimum represents a "
+            "tradeoff between tumor control and toxicity."
+        ),
+    }
+    pprint({"solution": sol})
+    print()
+
+
+# ---------------------------------------------------------------------
+# 3) CPTAC-like proteomics
+# ---------------------------------------------------------------------
+def run_cptac_demo():
+    _print_section("[AURORA x CPTAC] Proteomics summary")
+    path = os.path.join(DATA_ROOT, "cptac_proteomics.csv")
+
+    if not os.path.exists(path):
+        print(f"[CPTAC] Skipping: {path} not found.")
+        print("  -> To enable, drop a CPTAC-like proteomics CSV at that path.")
+        print()
+        return
+
+    df = pd.read_csv(path)
+    print("Columns:", df.columns.tolist())
+    print("Num samples:", len(df))
+    print()
+
+
+# ---------------------------------------------------------------------
+# 4) ERA5 climate presence notice (no heavy logic here yet)
+# ---------------------------------------------------------------------
+def run_era5_notice():
+    path = os.path.join(DATA_ROOT, "era5_sample.nc")
+    if os.path.exists(path):
+        _print_section("[AURORA x ERA5] Climate sample demo")
+        print(f"[ERA5] Found sample NetCDF file at: {path}")
+        print("  -> Hook this into Aurora's climate pipeline when ready.")
+        print()
+    else:
+        print(f"[ERA5] Skipping: {path} not found.")
+        print("  -> To enable, drop an ERA5 NetCDF file at that path (e.g. 2m temperature).")
+        print()
+
+
+# ---------------------------------------------------------------------
+# 5) NOAA-style timeseries with simple logistic fit
+# ---------------------------------------------------------------------
+def _logistic_model(x, L, k, x0):
+    return L / (1.0 + np.exp(-k * (x - x0)))
+
+
+def run_noaa_demo():
+    _print_section("[AURORA x NOAA] Timeseries demo")
+    path = os.path.join(DATA_ROOT, "noaa_timeseries.csv")
+
+    if not os.path.exists(path):
+        print(f"[NOAA] Skipping: {path} not found.")
+        print("  -> To enable, drop a NOAA-style CSV (date + value columns) at that path.")
+        print()
+        return
+
+    df = pd.read_csv(path)
+    # Try to infer a date column and first numeric column
+    date_col = None
+    for c in df.columns:
+        if "date" in c.lower():
+            date_col = c
+            break
+
+    if date_col is not None:
+        df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+
+    num_df = df.select_dtypes(include=["number"])
+    if num_df.empty:
+        pprint(
+            {
+                "dataset_meta": {
+                    "path": path,
+                    "columns": df.columns.tolist(),
+                },
+                "note": "No numeric columns found for NOAA demo.",
+            }
+        )
+        print()
+        return
+
+    # Use first numeric column for demo
+    value_col = num_df.columns[0]
+    y = num_df[value_col].to_numpy(dtype=float)
+    x = np.arange(len(y), dtype=float)
+
+    # Simple logistic fit
+    p0 = [float(np.nanmax(y)), 1.0, float(len(y) / 2.0)]
+    try:
+        params, _ = curve_fit(
+            _logistic_model,
+            x,
+            y,
+            p0=p0,
+            maxfev=20000,
+        )
+        L, k, x0 = params
+        result = {
+            "dataset_meta": {
+                "path": path,
+                "date_col": date_col,
+                "value_col": value_col,
+                "length": int(len(y)),
+            },
+            "logistic_fit": {
+                "success": True,
+                "params": {"L": float(L), "k": float(k), "x0": float(x0)},
+                "diagnostics": {"error": None, "initial_guess": p0},
+            },
+        }
+    except Exception as e:
+        result = {
+            "dataset_meta": {
+                "path": path,
+                "date_col": date_col,
+                "value_col": value_col,
+                "length": int(len(y)),
+            },
+            "logistic_fit": {
+                "success": False,
+                "params": None,
+                "diagnostics": {"error": str(e), "initial_guess": p0},
+            },
+        }
+
+    pprint(result)
+    print()
+
+
+# ---------------------------------------------------------------------
+# 6) NYC taxi-style logistics demo (poly cost fit + toy speed)
+# ---------------------------------------------------------------------
+def run_taxi_demo():
+    _print_section("[AURORA x Logistics] Route cost modeling demo")
+    path = os.path.join(DATA_ROOT, "nyc_taxi_sample.csv")
+
+    if not os.path.exists(path):
+        print(f"[NYC Taxi] Skipping: {path} not found.")
+        print("  -> To enable, drop a NYC taxi CSV at that path (with distance & fare columns).")
+        print()
+        return
+
+    df = pd.read_csv(path)
+    cols = df.columns.tolist()
+
+    # Try to find distance & cost columns
+    distance_col = None
+    cost_col = None
+    for c in cols:
+        cl = c.lower()
+        if distance_col is None and "distance" in cl:
+            distance_col = c
+        if cost_col is None and any(k in cl for k in ["total_amount", "fare", "amount"]):
+            cost_col = c
+
+    if distance_col is None or cost_col is None:
+        pprint(
+            {
+                "dataset_meta": {"path": path, "columns": cols},
+                "error": "Could not infer distance or cost column.",
+            }
+        )
+        print()
+        return
+
+    sub = df[[distance_col, cost_col]].dropna()
+    x = sub[distance_col].to_numpy(dtype=float)
+    y = sub[cost_col].to_numpy(dtype=float)
+
+    # Fit quadratic: cost ~ a0 + a1*x + a2*x^2
+    coeffs = np.polyfit(x, y, deg=2)
+    a2, a1, a0 = coeffs  # np.polyfit returns highest degree first
+
+    result = {
+        "dataset_meta": {
+            "path": path,
+            "columns": cols,
+            "num_rows": int(len(df)),
+        },
+        "poly_fit": {
+            "success": True,
+            "params": {"a0": float(a0), "a1": float(a1), "a2": float(a2)},
+            "diagnostics": {"degree": 2, "error": None},
+        },
+    }
+
+    pprint(result)
+    print()
+
+    # Also do toy speed optimization
+    _print_section("[AURORA x Logistics] Toy speed optimization")
+    from scipy.optimize import minimize
+
+    def cost_fn(v_array):
+        v = v_array[0]
+        # fuel grows with v^2, time penalty grows with 1/v
+        return 0.01 * (v ** 2) + 50.0 / v
+
+    res = minimize(cost_fn, x0=[50.0], bounds=[(40.0, 80.0)])
+    sol = {
+        "success": bool(res.success),
+        "numeric": {"v": float(res.x[0])},
+        "diagnostics": {
+            "fun": float(res.fun),
+            "status": int(res.status),
+            "message": str(res.message),
+            "nfev": int(res.nfev),
+            "nit": int(res.nit),
+        },
+        "explanation": (
+            "Aurora optimized a toy route speed tradeoff "
+            "between fuel cost and time penalty. The optimum "
+            "speed balances energy usage and delay."
+        ),
+    }
+    pprint({"solution": sol})
+    print()
+
+
+# ---------------------------------------------------------------------
+# 7) AML clinical demo (using aml_clinical_clean.csv) – with NaN handling
+# ---------------------------------------------------------------------
+def run_aml_clinical_demo():
+    _print_section("[AURORA x AML Clinical] Patient pattern demo")
+    path = os.path.join(DATA_ROOT, "aml_clinical_clean.csv")
+
+    if not os.path.exists(path):
+        print(f"[AML] Skipping: {path} not found.")
+        print("  -> Ensure aml_clinical_clean.csv exists in fantasyai/data.")
+        print()
+        return
+
+    df = pd.read_csv(path)
+
+    num_df = df.select_dtypes(include=["number"]).copy()
+    if num_df.empty:
+        pprint(
+            {
+                "meta": {
+                    "path": path,
+                    "shape": df.shape,
+                    "columns": df.columns.tolist(),
+                },
+                "note": "No numeric columns found in AML clinical table.",
+            }
+        )
+        print()
+        return
+
+    # Drop near-constant numeric columns
+    nunique = num_df.nunique()
+    keep_cols = nunique[nunique > 1].index.tolist()
+    num_df = num_df[keep_cols]
+
+    # === NEW: Impute NaNs with column means so PCA/StandardScaler can run ===
+    num_df = num_df.fillna(num_df.mean(numeric_only=True))
+
+    # Basic stats
+    stats = num_df.describe().to_dict()
+
+    # Correlation matrix
+    corr = num_df.corr().round(3).to_dict()
+
+    # PCA (2 components)
+    from sklearn.preprocessing import StandardScaler
+    from sklearn.decomposition import PCA
+
+    scaler = StandardScaler()
+    X = scaler.fit_transform(num_df.values)
+
+    n_components = min(2, X.shape[1])
+    pca = PCA(n_components=n_components)
+    X_pca = pca.fit_transform(X)
+
+    explained_var = pca.explained_variance_ratio_.tolist()
+
+    # Simple anomaly score: mean absolute z-score across features
+    z = np.abs((X - X.mean(axis=0)) / (X.std(axis=0) + 1e-8))
+    anomaly_score = z.mean(axis=1)
+    threshold = float(np.percentile(anomaly_score, 95))
+    anomaly_flags = anomaly_score > threshold
+
+    summary = {
+        "meta": {
+            "path": path,
+            "shape": df.shape,
+            "num_numeric_features": int(num_df.shape[1]),
+            "numeric_features": num_df.columns.tolist(),
+        },
+        "stats": stats,
+        "correlation": corr,
+        "pca": {
+            "explained_variance_ratio": explained_var,
+        },
+        "anomalies": {
+            "threshold_95pct": threshold,
+            "num_flagged": int(anomaly_flags.sum()),
+            "fraction_flagged": float(anomaly_flags.mean()),
+        },
+    }
+
+    pprint(summary)
+    print()
+
+
+# ---------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--dataset",
+        default="all",
+        help="Reserved for future use; currently all demos run regardless.",
+    )
+    _ = parser.parse_args()
+
+    print(f"[AURORA PUBLIC DATA DEMO] Using DATA_ROOT = {DATA_ROOT}")
+    print()
+
+    run_tcga_expression_demo()
+    run_tcga_toy_dose_demo()
+    run_cptac_demo()
+    run_era5_notice()
+    run_noaa_demo()
+    run_taxi_demo()
+    run_aml_clinical_demo()
+
+    print("[AURORA PUBLIC DATA DEMO] Done.")
+
+
+if __name__ == "__main__":
+    main()

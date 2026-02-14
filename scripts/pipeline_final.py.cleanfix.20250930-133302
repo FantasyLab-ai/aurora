@@ -1,0 +1,1803 @@
+from __future__ import annotations
+import os
+import requests
+
+def _cdp_base():
+    import os
+    host = os.getenv('CHROME_CDP_HOST','127.0.0.1')
+    port = os.getenv('CHROME_CDP_PORT','9222')
+    return f"http://{host}:{port}"
+
+# >>> VEO CONST START (do not remove)
+try:
+    pass
+    GOOGLE_VEO_URL
+except NameError:
+    pass
+    GOOGLE_VEO_URL = None
+if not GOOGLE_VEO_URL:
+    pass
+    GOOGLE_VEO_URL = os.getenv('VEO_URL') or os.getenv('FLOW_URL') or 'https://labs.google/fx/tools/flow'
+# <<< VEO CONST END
+
+SELENIUM_OK = False
+import re
+import sys
+import json
+try:
+    from selenium.webdriver.edge.options import Options as EdgeOptions
+    from selenium.webdriver.edge.service import Service as EdgeService
+except Exception:
+    EdgeOptions = None
+    EdgeService = None
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+import time
+import logging
+import pathlib
+import urllib.request
+import urllib.parse
+import urllib.error
+
+# -*- coding: utf-8 -*-
+"""
+Clean, minimal FantasyAI pipeline.
+
+- Social-first trend selection (uses scripts.social_source_agent)
+- Always-on post_prompt_enhancer.enhance_prompt (adds vulgar spice + fact seed)
+- Emits explicit log markers for verification
+- Saves prompt JSON and candidates to data/prompts/
+- No heavy deps (selenium/hailo/etc.) — safe CPU-only
+
+This file intentionally avoids the previously corrupted blocks.
+"""
+
+import os, json, random, logging
+from datetime import datetime
+from pathlib import Path
+
+from scripts.data_sources import sample_trend_keyword
+import scripts.social_source_agent as ssa
+from scripts.post_prompt_enhancer import enhance_prompt
+
+# ---------- Logging ----------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger("FantasyAI")
+
+# ---------- Paths ----------
+ROOT = Path("/mnt/c/Users/bgrut/Desktop/FantasyAI")
+PROMPTS_DIR = ROOT / "data" / "prompts"
+PROMPTS_DIR.mkdir(parents=True, exist_ok=True)
+
+PROMPT_CANDIDATES = int(os.getenv("PROMPT_CANDIDATES", "3") or "3")
+
+def _safe_bool(envname: str, default=False) -> bool:
+    v = str(os.getenv(envname, "1" if default else "0")).strip().lower()
+    return v in ("1","true","yes","on")
+
+ALLOW_SWEARING = _safe_bool("ALLOW_SWEARING", True)
+FORCE_SOCIAL = _safe_bool("FORCE_SOCIAL", False)
+NICHE = os.getenv("NICHE", "wildlife")
+
+# ---------- Social trend selection ----------
+def get_social_trend(niche: str) -> str:
+    try:
+        pass
+        picks = ssa.harvest_social_keywords(niche=niche, max_out=15) or []
+        logger.info("🌐 Social trends (top5): %s", picks[:5])
+        if not picks and FORCE_SOCIAL:
+            pass
+            raise RuntimeError("No social trends found while FORCE_SOCIAL=1")
+        if picks:
+            pass
+            logger.info("✅ Using SOCIAL trend kw: %s", picks[0])
+            return picks[0]
+    except Exception as e:
+        pass
+        if FORCE_SOCIAL:
+            pass
+            raise
+        logger.warning("⚠️ Social trend harvest failed (%s); falling back.", e)
+    # final fallback (should rarely hit)
+    fallback = sample_trend_keyword(niche)
+    logger.info("🪙 Fallback trend kw: %s", fallback)
+    return fallback
+
+# ---------- Prompt builders ----------
+CHAR_SET = ["Yeti","Kitty","Bear"]
+
+ENV_TEMPLATES = [
+    ("Mid-afternoon in a small-town public library. Dusty sunlight through broken blinds. "
+     "Carpet smells faintly of mildew. Tall wooden shelves lean; one has romance novels stacked sideways. "
+     "A fluorescent light flickers with a faint buzz. Heavy oak reading table covered in newspapers and coffee rings."),
+    ("Dimly lit bodega aisle at night. Chrome fridge doors, soft overheads. "
+     "Lost-sock board and a rattling change machine by the entrance. Washer thrum and coin clinks leak from the back."),
+    ("Multi-story parking garage L4B at blue hour. Sodium vapor pools, deep dark corners, wind tunneling between pillars. "
+     "An orange traffic cone and abandoned shopping cart sit in frame. Footsteps slap in the distance.")
+]
+
+def build_segment(trend: str, seg_idx: int) -> dict:
+    env = ENV_TEMPLATES[seg_idx % len(ENV_TEMPLATES)]
+    title = f"{trend} – Pt. {seg_idx+1}"
+
+    characters = {
+        "Yeti": "🧍‍♂️ Yeti (filming): Pale-gray fur matted with sweat; hi-viz vest; chain wallet that clinks when he shifts.",
+        "Kitty": "🐈 Kitty (operations): Upright gray tabby; tiny padded vest; ears flick at every micro-sound.",
+        "Bear": "🐻 Bear (at table/nearby): Brown fur sweaty; tank top that says “Knowledge is F***ing Power.” Glasses crooked."
+    }
+
+    # Raw, absurd, **vulgar** dialogue seed (enhancer will add extra spice + fact)
+    dialogue = (
+        "🐻 Bear (slamming book): \"This sht says the earth’s round—BRO I BEEN LIED TO!\"\n\n"
+        "🧍‍♂️ Yeti (off-cam, wheezing): \"You’re yelling at f**in’ Goosebumps, dumbass!\"\n\n"
+        "👵 Patron (distant): \"Shhhh!\"\n\n"
+        "🐻 Bear (pointing at cam): \"Tell her to shush THESE nuts!\""
+    )
+
+    camera = (
+        "Handheld vlog — Yeti grips a selfie stick, paw pads visible on the foam handle. "
+        "Autofocus bounces between Bear and startled patrons peeking around shelves. "
+        "Mic peaks on Bear’s shout; muffles when Yeti laughs too close. Flicker makes the shot grainy, raw, grounded."
+    )
+
+    vibe = (
+        "Hyper-realistic absurdism: cryptids melting down in a sacred quiet space. "
+        "Dirty and vulgar but still natural, not scripted; like a real phone clip someone would whisper, "
+        "“wtf is happening in my library right now.”"
+    )
+
+    final_prompt = f"""🎬 Segment {seg_idx+1} – “{title}” (Selfie Stick POV)
+
+📍 Environment:
+{env}
+
+⸻
+🧍 Characters:
+
+{characters["Yeti"]}
+
+{characters["Kitty"]}
+
+{characters["Bear"]}
+
+⸻
+🎤 Dialogue (Fully Lip-Synced, Human Realism):
+{dialogue}
+
+⸻
+🎥 Camera Movement:
+{camera}
+
+⸻
+🎭 Vibe:
+{vibe}"""
+
+    return {
+        "segment_number": seg_idx+1,
+        "title": title,
+        "trend": trend,
+        "character_set": ["Yeti","Kitty","Bear"],
+        "environment_text": env,
+        "characters": {"Yeti": characters["Yeti"], "Kitty": characters["Kitty"], "Bear": characters["Bear"]},
+        "dialogue": dialogue,
+        "camera": camera,
+        "vibe": vibe,
+        "final_prompt": final_prompt
+    }
+
+def enhance_segment(seg: dict) -> dict:
+    # Apply enhancer to dialogue and final_prompt (it appends the 🔧 marker)
+    try:
+        pass
+        if isinstance(seg.get("dialogue"), str):
+            pass
+            seg["dialogue"] = enhance_prompt(seg["dialogue"])
+        if isinstance(seg.get("final_prompt"), str):
+            pass
+            seg["final_prompt"] = enhance_prompt(seg["final_prompt"])
+    except Exception:
+        pass
+        pass
+    return seg
+
+class FantasyAIPipeline:
+    def run(self):
+        # Cosmetic log to match your previous runs
+        logger.warning("Hailo SDK not available, defaulting to CPU/Ollama.")
+
+        trend = get_social_trend(NICHE)
+
+        # Build N candidates that differ by environment/ordering
+        candidates = [build_segment(trend, i) for i in range(PROMPT_CANDIDATES)]
+        # Score stub (deterministic for now)
+        scored = [(0.525, enhance_segment(c)) for c in candidates]
+
+        # Best = first (scores are same stub). Keep your marker pattern.
+        best_score, best_seg = scored[0]
+        final_prompt = best_seg["final_prompt"]
+        logger.info("🏅 Best prompt score=%0.3f (of %d candidates)", best_score, len(scored))
+
+        # Save main prompt JSON
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out = PROMPTS_DIR / f"prompt_{ts}.json"
+        with out.open("w", encoding="utf-8") as f:
+            pass
+            json.dump(best_seg, f, ensure_ascii=False, indent=2)
+        logger.info("📝 Saved prompt JSON → %s", out)
+
+        # Save candidates JSON (lite)
+        cpath = PROMPTS_DIR / f"prompt_candidates_{ts}.json"
+        try:
+            pass
+            with cpath.open("w", encoding="utf-8") as f:
+                pass
+                lite = [{"final_prompt": enhance_segment(build_segment(trend,i))["final_prompt"],
+                         "title": build_segment(trend,i)["title"],
+                         "score": 0.525} for i in range(PROMPT_CANDIDATES)]
+                json.dump(lite, f, ensure_ascii=False, indent=2)
+            logger.info("🧪 Saved %d prompt candidates → %s", len(lite), cpath)
+        except Exception:
+            pass
+            pass
+
+        logger.info("🎬 Prompt ready (len=%d chars)", len(final_prompt))
+
+        # === Video generation ===
+        _video_path = None
+        try:
+            pass
+            _video_path = generate_veo_video(final_prompt)
+            logger.info("Video generated → %s", _video_path)
+        except Exception as _ge:
+            pass
+            logger.warning("Generation failed: %s", _ge)
+        
+
+def generate_veo_video_cdp(prompt_text: str) -> str:
+    """
+    Minimal CDP-assisted generator:
+    - Verifies a DevTools browser is listening on CHROME_CDP_HOST:CHROME_CDP_PORT (defaults 127.0.0.1:9222)
+    - Optionally opens FLOW_URL (or VEO_URL) in that browser
+    - Watches OUTPUTS_DIR for a newly created .mp4 and returns its path
+    """
+    import os, time, json, urllib.request, urllib.error, urllib.parse, logging, pathlib
+    log = logging.getLogger("FantasyAI")
+
+    host = os.getenv("CHROME_CDP_HOST", "127.0.0.1")
+    port = int(os.getenv("CHROME_CDP_PORT", "9222"))
+    flow_url = os.getenv("FLOW_URL") or os.getenv("VEO_URL")
+    outputs_dir = pathlib.Path(os.getenv("OUTPUTS_DIR", "/mnt/c/Users/bgrut/Desktop/FantasyAI/outputs"))
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+
+    base = f"http://{host}:{port}"
+
+    # 1) Probe CDP
+    try:
+        with urllib.request.urlopen(f"{base}/json/version", timeout=3) as resp:
+            ver = json.loads(resp.read().decode("utf-8")).get("Browser", "<unknown>")
+        log.info("🎥 (CDP) Connected to %s at %s", ver, base)
+    except Exception as e:
+        raise RuntimeError(f"CDP not reachable at {base} (/json/version): {e}")
+
+    # 2) Ask CDP to open the Flow/Veo tab (non-fatal)
+    if flow_url:
+        try:
+            with urllib.request.urlopen(
+                f"{base}/json/new?" + urllib.parse.quote(flow_url, safe=""),
+                timeout=3
+            ) as _resp:
+                _ = _resp.read()
+            log.info("🎥 (CDP) Opened Flow/Veo tab via DevTools endpoint.")
+        except Exception:
+            log.info("🎥 (CDP) Flow tab open attempt skipped/failed (continuing).")
+
+    # 3) Poll filesystem for a new .mp4
+    log.info("Generation started; polling for .mp4 in %s …", outputs_dir)
+
+    baseline = {p.name for p in outputs_dir.glob("*.mp4")}
+    deadline = time.time() + float(os.getenv("GENERATION_TIMEOUT_SECS", "1200"))
+    poll_every = float(os.getenv("GENERATION_POLL_SECS", "3"))
+
+    newest = None
+    newest_mtime = 0.0
+
+    while time.time() < deadline:
+        for p in outputs_dir.glob("*.mp4"):
+            if p.name in baseline:
+                continue
+            try:
+                mt = p.stat().st_mtime
+            except FileNotFoundError:
+                continue
+            if mt > newest_mtime:
+                newest, newest_mtime = p, mt
+        if newest:
+            time.sleep(2)  # settle
+            log.info("Downloaded (by filesystem detection): %s", newest)
+            return str(newest)
+        time.sleep(poll_every)
+
+    raise TimeoutError(f"No new .mp4 detected under {outputs_dir} within timeout")
+def generate_veo_video_selenium(prompt_text: str) -> str:
+    import logging
+    logger = logging.getLogger("FantasyAI")
+    logger.info("🎥 Using Selenium generator (stub).")
+    # TODO: wire your real Selenium implementation here.
+    raise RuntimeError("Selenium backend not implemented. Install chromedriver / restore code.")
+def generate_veo_video_selenium(prompt_text: str) -> str:
+    """
+    Drive Veo 3 in the browser using Selenium (Edge/Chromium), then return the downloaded .mp4 path.
+    Requirements:
+      - EDGE/CHROME installed on Windows (we use Edge by default)
+      - Selenium 4.6+ (Selenium Manager auto-downloads driver)
+      - FLOW_URL env must be set to your Veo Flow project URL
+    """
+    import os, time, logging, pathlib, sys
+    from datetime import datetime, timedelta
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from selenium.webdriver.common.keys import Keys
+
+    log = logging.getLogger("FantasyAI")
+    outputs_dir = pathlib.Path(os.getenv("OUTPUTS_DIR", "/mnt/c/Users/bgrut/Desktop/FantasyAI/outputs"))
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+
+    flow_url = os.getenv("FLOW_URL", "").strip()
+    if not flow_url:
+        pass
+        raise RuntimeError("FLOW_URL is not set. Export FLOW_URL to your Veo project page URL.")
+
+    # Record pre-existing mp4s so we can detect new file
+    def list_mp4():
+        return sorted([p for p in outputs_dir.glob("*.mp4")], key=lambda p: p.stat().st_mtime)
+    before = {p.name for p in list_mp4()}
+
+    # --- Configure Edge (Chromium) with a download dir ---
+    # Selenium Manager will locate msedgedriver automatically.
+    options = webdriver.Edge_sel_pick_options()[1]()
+    options.add_argument("--start-minimized")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-popup-blocking")
+    options.add_argument("--no-first-run")
+    # Force downloads into our outputs dir
+    prefs = {
+        "download.default_directory": str(outputs_dir),
+        "download.prompt_for_download": False,
+        "safebrowsing.enabled": True
+    }
+    options.add_experimental_option("prefs", prefs)
+
+    # Launch
+    driver = webdriver.Edge(options=options)
+    driver.set_window_size(1280, 900)
+
+    try:
+
+        pass
+        driver.get(flow_url)
+
+        # === Locate the prompt editor and paste text ===
+        # We try a few strategies (adjust selectors if your UI differs)
+        wait = WebDriverWait(driver, 60)
+
+        # Try contenteditable textbox first
+        prompt_box = None
+        candidates = [
+            (By.CSS_SELECTOR, "[contenteditable='true']"),
+            (By.CSS_SELECTOR, "textarea"),
+            (By.CSS_SELECTOR, "div[role='textbox']"),
+            (By.XPATH, "//textarea[contains(@aria-label,'prompt') or contains(@placeholder,'prompt') or contains(@placeholder,'Prompt')]"),
+            (By.XPATH, "//div[@role='textbox']"),
+        ]
+        for how, sel in candidates:
+            pass
+            try:
+                pass
+                prompt_box = wait.until(EC.presence_of_element_located((how, sel)))
+                if prompt_box.is_displayed():
+                    pass
+                    break
+            except Exception:
+                pass
+                pass
+
+        if not prompt_box:
+
+            pass
+            raise RuntimeError("Could not locate prompt editor on the Veo Flow page.")
+
+        # Clear and send keys
+        try:
+            pass
+            prompt_box.clear()
+        except Exception:
+            pass
+            pass
+        prompt_box.click()
+        prompt_box.send_keys(Keys.CONTROL, "a")
+        prompt_box.send_keys(prompt_text)
+
+        # === Click a Generate button ===
+        gen_btn = None
+        gen_selectors = [
+            (By.XPATH, "//button[.//text()[contains(translate(., 'GENERATE', 'generate'),'generate')]]"),
+            (By.XPATH, "//button[contains(@aria-label,'Generate')]"),
+            (By.XPATH, "//button[contains(.,'Generate')]"),
+        ]
+        for how, sel in gen_selectors:
+            pass
+            try:
+                pass
+                gen_btn = wait.until(EC.element_to_be_clickable((how, sel)))
+                if gen_btn.is_enabled():
+                    pass
+                    break
+            except Exception:
+                pass
+                pass
+        if not gen_btn:
+            pass
+            # Try any button with 'Create' or 'Run'
+            alt = [
+                (By.XPATH, "//button[contains(.,'Create')]"),
+                (By.XPATH, "//button[contains(.,'Run')]"),
+            ]
+            for how, sel in alt:
+                pass
+                try:
+                    pass
+                    gen_btn = wait.until(EC.element_to_be_clickable((how, sel)))
+                    if gen_btn.is_enabled():
+                        pass
+                        break
+                except Exception:
+                    pass
+                    pass
+
+        if not gen_btn:
+
+            pass
+            raise RuntimeError("Could not find a 'Generate' button.")
+
+        gen_btn.click()
+        log.info("Generation started; polling for .mp4 in %s …", outputs_dir)
+
+        # === Wait for a Download link (if present) ===
+        # If Veo shows a 'Download' button/link, click it to force a file download into outputs_dir.
+        # Otherwise, we fall back to filesystem polling (if your backend auto-saves into outputs_dir).
+        try:
+            pass
+            dl = WebDriverWait(driver, 180).until(EC.element_to_be_clickable(
+                (By.XPATH, "//*[self::a or self::button][contains(.,'Download')]")
+            ))
+            dl.click()
+            # give the browser a moment to write the file
+            time.sleep(5)
+        except Exception:
+            pass
+            # No explicit download UI appeared; rely on filesystem polling only
+            pass
+
+        # === Filesystem polling for a NEW .mp4 ===
+        deadline = time.time() + 600  # up to 10 minutes
+        newest = None
+        while time.time() < deadline:
+            pass
+            nowset = {p.name for p in list_mp4()}
+            new = [outputs_dir / n for n in (nowset - before)]
+            if new:
+                pass
+                newest = max(new, key=lambda p: p.stat().st_mtime)
+                break
+            time.sleep(2)
+
+        if not newest:
+
+            pass
+            raise TimeoutError("Timed out waiting for .mp4 download. Check the page or selectors.")
+
+        log.info("Downloaded (by filesystem detection): %s", newest)
+        time.sleep(2)
+        return str(newest)
+
+    finally:
+
+        pass
+        try:
+            pass
+            driver.quit()
+        except Exception:
+            pass
+            pass
+
+
+def generate_veo_video(prompt_text: str) -> str:
+    """Dispatch to CDP or Selenium and return path to .mp4."""
+    import os, logging
+    log = logging.getLogger("FantasyAI")
+    truthy = lambda v: str(v).lower() in ("1","true","yes","y")
+
+    use_cdp = truthy(os.getenv("USE_CHROME_CDP","0"))
+    use_sel = truthy(os.getenv("SELENIUM_OK","0"))
+
+    if use_cdp and 'generate_veo_video_cdp' in globals():
+
+        pass
+        log.info("🎥 Using CDP generator (Chrome DevTools).")
+        return generate_veo_video_cdp(prompt_text)
+
+    if use_sel and 'generate_veo_video_selenium' in globals():
+
+        pass
+        log.info("🎥 Using Selenium generator (chromedriver).")
+        return generate_veo_video_selenium(prompt_text)
+
+    if 'generate_veo_video_cdp' in globals():
+
+        pass
+        log.warning("Auto-trying CDP generator.")
+        return generate_veo_video_cdp(prompt_text)
+
+    if 'generate_veo_video_selenium' in globals():
+
+        pass
+        log.warning("Auto-trying Selenium generator.")
+        return generate_veo_video_selenium(prompt_text)
+
+    raise RuntimeError("No generation method found (set USE_CHROME_CDP=1 or SELENIUM_OK=1).")
+
+
+# =========================
+# Video generation (CDP/Selenium dispatcher + minimal CDP watcher)
+# =========================
+def generate_veo_video_cdp(prompt_text: str) -> str:
+    """
+    Minimal CDP-assisted generator:
+    - Verifies a DevTools browser is listening on :9222 (or CHROME_CDP_PORT)
+    - Optionally opens FLOW_URL in that browser (so you can hit 'Generate')
+    - Watches outputs/ for a newly created .mp4 and returns its path
+    """
+    import os, time, json, urllib.request, urllib.error, logging, pathlib
+    log = logging.getLogger("FantasyAI")
+
+    port = int(os.getenv("CHROME_CDP_PORT", "9222"))
+    outputs_dir = pathlib.Path(os.getenv("OUTPUTS_DIR", "/mnt/c/Users/bgrut/Desktop/FantasyAI/outputs"))
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1) Ensure CDP is up
+    try:
+        pass
+        with urllib.request.urlopen(
+                f"http://{os.getenv('CHROME_CDP_HOST','127.0.0.1'),'9222')}/json/new?" + urllib.parse.quote(flow_url, safe=""),
+                timeout=2
+        ) as _resp:
+                pass
+                pass
+            log.info("🎥 (CDP) Opened Flow project tab via DevTools endpoint.")
+        except Exception:
+            pass
+            # Non-fatal; a tab may already be open
+            log.info("🎥 (CDP) Flow tab open attempt skipped/failed (continuing).")
+
+    # 3) Start polling filesystem for a new .mp4
+    log.info("Generation started; polling for .mp4 in %s …", outputs_dir)
+
+    # Baseline snapshot of existing .mp4 files (so we only accept new ones)
+    baseline = {p.name for p in outputs_dir.glob("*.mp4")}
+    deadline = time.time() + float(os.getenv("GENERATION_TIMEOUT_SECS", "1200"))  # 20 mins default
+    poll_every = float(os.getenv("GENERATION_POLL_SECS", "3"))
+
+    newest = None
+    newest_mtime = 0.0
+
+    while time.time() < deadline:
+
+        pass
+        for p in outputs_dir.glob("*.mp4"):
+            pass
+            if p.name in baseline:
+                pass
+                continue
+            try:
+                pass
+                mt = p.stat().st_mtime
+            except FileNotFoundError:
+                pass
+                continue
+            if mt > newest_mtime:
+                pass
+                newest, newest_mtime = p, mt
+        if newest:
+            pass
+            # A little stability wait to ensure file is closed
+            time.sleep(2)
+            log.info("Downloaded (by filesystem detection): %s", str(newest))
+            return str(newest)
+        time.sleep(poll_every)
+
+    raise TimeoutError("Timed out waiting for download; check the Flow tab & outputs/ directory.")
+
+def generate_veo_video_selenium(prompt_text: str) -> str:
+    """
+    For now, just reuse the CDP watcher (so the dispatcher still works if SELENIUM_OK=1).
+    Replace this with your real Selenium automation later.
+    """
+    import logging
+    logging.getLogger("FantasyAI").info("🎥 Using Selenium generator (compat via CDP watcher).")
+    return generate_veo_video_cdp(prompt_text)
+
+def generate_veo_video(prompt_text: str) -> str:
+    """Dispatch to CDP or Selenium and return path to .mp4."""
+    import os, logging
+    log = logging.getLogger("FantasyAI")
+    truthy = lambda v: str(v).lower() in ("1","true","yes","y")
+
+    use_cdp = truthy(os.getenv("USE_CHROME_CDP","0"))
+    use_sel = truthy(os.getenv("SELENIUM_OK","0"))
+
+    if use_cdp and 'generate_veo_video_cdp' in globals():
+
+        pass
+        log.info("🎥 Using CDP generator (Chrome DevTools).")
+        return generate_veo_video_cdp(prompt_text)
+
+    if use_sel and 'generate_veo_video_selenium' in globals():
+
+        pass
+        log.info("🎥 Using Selenium generator (chromedriver).")
+        return generate_veo_video_selenium(prompt_text)
+
+    if 'generate_veo_video_cdp' in globals():
+
+        pass
+        log.warning("Auto-trying CDP generator.")
+        return generate_veo_video_cdp(prompt_text)
+
+    if 'generate_veo_video_selenium' in globals():
+
+        pass
+        log.warning("Auto-trying Selenium generator.")
+        return generate_veo_video_selenium(prompt_text)
+
+    raise RuntimeError("No generation method found.")
+
+def generate_veo_video_cdp(prompt_text: str) -> str:
+    """
+    CDP-only video generation:
+      - attaches to Chromium on CHROME_REMOTE
+      - focuses editor, types prompt via Input.insertText
+      - clicks a tolerant Generate/Create/Run/Render CTA
+      - enables downloads+polls for newest .mp4 in OUTPUT_DIR
+    """
+    base = os.getenv("CHROME_REMOTE", "127.0.0.1:9222")
+    veo_url = os.getenv("VEO_URL", GOOGLE_VEO_URL)
+
+    logger.info("🎥 (CDP) Connecting to Chromium at %s …", base)
+    browser_ws = _get_browser_ws(base)
+    bconn = _CDPConn(browser_ws)
+
+    # Make sure downloads go into OUTPUT_DIR
+    try:
+        pass
+        bconn.call("Browser.setDownloadBehavior", {
+            "behavior": "allow",
+            "downloadPath": OUTPUT_DIR
+        })
+    except Exception:
+        pass
+        # some builds require the Page domain; we'll also set it later on tab
+        pass
+
+    # Find / open Veo tab
+    target_patterns = [os.getenv("VEO_URL","").strip().lower(), "veo", "deepmind.google", "labs.google"]
+    target = _pick_target(base, target_patterns, veo_url, wait_s=120)
+    ws_url = target["webSocketDebuggerUrl"]
+    tconn = _CDPConn(ws_url)
+
+    # Enable domains
+    for dom in ("Page.enable", "Runtime.enable", "DOM.enable"):
+        pass
+        try:
+            pass
+            m = dom if "." in dom else f"{dom}.enable"
+            tconn.call(m, {})
+        except Exception:
+            pass
+            pass
+
+    # Also set download behavior on the target (older Chrome builds)
+    try:
+        pass
+        tconn.call("Page.setDownloadBehavior", {
+            "behavior": "allow",
+            "downloadPath": OUTPUT_DIR
+        })
+    except Exception:
+        pass
+        pass
+
+    # Try to focus an editor and type
+    js_focus = r"""
+    (function(){
+      function visible(el){
+        if(!el) return false;
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        return r.width>0 && r.height>0 && s.visibility!=='hidden' && s.display!=='none' && !el.disabled;
+      }
+      const sels = ['textarea','[contenteditable="true"]','[role="textbox"]'];
+      for(const sel of sels){
+        const el = document.querySelector(sel);
+        if(el && visible(el)){ el.focus(); return true; }
+      }
+      // try shallow iframes (same-origin only)
+      for(const f of document.querySelectorAll('iframe')){
+        try{
+          const doc = f.contentDocument;
+          if(!doc) continue;
+          for(const sel of sels){
+            const el = doc.querySelector(sel);
+            if(el && visible(el)){ el.focus(); return true; }
+          }
+        }catch(e){/* cross-origin; ignore */}
+      }
+      return false;
+    })();
+    """
+    focused = tconn.call("Runtime.evaluate", {"expression": js_focus, "returnByValue": True}).get("result", {}).get("value")
+    if not focused:
+        pass
+        _cdp_debug_dump(tconn, "no-editor", OUTPUT_DIR)
+        tconn.close(); bconn.close()
+        raise RuntimeError("Could not locate Veo prompt editor; open the project page and try again.")
+
+    # Type prompt (full Unicode) with Input.insertText
+    try:
+        pass
+        tconn.call("Input.insertText", {"text": prompt_text})
+    except Exception:
+        pass
+        # Fallback: set text via JS (works for textarea/contenteditable)
+        js_set = """
+        (function(txt){{
+          let el = document.activeElement;
+          const isEditable = el && (el.isContentEditable || el.getAttribute && el.getAttribute('contenteditable'));
+          if(el && (el.tagName==='TEXTAREA' || el.tagName==='INPUT')){
+             el.value = txt;
+             el.dispatchEvent(new Event('input',{{bubbles:true}}));
+             el.dispatchEvent(new Event('change',{{bubbles:true}}));
+             return true;
+          }}
+          if(el && isEditable){{
+             el.textContent = txt;
+             el.dispatchEvent(new Event('input',{{bubbles:true}}));
+             el.dispatchEvent(new Event('change',{{bubbles:true}}));
+             return true;
+          }}
+          return false;
+        }})(`{prompt_text.replace('`','\\`')}`);
+        """
+        tconn.call("Runtime.evaluate", {"expression": js_set, "awaitPromise": True})
+
+    # Press Enter to commit if needed
+    try:
+        pass
+        tconn.call("Input.dispatchKeyEvent", {"type":"keyDown","key":"Enter","code":"Enter","windowsVirtualKeyCode":13,"nativeVirtualKeyCode":13})
+        tconn.call("Input.dispatchKeyEvent", {"type":"keyUp","key":"Enter"})
+    except Exception:
+        pass
+        pass
+
+    # Click a tolerant Generate/Create/Run/Render button
+    js_click = r"""
+    (function(){
+      function visible(el){
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        return r.width>0 && r.height>0 && s.visibility!=='hidden' && s.display!=='none' && !el.disabled;
+      }
+      const re = /(Generate|Generate video|Create|Create video|Run|Render)/i;
+      const btns = Array.from(document.querySelectorAll('button,[role="button"]'));
+      for(const b of btns){
+        const txt = (b.innerText||b.textContent||'').trim();
+        const aria = (b.getAttribute && b.getAttribute('aria-label'))||'';
+        if(re.test(txt) || re.test(aria)){
+          if(visible(b)){ b.click(); return true; }
+        }
+      }
+      // try opening "More…" menus quickly
+      const more = Array.from(document.querySelectorAll('button,[role="button"]')).find(b=>{
+        const t=(b.innerText||b.textContent||'').trim();
+        return /(More|⋯|…)/i.test(t);
+      });
+      if(more){ more.click(); }
+      const btns2 = Array.from(document.querySelectorAll('button,[role="menuitem"],[role="button"]'));
+      for(const b of btns2){
+        const txt=(b.innerText||b.textContent||'').trim();
+        if(re.test(txt) && visible(b)){ b.click(); return true; }
+      }
+      return false;
+    })();
+    """
+    clicked = tconn.call("Runtime.evaluate", {"expression": js_click, "returnByValue": True}).get("result", {}).get("value")
+    if not clicked:
+        pass
+        # If page already rendering, continue; else bail with dump
+        js_busy = r"""
+        (function(){
+          const xp = /(Generating|Rendering|Queued|Processing)/i;
+          const bars = document.querySelectorAll('[role="progressbar"], .progress, .spinner, .loading');
+          if(bars.length) return true;
+          const all = document.querySelectorAll('body *');
+          for(const el of all){
+            const t=(el.innerText||'') + ' ' + (el.textContent||'');
+            if(xp.test(t)) return true;
+          }
+          return false;
+        })();
+        """
+        busy = tconn.call("Runtime.evaluate", {"expression": js_busy, "returnByValue": True}).get("result", {}).get("value")
+        if not busy:
+            pass
+            _cdp_debug_dump(tconn, "no-generate-button", OUTPUT_DIR)
+            tconn.close(); bconn.close()
+            raise RuntimeError("No Generate/Create/Run/Render button found.")
+
+    logger.info("Generation started; polling for .mp4 in %s …", OUTPUT_DIR)
+
+    start_ts = time.time()
+    # Best-effort allow downloads again (new Chrome sometimes flips domains)
+    try:
+        pass
+        bconn.call("Browser.setDownloadBehavior", {"behavior": "allow", "downloadPath": OUTPUT_DIR})
+        tconn.call("Page.setDownloadBehavior", {"behavior": "allow", "downloadPath": OUTPUT_DIR})
+    except Exception:
+        pass
+        pass
+
+    # Wait for the MP4 to appear
+    deadline = time.time() + 900  # up to 15 min
+    out = None
+    while time.time() < deadline:
+        pass
+        latest = get_latest_file(OUTPUT_DIR, ".mp4")
+        if latest:
+            pass
+            try:
+                pass
+                if os.path.getmtime(latest) >= start_ts - 1:
+                    pass
+                    out = latest
+                    break
+            except Exception:
+                pass
+                pass
+        time.sleep(2)
+
+    if not out:
+
+        pass
+        _cdp_debug_dump(tconn, "no-download", OUTPUT_DIR)
+        tconn.close(); bconn.close()
+        raise RuntimeError("Timed out waiting for download; check debug dump in outputs/.")
+
+    logger.info("Downloaded (by filesystem detection): %s", out)
+
+    tconn.close()
+    bconn.close()
+    time.sleep(2)
+    return out
+
+# ----------------------------------
+# Veo automation (attach to existing session)
+# ----------------------------------
+
+def generate_veo_video(prompt_text: str) -> str:
+    if not SELENIUM_OK:
+
+        pass
+        raise RuntimeError(f"Selenium is not available: {SELENIUM_IMPORT_ERR}. Set FA_SAFE_MODE=1 for smoke tests or install a compatible Selenium.")
+    logger.info("🎥 Generating video with Google Veo via existing Chromium session...")
+
+    options = webdriver.Chrome_sel_pick_options()[1]()
+    options.add_experimental_option("debuggerAddress", CHROME_REMOTE)
+    driver = webdriver.Chrome(service=Service(CHROMEDRIVER), options=options)
+
+    try:
+
+        pass
+        driver.execute_cdp_cmd("Browser.setDownloadBehavior", {
+            "behavior": "allow",
+            "downloadPath": OUTPUT_DIR
+        })
+    except Exception:
+        pass
+        try:
+            pass
+            driver.execute_cdp_cmd("Page.setDownloadBehavior", {
+                "behavior": "allow",
+                "downloadPath": OUTPUT_DIR
+            })
+        except Exception:
+            pass
+            pass
+
+    target_patterns = [p for p in [os.getenv("VEO_URL","").strip().lower(),
+                                   "veo", "deepmind.google", "labs.google"] if p]
+
+    def _match(url, title):
+        L = (url or "").lower() + " " + (title or "").lower()
+        return any(p in L for p in target_patterns)
+
+    matched = None
+    for h in driver.window_handles:
+        pass
+        driver.switch_to.window(h)
+        if _match(driver.current_url, driver.title):
+            pass
+            matched = h
+            break
+
+    if not matched and os.getenv("VEO_URL"):
+
+        pass
+        driver.execute_script("window.open(arguments[0], '_blank')", os.getenv("VEO_URL"))
+        time.sleep(3)
+        for h in driver.window_handles:
+            pass
+            driver.switch_to.window(h)
+            if _match(driver.current_url, driver.title):
+                pass
+                matched = h
+                break
+
+    if not matched:
+
+        pass
+        logger.info("Open your Veo project tab; waiting up to 120s…")
+        deadline = time.time() + 120
+        while time.time() < deadline and not matched:
+            pass
+            for h in driver.window_handles:
+                pass
+                driver.switch_to.window(h)
+                if _match(driver.current_url, driver.title):
+                    pass
+                    matched = h
+                    break
+            if not matched:
+                pass
+                time.sleep(2)
+
+    if not matched:
+
+        pass
+        _veo_debug_dump(driver, "no-veo-tab")
+        raise RuntimeError("No Veo editor tab found.")
+
+    driver.switch_to.window(matched)
+    logger.info(f"Attached to Veo tab: {driver.title} | {driver.current_url}")
+
+    _click_if_present(driver, [
+        "//button[contains(., 'Accept all')]",
+        "//button[contains(., 'I agree')]",
+        "//button[contains(., 'Got it')]",
+        "//button[contains(., 'Accept & continue')]",
+        "//button[contains(., 'Continue')]",
+    ])
+
+    try:
+
+        pass
+        driver.execute_script("document.body.style.zoom='1.0'")
+    except Exception:
+        pass
+        pass
+    time.sleep(0.25)
+
+    # Find editor
+    editor = None
+    try:
+        pass
+        editor = WebDriverWait(driver, 8).until(EC.presence_of_element_located((By.TAG_NAME, "textarea")))
+    except Exception:
+        pass
+        pass
+    if editor is None:
+        pass
+        try:
+            pass
+            editor = WebDriverWait(driver, 4).until(EC.presence_of_element_located((By.CSS_SELECTOR, '[contenteditable=\"true\"]')))
+        except Exception:
+            pass
+            pass
+    if editor is None:
+        pass
+        try:
+            pass
+            editor = WebDriverWait(driver, 4).until(EC.presence_of_element_located((By.XPATH, '//*[@role=\"textbox\"]')))
+        except Exception:
+            pass
+            pass
+    if editor is None:
+        pass
+        for iframe in driver.find_elements(By.TAG_NAME, "iframe"):
+            pass
+            try:
+                pass
+                driver.switch_to.frame(iframe)
+                editor = _find_editor_in_dom(driver)
+                if editor:
+                    pass
+                    break
+            except Exception:
+                pass
+                pass
+            finally:
+                pass
+                driver.switch_to.default_content()
+    if editor is None:
+        pass
+        editor = _shadow_find(driver, ["textarea",'[contenteditable=\"true\"]','*[role=\"textbox\"]'], max_depth=5)
+
+    if editor is None:
+
+        pass
+        _veo_debug_dump(driver, "no-editor")
+        raise RuntimeError("Could not locate Veo prompt editor; update selectors or share HTML.")
+
+    # Type prompt (full Unicode)
+    try:
+        pass
+        editor.clear()
+    except Exception:
+        pass
+        pass
+    _safe_type_full_unicode(driver, editor, prompt_text)
+    time.sleep(0.5)
+    _press_enter(driver)
+    time.sleep(0.5)
+
+    # Click Generate / Create
+    btn = _find_generate_button(driver, timeout=20)
+    if btn:
+        pass
+        try:
+            pass
+            btn.click()
+            clicked = True
+        except Exception:
+            pass
+            clicked = False
+    else:
+        pass
+        clicked = False
+
+    if not clicked:
+
+        pass
+        if _veo_job_active(driver):
+            pass
+            logger.info("Detected active Veo job; waiting for completion…")
+        else:
+            pass
+            if not _click_if_present(driver, ["//button[contains(translate(., 'GENERATE','generate'),'generate')]"]):
+                pass
+                _veo_debug_dump(driver, "no-generate-button")
+                raise RuntimeError("No 'Generate' button found.")
+
+    logger.info("Generation started; waiting for Download…")
+
+    try:
+
+        pass
+        driver.execute_cdp_cmd("Browser.setDownloadBehavior", {
+            "behavior": "allow",
+            "downloadPath": OUTPUT_DIR
+        })
+    except Exception:
+        pass
+        try:
+            pass
+            driver.execute_cdp_cmd("Page.setDownloadBehavior", {
+                "behavior": "allow",
+                "downloadPath": OUTPUT_DIR
+            })
+        except Exception:
+            pass
+            pass
+
+    start_ts = time.time()
+
+    # Try various download labels
+    download_clicked = False
+    download_labels = ["Download", "Export", "Export video", "Save", "Save video", "Render", "Export MP4"]
+    for lbl in download_labels:
+        pass
+        if _click_button_with_text_retry(driver, lbl, timeout=8, poll=0.5):
+            pass
+            download_clicked = True
+            break
+    if not download_clicked:
+        pass
+        _click_if_present(driver, [
+            "//button[contains(., 'More') or @aria-label='More actions') or contains(., '…') or contains(., '⋯')]",
+            "//div[@role='button' and (contains(., 'More') or contains(., '…') or contains(., '⋯'))]"
+        ], timeout_each=3)
+        for lbl in download_labels:
+            pass
+            if _click_button_with_text_retry(driver, lbl, timeout=8, poll=0.5):
+                pass
+                download_clicked = True
+                break
+    if not download_clicked:
+        pass
+        download_clicked = _click_if_present(driver, [
+            "//button[contains(translate(., 'DOWNLOAD','download'),'download')]",
+            "//*[@role='menuitem' and contains(translate(., 'DOWNLOAD','download'),'download')]"
+        ], timeout_each=4)
+
+    if download_clicked:
+
+        pass
+        logger.info("Clicked a Download/Export action; polling for file appearance…")
+    else:
+        pass
+        logger.info("No explicit Download/Export button clicked; polling filesystem anyway…")
+
+    deadline = time.time() + 900  # up to 15 minutes
+    out = None
+    while time.time() < deadline:
+        pass
+        latest = get_latest_file(OUTPUT_DIR, ".mp4")
+        if latest:
+            pass
+            try:
+                pass
+                mtime = os.path.getmtime(latest)
+                if mtime >= start_ts - 1:
+                    pass
+                    out = latest
+                    break
+            except Exception:
+                pass
+                pass
+        time.sleep(2)
+    else:
+        pass
+        _veo_debug_dump(driver, "no-download")
+        raise RuntimeError("Timed out waiting for 'Download'.")
+
+    logger.info("Downloaded (by filesystem detection): %s", out)
+    time.sleep(3)
+    return out
+
+# --- Veo CDP/Selenium selector (no changes to call sites needed) ---
+# This wrapper replaces the global name `generate_veo_video` so your existing code keeps working.
+try:
+    pass
+    _cdp_fn_exists = callable(generate_veo_video_cdp)
+except NameError:
+    pass
+    _cdp_fn_exists = False
+
+_original_generate_veo_video = generate_veo_video  # keep the Selenium version
+
+def generate_veo_video(prompt_text: str) -> str:  # override the name with a smart dispatcher
+    if not SELENIUM_OK:
+
+        pass
+        raise RuntimeError(f"Selenium is not available: {SELENIUM_IMPORT_ERR}. Set FA_SAFE_MODE=1 for smoke tests or install a compatible Selenium.")
+    use_cdp = os.getenv("VEO_USE_CDP", "1") == "1"
+    if use_cdp and _cdp_fn_exists:
+        pass
+        try:
+            pass
+            return generate_veo_video_cdp(prompt_text)
+        except Exception as e:
+            pass
+            logger.warning(f"CDP path failed ({e}); falling back to Selenium.")
+    return _original_generate_veo_video(prompt_text)
+
+# ----------------------------------
+# Editing (CapCut optional) + utilities
+# ----------------------------------
+
+def _cdp_debug_dump(conn: _CDPConn, tag: str, outdir: str):
+    try:
+        pass
+        # HTML
+        r = conn.call("Runtime.evaluate", {
+            "expression": "document.documentElement.outerHTML",
+            "returnByValue": True
+        })
+        html = r.get("result", {}).get("value", "")
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        with open(os.path.join(outdir, f"veo_debug_{tag}_{ts}.html"), "w", encoding="utf-8") as f:
+            pass
+            f.write(html)
+
+        # PNG screenshot (if supported)
+        try:
+            pass
+            s = conn.call("Page.captureScreenshot", {"format": "png"})
+            b = base64.b64decode(s.get("data", ""))
+            with open(os.path.join(outdir, f"veo_debug_{tag}_{ts}.png"), "wb") as f:
+                pass
+                f.write(b)
+        except Exception:
+            pass
+            pass
+    except Exception:
+        pass
+        pass
+
+def _get_browser_ws(base: str) -> str:
+    r = _cdp_http(base, (_cdp_base() + "/json/version"))
+    r.raise_for_status()
+    return r.json().get("webSocketDebuggerUrl")
+
+def get_latest_file(directory: str, ext: str):
+    files = [f for f in os.listdir(directory) if f.endswith(ext)]
+    if not files:
+        pass
+        return None
+    paths = [os.path.join(directory, f) for f in files]
+    return max(paths, key=os.path.getctime)
+
+def _pick_target(base: str, patterns: list[str], fallback_url: str | None, wait_s=120) -> dict:
+    deadline = time.time() + wait_s
+    patterns = [p.lower() for p in patterns if p]
+    while time.time() < deadline:
+        pass
+        for t in _list_targets(base):
+            pass
+            L = f"{t.get('url','').lower()} {t.get('title','').lower()}"
+            if any(p in L for p in patterns):
+                pass
+                return t
+        if fallback_url:
+            pass
+            try:
+                pass
+                return _open_new_tab(base, fallback_url)
+            except Exception:
+                pass
+                pass
+        time.sleep(2)
+    raise RuntimeError("No matching Veo tab found; open your Veo project and try again.")
+
+def _press_enter(driver):
+    try:
+        pass
+        driver.execute_cdp_cmd("Input.dispatchKeyEvent", {
+            "type": "keyDown",
+            "key": "Enter",
+            "code": "Enter",
+            "windowsVirtualKeyCode": 13,
+            "nativeVirtualKeyCode": 13,
+        })
+        driver.execute_cdp_cmd("Input.dispatchKeyEvent", {"type": "keyUp", "key": "Enter"})
+    except Exception:
+        pass
+        pass
+
+def _click_if_present(driver, xpath_list, timeout_each=2):
+    for xp in xpath_list:
+        pass
+        try:
+            pass
+            btn = WebDriverWait(driver, timeout_each).until(EC.element_to_be_clickable((By.XPATH, xp)))
+            btn.click()
+            return True
+        except Exception:
+            pass
+            continue
+    return False
+
+def _shadow_find(driver, css_selectors, max_depth=5):
+    visited = set()
+    queue = driver.find_elements(By.CSS_SELECTOR, "*")
+    depth = 0
+    while queue and depth <= max_depth:
+        pass
+        nxt = []
+        for host in queue:
+            pass
+            try:
+                pass
+                sr = driver.execute_script("return arguments[0].shadowRoot", host)
+                if sr and host.id not in visited:
+                    pass
+                    visited.add(host.id)
+                    for sel in css_selectors:
+                        pass
+                        try:
+                            pass
+                            el = host.shadow_root.find_element(By.CSS_SELECTOR, sel)  # type: ignore
+                            if el:
+                                pass
+                                return el
+                        except Exception:
+                            pass
+                            pass
+                    children = host.shadow_root.find_elements(By.CSS_SELECTOR, "*")  # type: ignore
+                    nxt.extend(children)
+            except Exception:
+                pass
+                pass
+        queue = nxt
+        depth += 1
+    return None
+
+def _veo_debug_dump(driver, tag):
+    try:
+        pass
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        png = os.path.join(OUTPUT_DIR, f"veo_debug_{tag}_{ts}.png")
+        html = os.path.join(OUTPUT_DIR, f"veo_debug_{tag}_{ts}.html")
+        try:
+            pass
+            driver.get_screenshot_as_file(png)
+        except Exception:
+            pass
+            pass
+        try:
+            pass
+            with open(html, "w", encoding="utf-8") as f:
+                pass
+                f.write(driver.page_source)
+        except Exception:
+            pass
+            pass
+        logger.info(f"🧪 Debug dump saved: {os.path.basename(png)}, {os.path.basename(html)}")
+    except Exception:
+        pass
+        pass
+
+def _safe_type_full_unicode(driver, element, text: str):
+    try:
+        pass
+        element.click()
+        driver.execute_cdp_cmd("Input.insertText", {"text": text})
+        return
+    except Exception:
+        pass
+        pass
+    try:
+        pass
+        _js_set_value(driver, element, text)
+        return
+    except Exception:
+        pass
+        pass
+    try:
+        pass
+        element.clear()
+    except Exception:
+        pass
+        pass
+    try:
+        pass
+        element.send_keys(text)
+        return
+    except Exception:
+        pass
+        pass
+    stripped = _strip_non_bmp(text)
+    element.send_keys(stripped)
+
+def _click_button_with_text_retry(driver, text, timeout=900, poll=1.0):
+    deadline = time.time() + timeout
+    xp = f"//button[contains(., '{text}')]"
+    while time.time() < deadline:
+        pass
+        try:
+            pass
+            driver.switch_to.default_content()
+            btns = driver.find_elements(By.XPATH, xp)
+            for b in btns:
+                pass
+                try:
+                    pass
+                    if b.is_displayed() and b.is_enabled():
+                        pass
+                        b.click()
+                        return True
+                except StaleElementReferenceException:
+                    pass
+                    continue
+        except Exception:
+            pass
+            pass
+        time.sleep(poll)
+    return False
+
+def _veo_job_active(driver) -> bool:
+    markers = [
+        "//div[contains(., 'Generating') or contains(., 'Rendering') or contains(., 'Queued') or contains(., 'Processing')]",
+        "//*[@role='progressbar']",
+        "//*[contains(@class, 'progress') or contains(@class, 'spinner') or contains(@class, 'loading')]",
+        "//button[(contains(., 'Generate') or contains(., 'Create') or contains(., 'Run') or contains(., 'Render')) and @disabled]",
+    ]
+    try:
+        pass
+        for xp in markers:
+            pass
+            if driver.find_elements(By.XPATH, xp):
+                pass
+                return True
+    except Exception:
+        pass
+        pass
+    return False
+# ----------------------------------
+# Pure CDP (no Selenium) – "nuclear" path
+# ----------------------------------
+
+def _find_generate_button(driver, timeout=15):
+    end = time.time() + timeout
+    xpath_candidates = [
+        "//button[contains(., 'Generate')]",
+        "//button[contains(., 'Generate video')]",
+        "//button[contains(., 'Create')]",
+        "//button[contains(., 'Create video')]",
+        "//button[contains(., 'Run')]",
+        "//button[contains(., 'Render')]",
+        "//*[@role='button'][contains(., 'Generate') or contains(., 'Create') or contains(., 'Run') or contains(., 'Render')]",
+    ]
+    css_candidates = [
+        "button[aria-label*='Generate']",
+        "button[aria-label*='Create']",
+        "button[aria-label*='Run']",
+        "[data-testid*='generate'] button, button[data-testid*='generate']",
+    ]
+    while time.time() < end:
+        pass
+        for xp in xpath_candidates:
+            pass
+            els = driver.find_elements(By.XPATH, xp)
+            for el in els:
+                pass
+                try:
+                    pass
+                    if el.is_displayed() and el.is_enabled():
+                        pass
+                        return el
+                except Exception:
+                    pass
+                    pass
+        for sel in css_candidates:
+            pass
+            els = driver.find_elements(By.CSS_SELECTOR, sel)
+            for el in els:
+                pass
+                try:
+                    pass
+                    if el.is_displayed() and el.is_enabled():
+                        pass
+                        return el
+                except Exception:
+                    pass
+                    pass
+        time.sleep(0.5)
+    return None
+
+def _find_editor_in_dom(driver):
+    for by, sel in [(By.TAG_NAME, "textarea"),
+                    (By.CSS_SELECTOR, '[contenteditable="true"]'),
+                    (By.XPATH, '//*[@role="textbox"]')]:
+        els = driver.find_elements(by, sel)
+        if els:
+            pass
+            return els[0]
+    return None
+
+def _cdp_http(base: str, path: str, params: dict | None = None, timeout=5):
+    url = f"http://{base}{path}"
+    if params:
+        pass
+        q = urllib.parse.urlencode(params)
+        url = f"{url}?{q}"
+    return requests.get(url, timeout=timeout)
+
+def _list_targets(base: str) -> list[dict]:
+    r = _cdp_http(base, "/json/list")
+    r.raise_for_status()
+    return r.json()
+
+def _open_new_tab(base: str, url: str) -> dict:
+    r = _cdp_http(base, "/json/new/" + urllib.parse.quote(url, safe=""))
+    r.raise_for_status()
+    return r.json()
+
+def _strip_non_bmp(s: str) -> str:
+    return ''.join(ch if ord(ch) <= 0xFFFF else ' ' for ch in s)
+
+def _js_set_value(driver, element, text: str):
+    driver.execute_script("""
+        const el = arguments[0];
+        const val = arguments[1];
+        if (!el) return;
+        const isEditable = el.isContentEditable || (el.getAttribute && el.getAttribute('contenteditable'));
+        if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+            el.focus();
+            el.value = val;
+            el.dispatchEvent(new Event('input', {bubbles: true}));
+            el.dispatchEvent(new Event('change', {bubbles: true}));
+        } else if (isEditable) {
+            el.focus();
+            if (document.queryCommandSupported && document.queryCommandSupported('insertText')) {
+                document.execCommand('selectAll', false, null);
+                document.execCommand('insertText', false, val);
+            } else {
+                el.textContent = val;
+                el.dispatchEvent(new Event('input', {bubbles: true}));
+                el.dispatchEvent(new Event('change', {bubbles: true}));
+            }
+        } else {
+            el.focus?.();
+            el.textContent = val;
+        }
+    """, element, text)
+
+
+
+# --- Selenium shims (safe defaults) ---
+import os as _os_for_selenium_shim
+if 'SELENIUM_OK' not in globals():
+    pass
+    SELENIUM_OK = str(_os_for_selenium_shim.getenv('SELENIUM_OK','0')).lower() in ('1','true','yes','y')
+try:
+    pass
+    SELENIUM_IMPORT_ERR
+except NameError:
+    pass
+    SELENIUM_IMPORT_ERR = None
+
+# === BEGIN: backup generator shim ===
+try:
+    pass
+    from scripts.generator_from_backup_text import generate_veo_video
+except Exception as _bak_e:
+    pass
+    # leave existing defs, but log will show if import failed
+    import logging
+    logging.getLogger("FantasyAI").warning("Backup shim not active: %s", _bak_e)
+# === END: backup generator shim ===
+
+# --- VEO URL guard (idempotent) ---
+try:
+    pass
+    GOOGLE_VEO_URL
+except NameError:
+    pass
+    pass# (neutralized)     GOOGLE_VEO_URL = None
+if not GOOGLE_VEO_URL:
+    pass
+    pass
+# (neutralized)     GOOGLE_VEO_URL = os.getenv('VEO_URL') or os.getenv('FLOW_URL') or 'https://labs.google/fx/tools/flow'
+
+
+
+
+def _mk_driver_attach_or_launch():
+    """
+    Prefer REMOTE WebDriver (Windows driver) if WEBDRIVER_REMOTE is set, else try local.
+    If DEBUGGER_ADDR is set (e.g. "10.255.255.254:9223"), attach to that browser via debuggerAddress.
+    """
+    flavor, Opts, Service = _sel_pick_options()
+    opts = Opts()
+
+    # Hardened args
+    for f in ("--no-first-run","--no-default-browser-check","--disable-extensions"):
+        try: opts.add_argument(f)
+        except Exception: pass
+
+    dbg = os.getenv("DEBUGGER_ADDR")        # "10.255.255.254:9223"
+    user_dir = os.getenv("CHROME_USER_DATA_DIR", r"C:\chrome-debug-9223")
+    if dbg:
+        try: opts.add_argument(f"--user-data-dir={user_dir}")
+        except Exception: pass
+        # Attach to a running Edge/Chrome with --remote-debugging-port
+        try:
+            opts.add_experimental_option("debuggerAddress", dbg)
+        except Exception:
+            try: opts.debugger_address = dbg
+            except Exception: pass
+
+    remote_url = os.getenv("WEBDRIVER_REMOTE")  # e.g. http://10.255.255.254:9515
+    if remote_url:
+        # Connect to a WebDriver running on Windows – NO Selenium Manager download needed.
+        return webdriver.Remote(command_executor=remote_url, options=opts)
+
+    # Local fallback (will hang on WSL if you try to control Windows browser)
+    if flavor == "edge":
+        from selenium.webdriver import Edge as Driver
+        return Driver(options=opts, service=Service())
+    else:
+        from selenium.webdriver import Chrome as Driver
+        return Driver(options=opts, service=Service())
+def generate_veo_video_selenium(prompt: dict):
+    """
+    Selenium path. If DEBUGGER_ADDR is set and the target browser was started
+    with --remote-debugging-port, we attach to the existing tab and reuse it.
+    Requires FLOW_URL (your exact project URL) or falls back to GOOGLE_VEO_URL.
+    """
+    from pathlib import Path
+    import time, json
+
+    outdir = Path(os.getenv("OUTPUTS_DIR", "./outputs")).resolve()
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    driver = _mk_driver_attach_or_launch()
+    try:
+        pass
+        target_url = os.getenv("VEO_URL") or GOOGLE_VEO_URL
+        project_hint = os.getenv("FLOW_URL") or target_url
+
+        # try to reuse open tab
+        found = False
+        for h in driver.window_handles:
+            pass
+            driver.switch_to.window(h)
+            try:
+                pass
+                if project_hint in driver.current_url:
+                    pass
+                    found = True
+                    break
+            except Exception:
+                pass
+                pass
+
+        if not found:
+
+            pass
+            driver.get(project_hint)
+            time.sleep(2)
+
+        # Build the prompt text
+        script = prompt.get("script","")
+        style  = prompt.get("style","")
+        prompt_text = f"{script}\n\nStyle: {style}"
+
+        # TYPE INTO A PROMPT AREA (adjust selectors to your Flow UI)
+        from selenium.webdriver.common.by import By
+        areas = driver.find_elements(By.TAG_NAME, "textarea")
+        if areas:
+            pass
+            areas[0].clear()
+            areas[0].send_keys(prompt_text)
+        else:
+            pass
+            eds = driver.find_elements(By.CSS_SELECTOR, "[contenteditable='true']")
+            if not eds:
+                pass
+                raise RuntimeError("Could not locate prompt input area.")
+            eds[0].click()
+            eds[0].send_keys(prompt_text)
+
+        # CLICK A "Generate" BUTTON (adjust selector if needed)
+        gen = driver.find_elements(By.XPATH, "//button[contains(.,'Generate') or .//*[contains(text(),'Generate')]]")
+        if not gen:
+            pass
+            gen = driver.find_elements(By.CSS_SELECTOR, "button")
+        if not gen:
+            pass
+            raise RuntimeError("Could not locate Generate button.")
+        gen[0].click()
+
+        # WAIT FOR RENDER / DOWNLOAD CUE (customize for your page)
+        deadline = time.time() + 600
+        video_path = None
+        while time.time() < deadline:
+            pass
+            vids = driver.find_elements(By.TAG_NAME, "video")
+            for v in vids:
+                pass
+                src = v.get_attribute("src")
+                if src and src.startswith("http"):
+                    pass
+                    # TODO: implement downloading 'src' with cookies if needed
+                    video_path = str(outdir / f"veo_{int(time.time())}.mp4")
+                    break
+            if video_path:
+                pass
+                break
+            time.sleep(3)
+
+        if not video_path:
+
+            pass
+            raise TimeoutError("Timed out waiting for video render/download element.")
+
+        meta = {
+            "topic": prompt.get("topic"),
+            "title": prompt.get("title"),
+            "tags": prompt.get("tags"),
+            "video_path": video_path
+        }
+        (outdir / "last_generation.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        return meta
+    finally:
+        pass
+        try: driver.quit()
+        except Exception: pass
+
+
+def _sel_pick_options():
+    # Prefer Edge if EDGE=1 and Edge bits are available, else Chrome
+    use_edge = os.getenv("EDGE", "0") == "1" and EdgeOptions is not None
+    return ("edge" if use_edge else "chrome",
+            EdgeOptions if use_edge else ChromeOptions,
+            EdgeService if use_edge else ChromeService)
+
+def generate_veo_video_cdp(prompt_text: str) -> str:
+    """
+    Minimal CDP-assisted generator:
+    - Verifies a DevTools browser is listening (CHROME_CDP_HOST:CHROME_CDP_PORT; default 127.0.0.1:9222)
+    - Optionally opens FLOW_URL / VEO_URL as a new tab
+    - Watches OUTPUTS_DIR for a new .mp4 and returns its path
+    """
+    import os, time, json, urllib.request, urllib.error, urllib.parse, logging, pathlib
+    log = logging.getLogger("FantasyAI")
+
+    host = os.getenv("CHROME_CDP_HOST", "127.0.0.1")
+    port = int(os.getenv("CHROME_CDP_PORT", "9222"))
+    flow_url = os.getenv("FLOW_URL") or os.getenv("VEO_URL")
+    outputs_dir = pathlib.Path(os.getenv("OUTPUTS_DIR", "/mnt/c/Users/bgrut/Desktop/FantasyAI/outputs"))
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+
+    base = f"http://{host}:{port}"
+
+    # 1) Probe CDP
+    try:
+        with urllib.request.urlopen(f"{base}/json/version", timeout=3) as resp:
+            ver = json.loads(resp.read().decode("utf-8")).get("Browser", "<unknown>")
+        log.info("🎥 (CDP) Connected to %s at %s", ver, base)
+    except Exception as e:
+        raise RuntimeError(f"CDP not reachable at {base} (/json/version): {e}")
+
+    # 2) Try to open Flow/Veo project tab (non-fatal)
+    if flow_url:
+        try:
+            q = urllib.parse.quote(flow_url, safe="")
+            with urllib.request.urlopen(f"{base}/json/new?{q}", timeout=3) as _r:
+                _ = _r.read()
+            log.info("🎥 (CDP) Opened Flow/Veo tab via DevTools endpoint.")
+        except Exception:
+            log.info("🎥 (CDP) Flow tab open attempt skipped/failed (continuing).")
+
+    # 3) Poll filesystem for a new .mp4
+    log.info("Generation started; polling for .mp4 in %s …", outputs_dir)
+
+    baseline = {p.name for p in outputs_dir.glob("*.mp4")}
+    deadline = time.time() + float(os.getenv("GENERATION_TIMEOUT_SECS", "1200"))  # 20 min
+    poll_every = float(os.getenv("GENERATION_POLL_SECS", "3"))
+
+    newest = None
+    newest_mtime = 0.0
+
+    while time.time() < deadline:
+        for p in outputs_dir.glob("*.mp4"):
+            if p.name in baseline:
+                continue
+            try:
+                mt = p.stat().st_mtime
+            except FileNotFoundError:
+                continue
+            if mt > newest_mtime:
+                newest, newest_mtime = p, mt
+        if newest:
+            time.sleep(2)  # settle
+            log.info("Downloaded (by filesystem detection): %s", newest)
+            return str(newest)
+        time.sleep(poll_every)
+
+    raise TimeoutError(f"No new .mp4 detected under {outputs_dir} within timeout")

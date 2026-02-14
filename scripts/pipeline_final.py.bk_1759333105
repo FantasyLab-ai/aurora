@@ -1,0 +1,501 @@
+
+from __future__ import annotations
+
+def generate_veo_video_cdp(prompt_text: str) -> str:
+    """
+    Minimal CDP-assisted generator:
+    - Verifies a DevTools browser is listening (CHROME_CDP_HOST/PORT; defaults 127.0.0.1:9222)
+    - Opens FLOW_URL in that browser (so you can click Generate in Veo)
+    - Watches outputs/ for a new .mp4 and returns its path
+    """
+    import os
+    import time
+    import json
+    import logging
+    import pathlib
+    import urllib.request
+    import urllib.error
+    import urllib.parse
+
+    log = logging.getLogger("FantasyAI")
+
+    host = os.getenv("CHROME_CDP_HOST", "127.0.0.1")
+    port = int(os.getenv("CHROME_CDP_PORT", "9222"))
+    flow_url = os.getenv("FLOW_URL") or os.getenv("VEO_URL")
+    if not flow_url:
+        flow_url = "https://labs.google/fx/tools/flow/project/64e54c32-7a4f-45df-b68f-9154da2c4da9"
+
+    outputs_dir = pathlib.Path(os.getenv("OUTPUTS_DIR", "/mnt/c/Users/bgrut/Desktop/FantasyAI/outputs"))
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1) Verify DevTools is reachable
+    ver_url = f"http://{host}:{port}/json/version"
+    try:
+        with urllib.request.urlopen(ver_url, timeout=4) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+        log.info("🎥 (CDP) Connected to %s (webSocket=%s)", data.get("Browser", "Chromium"), data.get("webSocketDebuggerUrl"))
+    except Exception as e:
+        raise RuntimeError(f"CDP not reachable at {ver_url}: {e}")
+
+    # 2) Attempt to open your Flow/Veo project tab (non-fatal if it fails)
+    try:
+        new_url = f"http://{host}:{port}/json/new?" + urllib.parse.quote(flow_url, safe="")
+        with urllib.request.urlopen(new_url, timeout=4):
+            pass
+        log.info("🎥 (CDP) Opened Flow project tab via DevTools endpoint.")
+    except Exception:
+        log.info("🎥 (CDP) Flow tab open attempt skipped/failed (continuing).")
+
+    # 3) Poll for new .mp4s
+    log.info("Generation started; polling for .mp4 in %s …", outputs_dir)
+
+    baseline = {pth.name for pth in outputs_dir.glob("*.mp4")}
+    deadline = time.time() + float(os.getenv("GENERATION_TIMEOUT_SECS", "1200"))
+    poll_every = float(os.getenv("GENERATION_POLL_SECS", "3"))
+
+    newest = None
+    newest_mtime = 0.0
+
+    while time.time() < deadline:
+        for pth in outputs_dir.glob("*.mp4"):
+            if pth.name in baseline:
+                continue
+            try:
+                mt = pth.stat().st_mtime
+            except FileNotFoundError:
+                continue
+            if mt > newest_mtime:
+                newest = pth
+                newest_mtime = mt
+
+        if newest:
+            time.sleep(2)  # let the writer close the file
+            log.info("Downloaded (by filesystem detection): %s", newest)
+            return str(newest)
+
+        time.sleep(poll_every)
+
+    raise TimeoutError("No new .mp4 detected before timeout.")
+
+
+def generate_veo_video_cdp(prompt_text: str) -> str:
+    """
+    Minimal CDP-assisted generator:
+    - Verifies a DevTools browser is listening (CHROME_CDP_HOST/PORT; defaults 127.0.0.1:9222)
+    - Opens FLOW_URL in that browser (so you can click Generate in Veo)
+    - Watches outputs/ for a new .mp4 and returns its path
+    """
+    import os
+    import time
+    import json
+    import logging
+    import pathlib
+    import urllib.request
+    import urllib.error
+    import urllib.parse
+
+    log = logging.getLogger("FantasyAI")
+
+    host = os.getenv("CHROME_CDP_HOST", "127.0.0.1")
+    port = int(os.getenv("CHROME_CDP_PORT", "9222"))
+    flow_url = os.getenv("FLOW_URL") or os.getenv("VEO_URL")
+    if not flow_url:
+        flow_url = "https://labs.google/fx/tools/flow/project/64e54c32-7a4f-45df-b68f-9154da2c4da9"
+
+    outputs_dir = pathlib.Path(os.getenv("OUTPUTS_DIR", "/mnt/c/Users/bgrut/Desktop/FantasyAI/outputs"))
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+
+    ver_url = f"http://{host}:{port}/json/version"
+    try:
+        with urllib.request.urlopen(ver_url, timeout=4) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+        log.info("🎥 (CDP) Connected to %s (webSocket=%s)", data.get("Browser", "Chromium"), data.get("webSocketDebuggerUrl"))
+    except Exception as e:
+        raise RuntimeError(f"CDP not reachable at {ver_url}: {e}")
+
+    try:
+        new_url = f"http://{host}:{port}/json/new?" + urllib.parse.quote(flow_url, safe="")
+        with urllib.request.urlopen(new_url, timeout=4) as _:
+            pass
+        log.info("🎥 (CDP) Opened Flow project tab via DevTools endpoint.")
+    except Exception:
+        log.info("🎥 (CDP) Flow tab open attempt skipped/failed (continuing).")
+
+    log.info("Generation started; polling for .mp4 in %s …", outputs_dir)
+
+    baseline = {p.name for p in outputs_dir.glob("*.mp4")}
+    deadline = time.time() + float(os.getenv("GENERATION_TIMEOUT_SECS", "1200"))
+    poll_every = float(os.getenv("GENERATION_POLL_SECS", "3"))
+
+    newest = None
+    newest_mtime = 0.0
+
+    while time.time() < deadline:
+        for pth in outputs_dir.glob("*.mp4"):
+            if pth.name in baseline:
+                continue
+            try:
+                mt = pth.stat().st_mtime
+            except FileNotFoundError:
+                continue
+            if mt > newest_mtime:
+                newest = pth
+                newest_mtime = mt
+        if newest:
+            time.sleep(2)
+            log.info("Downloaded (by filesystem detection): %s", newest)
+            return str(newest)
+        time.sleep(poll_every)
+
+    raise TimeoutError("No new .mp4 detected before timeout.")
+
+
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+FantasyAI pipeline (clean build)
+- Trends (fallback if pytrends missing)
+- Prompt generation + scoring
+- Google Veo 3 automation:
+  * CDP-only: open your exact Flow project tab (no websocket deps)
+  * Optional Selenium attach: paste prompt into Veo input
+- Filesystem watcher: returns the newest .mp4 produced
+
+ENV you can set:
+  OUTPUTS_DIR (default: /mnt/c/Users/bgrut/Desktop/FantasyAI/outputs)
+  DISABLE_PYTRENDS=1 (skip Trends)
+  FLOW_URL / VEO_URL (must be your exact labs.google Flow project URL)
+  USE_CHROME_CDP=1 (prefer CDP path)
+  CHROME_CDP_HOST / CHROME_CDP_PORT (default: 127.0.0.1:9222)
+  SELENIUM_OK=1 (enable Selenium attach)
+  WEBDRIVER_REMOTE=http://<win-ip>:9515  (optional remote driver)
+  DEBUGGER_ADDR=<host:port> (Selenium: attach to the same DevTools browser)
+
+This file is deliberately dependency-light and defensive:
+- No websocket-client / pychrome
+- Selenium is optional and only if you explicitly enable it
+"""
+
+import os, json, time, logging, pathlib, random, urllib.request, urllib.error, urllib.parse
+from dataclasses import dataclass, asdict
+
+log = logging.getLogger("FantasyAI")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+# ---------- Config helpers ----------
+def env_bool(name: str, default: bool=False) -> bool:
+    v = os.getenv(name)
+    if v is None:
+        return default
+    return v.strip().lower() in ("1","true","yes","on")
+
+OUTPUTS_DIR = pathlib.Path(os.getenv("OUTPUTS_DIR", "/mnt/c/Users/bgrut/Desktop/FantasyAI/outputs"))
+OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+
+FLOW_URL = os.getenv("FLOW_URL") or os.getenv("VEO_URL") or ""
+if not FLOW_URL or "labs.google/fx/tools/flow/project/" not in FLOW_URL:
+    log.warning("FLOW_URL not set to a project URL; CDP open-step will be skipped (pasting still possible with Selenium).")
+
+CDP_ENABLED = env_bool("USE_CHROME_CDP", True)
+CDP_HOST = os.getenv("CHROME_CDP_HOST", "127.0.0.1")
+CDP_PORT = int(os.getenv("CHROME_CDP_PORT", "9222"))
+
+SELENIUM_ENABLED = env_bool("SELENIUM_OK", False)
+WEBDRIVER_REMOTE = os.getenv("WEBDRIVER_REMOTE", "").strip()
+DEBUGGER_ADDR = os.getenv("DEBUGGER_ADDR", "").strip()
+
+# ---------- Trends (very light) ----------
+def top_trends(n=5) -> list[str]:
+    if env_bool("DISABLE_PYTRENDS", False):
+        return [
+            "wildlife conservationist placing baby owls back in their burrow",
+            "pallas's cat first photo",
+            "wildlife trafficking penalties debate",
+            "arunachal pradesh rare cat",
+            "birthday cake in the woods"
+        ][:n]
+    try:
+        from pytrends.request import TrendReq
+        t = TrendReq(hl='en-US', tz=360)
+        kw = ["wildlife rescue", "owl rescue", "nature cinematic", "animal POV", "forest macro shot"]
+        t.build_payload(kw, timeframe="now 7-d", geo="")
+        today = t.trending_searches(pn="united_states").iloc[:n,0].tolist()
+        return today or kw[:n]
+    except Exception as e:
+        log.warning("pytrends failed: %s", e)
+        return [
+            "wildlife conservationist placing baby owls back in their burrow",
+            "owl rescue POV cinematic",
+            "nature macro emotional reveal",
+            "gentle hands close-up wildlife",
+            "forest dawn color grade"
+        ][:n]
+
+# ---------- Prompt model ----------
+@dataclass
+class Prompt:
+    topic: str
+    script: str
+    style: str
+    title: str
+    tags: list[str]
+
+def build_prompt(topic: str) -> Prompt:
+    trend_kw = random.choice(top_trends(5))
+    script = (
+        "A wildlife conservationist carefully returns baby owls to their burrow; "
+        "close-up, gentle hands, hopeful tone. Cutaways of the nest and forest floor; "
+        "ambient audio, soft rustle."
+    )
+    style = "cinematic, 9:16, 40s, shallow depth of field, natural light"
+    title = "POV: owl rescue"
+    tags = ["wildlife", "rescue", "owls", trend_kw]
+    return Prompt(topic=topic, script=script, style=style, title=title, tags=tags)
+
+def score_prompt(p: Prompt) -> float:
+    # Tiny heuristic scorer
+    s = 0.0
+    s += 0.3 if "cinematic" in p.style.lower() else 0.0
+    s += 0.2 if "9:16" in p.style else 0.0
+    s += 0.2 if any(t in ("wildlife","owls","rescue") for t in p.tags) else 0.0
+    s += min(len(p.script), 300) / 1500.0
+    return round(s, 3)
+
+# ---------- I/O helpers ----------
+def save_prompt_json(p: Prompt) -> pathlib.Path:
+    data_dir = OUTPUTS_DIR.parent / "data" / "prompts"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    path = data_dir / f"prompt_{ts}.json"
+    path.write_text(json.dumps(asdict(p), ensure_ascii=False, indent=2), encoding="utf-8")
+    log.info("📝 Saved prompt JSON → %s", path)
+    return path
+
+# ---------- CDP utilities (HTTP endpoints only) ----------
+def cdp_json(path: str, timeout=2.0) -> dict | None:
+    url = f"http://{CDP_HOST}:{CDP_PORT}{path}"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8", "replace"))
+    except Exception as e:
+        log.warning("CDP call failed %s : %s", url, e)
+        return None
+
+def cdp_is_up() -> bool:
+    info = cdp_json("/json/version")
+    if not info:
+        return False
+    log.info("🎥 (CDP) %s @ %s", info.get("Browser","<unknown>"), info.get("webSocketDebuggerUrl","<no-ws>"))
+    return True
+
+def cdp_open_flow_tab(flow_url: str) -> None:
+    if not flow_url:
+        return
+    enc = urllib.parse.quote(flow_url, safe="")
+    # Create a new tab with the Flow project
+    newtab = cdp_json(f"/json/new?{enc}")
+    if newtab and newtab.get("id"):
+        # Make it front-most if possible
+        _ = cdp_json(f"/json/activate/{newtab['id']}")
+        log.info("🎥 Opened Flow project tab via DevTools endpoint.")
+    else:
+        log.info("🎥 Flow tab open attempt skipped/failed (continuing).")
+
+# ---------- Selenium (optional, only if you enable it) ----------
+def selenium_paste_prompt(prompt_text: str) -> None:
+    if not SELENIUM_ENABLED:
+        return
+    try:
+        # Lazy import to avoid hard dependency
+        from selenium.webdriver import Chrome as Driver
+        from selenium.webdriver.chrome.service import Service
+        from selenium.webdriver.chrome.options import Options
+        opts = Options()
+        if DEBUGGER_ADDR:
+            opts.debugger_address = DEBUGGER_ADDR
+        drv: Driver
+        if WEBDRIVER_REMOTE:
+            from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
+            caps = DesiredCapabilities.CHROME.copy()
+            drv = Driver(command_executor=WEBDRIVER_REMOTE, options=opts, desired_capabilities=caps)
+        else:
+            drv = Driver(service=Service(), options=opts)
+
+        # Try to focus a likely text input / contenteditable and paste
+        drv.switch_to.window(drv.current_window_handle)
+        drv.implicitly_wait(2)
+
+        js_focus = r"""
+          (() => {
+            function visible(el){
+              const r = el.getBoundingClientRect();
+              return r.width>20 && r.height>20;
+            }
+            const sels = ['textarea','input[type="text"]','[contenteditable="true"]','[role="textbox"]'];
+            for(const sel of sels){
+              const el = document.querySelector(sel);
+              if(el && visible(el)){ el.focus(); return true; }
+            }
+            for(const f of document.querySelectorAll('iframe')){
+              try{
+                const doc = f.contentDocument;
+                if(!doc) continue;
+                for(const sel of sels){
+                  const el = doc.querySelector(sel);
+                  if(el && visible(el)){ el.focus(); return true; }
+                }
+              }catch(e){}
+            }
+            return false;
+          })();
+        """
+        focused = drv.execute_script(js_focus)
+        if not focused:
+            log.warning("Could not auto-focus a text field; paste manually if needed.")
+        # Set the text
+        js_set = "(() => { const el = document.activeElement; if(!el) return false; if (el.isContentEditable){ el.textContent = arguments[0]; } else { el.value = arguments[0]; } el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); return true; })();"
+        ok = drv.execute_script(js_set, prompt_text)
+        if ok:
+            log.info("🧷 Prompt pasted into the active field.")
+        else:
+            log.warning("Prompt paste script returned false; paste manually.")
+
+    except Exception as e:
+        log.warning("Selenium attach/paste failed: %s", e)
+
+# ---------- Filesystem watcher ----------
+def wait_for_new_mp4(timeout_secs=1200, poll_secs=3.0) -> str | None:
+    baseline = {p.name for p in OUTPUTS_DIR.glob("*.mp4")}
+    deadline = time.time() + float(timeout_secs)
+    newest = None
+    newest_mtime = 0.0
+    log.info("Generation started; polling for .mp4 in %s …", OUTPUTS_DIR)
+    while time.time() < deadline:
+        for p in OUTPUTS_DIR.glob("*.mp4"):
+            if p.name in baseline:
+                continue
+            try:
+                mt = p.stat().st_mtime
+            except FileNotFoundError:
+                continue
+            if mt > newest_mtime:
+                newest, newest_mtime = p, mt
+        if newest:
+            time.sleep(2)  # let writer close
+            log.info("Video generated → %s", newest)
+            return str(newest)
+        time.sleep(poll_secs)
+    log.warning("No new .mp4 detected before timeout.")
+    return None
+
+# ---------- Public entry points ----------
+def generate_veo_video(prompt: Prompt) -> dict:
+    prompt_text = json.dumps(asdict(prompt), ensure_ascii=False)
+    # 1) Try CDP open-tab (if enabled and reachable)
+    if CDP_ENABLED:
+        if cdp_is_up():
+            if FLOW_URL:
+                cdp_open_flow_tab(FLOW_URL)
+        else:
+            log.warning("CDP not reachable on %s:%s; start Chrome/Edge with --remote-debugging-port=%s", CDP_HOST, CDP_PORT, CDP_PORT)
+
+    # 2) Optional Selenium paste (only if you turn it on & driver reachable)
+    if SELENIUM_ENABLED:
+        selenium_paste_prompt(prompt_text)
+
+    # 3) Poll for resulting mp4
+    mp4 = wait_for_new_mp4()
+    return {"mp4": mp4, "prompt": asdict(prompt)}
+
+def main():
+    topic = "wildlife"
+    # Create a few candidates & pick the best
+    cands = [build_prompt(topic) for _ in range(3)]
+    scored = [(score_prompt(p), p) for p in cands]
+    scored.sort(key=lambda x: x[0], reverse=True)
+    best_score, best = scored[0]
+    log.info("🏅 Best prompt score=%s (of %d candidates)", best_score, len(cands))
+    save_prompt_json(best)
+    result = generate_veo_video(best)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+if __name__ == "__main__":
+    main()
+
+def generate_veo_video_cdp(prompt_text: str) -> str:
+    """
+    Minimal CDP-assisted generator:
+    - Verifies a DevTools browser is listening (CHROME_CDP_HOST/PORT; defaults 127.0.0.1:9222)
+    - Opens FLOW_URL in that browser (so you can click Generate in Veo)
+    - Watches outputs/ for a new .mp4 and returns its path
+    """
+    import os
+    import time
+    import json
+    import logging
+    import pathlib
+    import urllib.request
+    import urllib.error
+    import urllib.parse
+
+    log = logging.getLogger("FantasyAI")
+
+    host = os.getenv("CHROME_CDP_HOST", "127.0.0.1")
+    port = int(os.getenv("CHROME_CDP_PORT", "9222"))
+    flow_url = os.getenv("FLOW_URL") or os.getenv("VEO_URL")
+    if not flow_url:
+        flow_url = "https://labs.google/fx/tools/flow/project/64e54c32-7a4f-45df-b68f-9154da2c4da9"
+
+    outputs_dir = pathlib.Path(os.getenv("OUTPUTS_DIR", "/mnt/c/Users/bgrut/Desktop/FantasyAI/outputs"))
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1) Verify DevTools is reachable
+    ver_url = f"http://{host}:{port}/json/version"
+    try:
+        with urllib.request.urlopen(ver_url, timeout=4) as resp:
+            data = json.loads(resp.read().decode("utf-8", errors="replace"))
+        log.info("🎥 (CDP) Connected to %s (webSocket=%s)", data.get("Browser", "Chromium"), data.get("webSocketDebuggerUrl"))
+    except Exception as e:
+        raise RuntimeError(f"CDP not reachable at {ver_url}: {e}")
+
+    # 2) Attempt to open your Flow/Veo project tab (non-fatal if it fails)
+    try:
+        new_url = f"http://{host}:{port}/json/new?" + urllib.parse.quote(flow_url, safe="")
+        with urllib.request.urlopen(new_url, timeout=4):
+            pass
+        log.info("🎥 (CDP) Opened Flow project tab via DevTools endpoint.")
+    except Exception:
+        log.info("🎥 (CDP) Flow tab open attempt skipped/failed (continuing).")
+
+    # 3) Poll for new .mp4s
+    log.info("Generation started; polling for .mp4 in %s …", outputs_dir)
+
+    baseline = {pth.name for pth in outputs_dir.glob("*.mp4")}
+    deadline = time.time() + float(os.getenv("GENERATION_TIMEOUT_SECS", "1200"))
+    poll_every = float(os.getenv("GENERATION_POLL_SECS", "3"))
+
+    newest = None
+    newest_mtime = 0.0
+
+    while time.time() < deadline:
+        for pth in outputs_dir.glob("*.mp4"):
+            if pth.name in baseline:
+                continue
+            try:
+                mt = pth.stat().st_mtime
+            except FileNotFoundError:
+                continue
+            if mt > newest_mtime:
+                newest = pth
+                newest_mtime = mt
+
+        if newest:
+            time.sleep(2)  # let the writer close the file
+            log.info("Downloaded (by filesystem detection): %s", newest)
+            return str(newest)
+
+        time.sleep(poll_every)
+
+    raise TimeoutError("No new .mp4 detected before timeout.")
+

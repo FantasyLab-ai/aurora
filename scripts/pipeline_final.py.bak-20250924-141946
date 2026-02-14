@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+FantasyAI pipeline with STRUCTURED prompt builder for Google Veo 3
++ PromptScorer (RandomForest) + Google Trends integration.
+
+- Structured PromptGeneratorStructured outputs: 🎬, 📍, 🧍, 🎤, 🎥, 🎭 sections
+- Saves each prompt as JSON in data/prompts/YYYYmmdd_HHMMSS.json
+- Attaches to your logged-in Chromium session via --remote-debugging-port=9222
+- Uses CDP Input.insertText to support emojis (fixes BMP error)
+- Leaves your Veo tab open (no driver.close on attach flow)
+- Tries live trends via pytrends (Google Trends). Falls back to static lists offline.
+- Generates multiple prompt candidates, scores them, and picks the best.
+"""
+
+import os
+import re
+import json
+import time
+import logging
+import requests
+import subprocess
+import random
+from hook_agent import make_hook, inject_hook
+from prompt_agent import generate_candidates as PA_generate
+import numpy as np
+from datetime import datetime, timedelta
+import threading
+from dataclasses import dataclass
+# --- CDP / WebSocket ---
+import base64
+import queue
+import urllib.parse
+import websocket  # pip install websocket-client
+
+# ML / data
+import pandas as pd
+USE_LIGHT_MODE = os.getenv("FA_SAFE_MODE", "0") == "1"
+if not USE_LIGHT_MODE:
+    try:
+        from sklearn.cluster import KMeans
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sentence_transformers import SentenceTransformer
+    except Exception as _e:
+        logging.warning("Heavy ML imports failed (%s). Falling back to light mode.", _e)
+        USE_LIGHT_MODE = True
+        KMeans = None; TfidfVectorizer = None; SentenceTransformer = None
+else:
+    KMeans = None; TfidfVectorizer = None; SentenceTransformer = None
+
+
+import joblib
+from trend_agent import TrendAgent
+
+if __name__ == "__main__":
+    import logging
+    logging.getLogger("FantasyAI").setLevel(logging.INFO)
+    FantasyAIPipeline().run()

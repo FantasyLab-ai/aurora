@@ -1,0 +1,24 @@
+import json, os
+from pathlib import Path
+
+def _read_json(path: str):
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(path)
+    return json.loads(p.read_text(encoding="utf-8"))
+
+def load_tiktok_creds():
+    path = os.getenv("TIKTOK_CREDS_JSON", "/mnt/data/tiktok_creds.json")
+    j = _read_json(path)
+    return {
+        "client_key": j.get("client_key"),
+        "client_secret": j.get("client_secret"),
+        "access_token": j.get("access_token"),
+    }
+
+def load_youtube_creds():
+    # In production this is normally OAuth tokens/credentials, not the discovery doc.
+    # For smoke tests we just confirm the file is readable.
+    path = os.getenv("YT_CREDS_JSON", "/mnt/data/youtube.v3.json")
+    j = _read_json(path)
+    return {"_loaded": bool(j), "path": path}

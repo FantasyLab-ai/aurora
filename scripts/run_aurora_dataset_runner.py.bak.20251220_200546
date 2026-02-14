@@ -1,0 +1,427 @@
+from __future__ import annotations
+
+import argparse
+import json
+
+TABLE_EXTS = {'.csv', '.tsv', '.txt'}
+
+import random
+import time
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import pandas as pd
+
+from fantasyai.aurora.math import deep_math
+
+from fantasyai.aurora.mathstack_v2 import compute_math_stack_v2
+
+ROOT = Path(__file__).resolve().parents[1]
+REG_PATH = ROOT / "fantasyai" / "aurora" / "datasets" / "registry.json"
+RUNS_ROOT = ROOT / "outputs" / "aurora_dataset_runs"
+
+BAD_NAME_HINTS = [
+    "readme", "license", "sha", "checksum", "codebook", "mapping", "ids_mapping", "id_mapping",
+    "variables", "metadata", "schema", "dictionary", "lookuptable"
+]
+
+GOOD_NAME_HINTS = [
+    "data", "train", "patients", "visits", "claims", "rx", "prescriptions", "events", "records",
+    "diabetic_data", "observations"
+]
+
+MIN_BYTES = 1024  # 1 KB  # 8 KB
+
+
+def _load_registry() -> Dict[str, Any]:
+    if not REG_PATH.exists():
+        raise FileNotFoundError(f"Missing registry: {REG_PATH}")
+    raw = REG_PATH.read_text(encoding="utf-8-sig")  # handles BOM safely
+    reg = json.loads(raw)
+    if "base_dir" not in reg or "datasets" not in reg:
+        raise ValueError("Registry must contain keys: base_dir, datasets")
+    return reg
+
+
+def _iter_tables(folder: Path) -> List[Path]:
+    exts = {".csv", ".tsv", ".txt", ".gz", ".parquet", ".json"}
+    out: List[Path] = []
+    for p in folder.rglob("*"):
+        if not p.is_file():
+            continue
+        name = p.name.lower()
+        if p.suffix.lower() in exts or name.endswith(".csv.gz"):
+            out.append(p)
+    return out
+
+
+def _name_score(p: Path) -> int:
+    n = p.name.lower()
+    score = 0
+    for h in BAD_NAME_HINTS:
+        if h in n:
+            score -= 50
+    for h in GOOD_NAME_HINTS:
+        if h in n:
+            score += 10
+    try:
+        score += int(min(p.stat().st_size / 1_000_000, 200))  # +1 per MB, capped
+    except Exception:
+        pass
+    return score
+
+
+def _looks_like_html(p: Path) -> bool:
+    try:
+        if p.stat().st_size > 256 * 1024:
+            return False
+        head = p.read_bytes()[:256].lstrip()
+        return head.startswith(b"<html") or b"404 Not Found" in head or b"nginx" in head
+    except Exception:
+        return False
+
+
+def _read_sample(p: Path, nrows: int = 2000) -> pd.DataFrame:
+    lower = p.name.lower()
+
+    try:
+        if p.stat().st_size < MIN_BYTES:
+            raise ValueError(f"too_small:{p.stat().st_size}")
+    except Exception:
+        pass
+
+    if _looks_like_html(p):
+        raise ValueError("looks_like_html")
+
+    if lower.endswith(".csv") or lower.endswith(".csv.gz") or lower.endswith(".gz"):
+        try:
+            return pd.read_csv(
+                p,
+                nrows=nrows,
+                compression="infer",
+                engine="c",
+                on_bad_lines="skip",
+            )
+        except Exception:
+            return pd.read_csv(
+                p,
+                nrows=nrows,
+                compression="infer",
+                engine="python",
+                on_bad_lines="skip",
+            )
+
+    if lower.endswith(".parquet"):
+        return pd.read_parquet(p)
+
+    if lower.endswith(".json"):
+        try:
+            return pd.read_json(p, lines=True)
+        except Exception:
+            return pd.read_json(p)
+
+    raise ValueError(f"Unsupported table type: {p}")
+
+
+def _has_multiple_columns(df: pd.DataFrame, min_cols: int = 2) -> bool:
+    return df is not None and hasattr(df, "shape") and df.shape[1] >= min_cols
+
+
+def pick_best_table(folder: Path, rng: random.Random) -> Path:
+    tables = _iter_tables(folder)
+    if not tables:
+        raise FileNotFoundError(f"No tables found under: {folder}")
+
+    filtered: List[Path] = []
+    for p in tables:
+        try:
+            if p.stat().st_size < MIN_BYTES:
+                continue
+        except Exception:
+            continue
+        if _looks_like_html(p):
+            continue
+        filtered.append(p)
+
+    if not filtered:
+        raise FileNotFoundError("Found tables, but none passed size/content sanity checks.")
+
+    scored = sorted(filtered, key=_name_score, reverse=True)
+
+    for p in scored[:25]:
+        try:
+            df = _read_sample(p, nrows=300)
+            if _has_multiple_columns(df, 3):
+                return p
+        except Exception:
+            continue
+
+    shuffled = filtered[:]
+    rng.shuffle(shuffled)
+    for p in shuffled:
+        try:
+            df = _read_sample(p, nrows=300)
+            if _has_multiple_columns(df, 3):
+                return p
+        except Exception:
+            continue
+
+    raise FileNotFoundError("Found tables, but none look like usable multi-column data.")
+
+
+def _infer_target(df: pd.DataFrame) -> Optional[str]:
+    cols = [c for c in df.columns if isinstance(c, str)]
+    if not cols:
+        return None
+    candidates: List[str] = []
+    for c in cols:
+        lc = c.lower()
+        if lc in ("target", "label", "outcome", "y"):
+            candidates.append(c)
+        if "readmit" in lc or "readmitted" in lc:
+            candidates.append(c)
+        if lc == "class" or lc.endswith("_class"):
+            candidates.append(c)
+        if "death" in lc or "mort" in lc:
+            candidates.append(c)
+    return candidates[0] if candidates else None
+
+
+def _profile(df: pd.DataFrame) -> Dict[str, Any]:
+    n_rows, n_cols = df.shape
+    types = {str(c): str(t) for c, t in df.dtypes.items()}
+    missing = (df.isna().mean() * 100.0).sort_values(ascending=False).head(20)
+    return {
+        "rows": int(n_rows),
+        "cols": int(n_cols),
+        "dtypes": types,
+        "top_missing_pct": {str(k): float(v) for k, v in missing.items()},
+    }
+
+
+def _numeric_corr(df: pd.DataFrame) -> Dict[str, Any]:
+    num = df.select_dtypes(include=["number"])
+    if num.shape[1] < 2:
+        return {"note": "not_enough_numeric_columns"}
+    corr = num.corr(numeric_only=True).fillna(0.0)
+    pairs: List[Tuple[str, str, float]] = []
+    cols = list(corr.columns)
+    for i in range(len(cols)):
+        for j in range(i + 1, len(cols)):
+            v = float(corr.iloc[i, j])
+            pairs.append((cols[i], cols[j], v))
+    pairs.sort(key=lambda x: abs(x[2]), reverse=True)
+    top = pairs[:15]
+    return {"top_pairs": [{"a": a, "b": b, "corr": v} for a, b, v in top]}
+
+
+def _math_stack(df: pd.DataFrame) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    out["profile"] = _profile(df)
+    out["correlations"] = _numeric_corr(df)
+
+    num = df.select_dtypes(include=["number"])
+    if num.shape[1] > 0:
+        out["numeric_describe"] = num.describe().to_dict()
+
+    anomalies: List[Dict[str, Any]] = []
+    if num.shape[1] > 0 and len(df) >= 50:
+        for c in num.columns[:20]:
+            s = num[c].dropna()
+            if len(s) < 50:
+                continue
+            med = float(s.median())
+            mad = float((s - med).abs().median()) or 0.0
+            if mad == 0.0:
+                continue
+            rz = (s - med) / (1.4826 * mad)
+            idx = rz.abs().sort_values(ascending=False).head(5).index.tolist()
+            anomalies.append({"col": str(c), "top_idx": [int(i) for i in idx]})
+    out["anomalies"] = anomalies[:10]
+
+    out["target_guess"] = _infer_target(df)
+    return out
+out
+
+
+def _build_storycard(dataset_key: str, table: Path, math: Dict[str, Any]) -> Dict[str, Any]:
+    prof = math.get("profile", {})
+    corr = math.get("correlations", {})
+    return {
+        "dataset_key": dataset_key,
+        "table": str(table),
+        "summary": {
+            "rows": prof.get("rows"),
+            "cols": prof.get("cols"),
+            "target_guess": math.get("target_guess"),
+        },
+        "signals": {
+            "top_missing_pct": prof.get("top_missing_pct", {}),
+            "top_numeric_corr": corr.get("top_pairs", []) if isinstance(corr, dict) else [],
+        },
+        "anomalies": math.get("anomalies", []),
+        "next_actions": [
+            "Confirm target column (or choose one) and run supervised baselines.",
+            "If time column exists, run time-series regime + forecast residual anomalies.",
+            "Encode categoricals and compute feature importance.",
+            "Segment (clustering) and compare subgroup outcome distributions.",
+            "Run stability checks (missingness drift, distribution shift).",
+        ],
+    }
+
+
+def _pick_dataset_and_table(
+    enabled: Dict[str, Any],
+    base: Path,
+    want: str,
+    rng: random.Random,
+) -> Tuple[str, Path, Path]:
+    if want.upper() == "RANDOM":
+        keys = sorted(enabled.keys())
+        rng.shuffle(keys)
+        last_err: Optional[str] = None
+        for k in keys:
+            folder = base / enabled[k]["path"]
+            if not folder.exists():
+                last_err = f"{k}:missing_folder"
+                continue
+            try:
+                table = pick_best_table(folder, rng)
+                return k, folder, table
+            except Exception as e:
+                last_err = f"{k}:{type(e).__name__}:{e}"
+                continue
+        raise FileNotFoundError(f"RANDOM failed: no usable dataset/table found. last={last_err}")
+
+    if want not in enabled:
+        raise KeyError(f"Unknown dataset key: {want}")
+    folder = base / enabled[want]["path"]
+    if not folder.exists():
+        raise FileNotFoundError(f"Dataset folder missing: {folder}")
+    table = pick_best_table(folder, rng)
+    return want, folder, table
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dataset", required=True, help="dataset key or RANDOM")
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--also-math", action="store_true")
+    ap.add_argument("--also-llm", action="store_true")
+    ap.add_argument("--math-v2", action="store_true", help="use deeper MathStackV2")
+    ap.add_argument("--deep-math", action="store_true", help="alias for --math-v2 plus optional deep_math extras")
+    args = ap.parse_args()
+
+    reg = _load_registry()
+    base = ROOT / reg["base_dir"]
+    datasets = reg["datasets"]
+
+    rng = random.Random(args.seed)
+
+    enabled = {k: v for k, v in datasets.items() if v.get("enabled", False)}
+    if not enabled:
+        raise FileNotFoundError("No enabled datasets in registry.json")
+
+    ds_key, folder, table = _pick_dataset_and_table(enabled, base, args.dataset, rng)
+
+    run_dir = RUNS_ROOT / f"{time.strftime('%Y%m%d_%H%M%S')}__{ds_key}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    (run_dir / "tableselection.json").write_text(
+        json.dumps({"dataset_key": ds_key, "folder": str(folder), "table": str(table), "seed": args.seed}, indent=2),
+        encoding="utf-8",
+    )
+
+    math_results: Dict[str, Any] = {}
+    if args.also_math:
+        df = _read_sample(table, nrows=2000)
+
+        # Choose math engine
+        use_v2 = bool(getattr(args, "math_v2", False) or getattr(args, "deep_math", False))
+
+        if use_v2:
+            try:
+                math_results = compute_math_stack_v2(df)
+            except Exception as e:
+                math_results = {"error": f"mathstack_v2_failed:{type(e).__name__}:{e}"}
+        else:
+            math_results = _math_stack(df)
+
+        (run_dir / "math_results.json").write_text(json.dumps(math_results, indent=2), encoding="utf-8")
+
+        # Optional deep-math extras (won't crash if deep_math has no expected function)
+        if getattr(args, "deep_math", False):
+            deep_out = {}
+            try:
+                # Try common callable names without assuming one exists
+                if hasattr(deep_math, "compute"):
+                    deep_out = deep_math.compute(df)  # type: ignore[attr-defined]
+                elif hasattr(deep_math, "run"):
+                    deep_out = deep_math.run(df)      # type: ignore[attr-defined]
+                elif hasattr(deep_math, "analyze"):
+                    deep_out = deep_math.analyze(df)  # type: ignore[attr-defined]
+                else:
+                    deep_out = {"note": "deep_math module present but no known entrypoint found (compute/run/analyze)."}
+            except Exception as e:
+                deep_out = {"error": f"deep_math_failed:{type(e).__name__}:{e}"}
+
+            (run_dir / "deep_math.json").write_text(json.dumps(deep_out, indent=2), encoding="utf-8")
+            # Attach a pointer so LLM/storycard can reference it
+            math_results["_deep_math_file"] = "deep_math.json"
+
+        storycard = _build_storycard(ds_key, table, math_results)
+    else:
+        storycard = {"dataset_key": ds_key, "table": str(table), "note": "Run with --also-math."}
+
+    llm_used = False
+    if args.also_llm:
+        try:
+            from fantasyai.aurora.narratives.llm_narrative import generate_narrative
+            res = generate_narrative(storycard)
+            llm_used = bool(getattr(res, "used", False) and getattr(res, "text", ""))
+            (run_dir / "llm_debug.json").write_text(
+                json.dumps(
+                    {
+                        "used": getattr(res, "used", False),
+                        "provider": getattr(res, "provider", None),
+                        "model": getattr(res, "model", None),
+                        "seconds": getattr(res, "seconds", None),
+                        "error": getattr(res, "error", None),
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            if getattr(res, "text", ""):
+                storycard["llm_summary"] = res.text
+                (run_dir / "llm_narrative.json").write_text(json.dumps({"text": res.text}, indent=2), encoding="utf-8")
+        except Exception as e:
+            (run_dir / "llm_debug.json").write_text(json.dumps({"used": False, "error": str(e)}, indent=2), encoding="utf-8")
+
+    try:
+        ln = run_dir / "llm_narrative.json"
+        if ln.exists():
+            storycard["llm_narrative"] = __import__("json").loads(ln.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+
+    (run_dir / "storycard.json").write_text(json.dumps(storycard, indent=2), encoding="utf-8")
+
+    print(
+        json.dumps(
+            {
+                "dataset_key": ds_key,
+                "folder": str(folder),
+                "table": str(table),
+                "seed": args.seed,
+                "run_dir": str(run_dir),
+                "math_stack": str(run_dir) if args.also_math else None,
+                "llm_used": llm_used,
+            },
+            indent=2,
+        )
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,76 @@
+from __future__ import annotations
+
+from typing import Any, Dict
+import numpy as np
+
+
+def fit_linear_ode(y: np.ndarray, dt: float) -> Dict[str, Any]:
+    y = y.astype(float)
+    m = np.isfinite(y)
+    y = y[m]
+    if y.size < 300:
+        return {"note": "skipped", "error": "not_enough_samples"}
+
+    dy = np.gradient(y, dt)
+    X = np.column_stack([y, np.ones_like(y)])
+    beta, *_ = np.linalg.lstsq(X, dy, rcond=None)
+    a, b = float(beta[0]), float(beta[1])
+    pred = a * y + b
+    resid = dy - pred
+    rmse = float(np.sqrt(np.mean(resid**2)))
+    return {"note": "ok", "model": "dy=a*y+b", "a": a, "b": b, "rmse": rmse}
+
+
+def fit_logistic(y: np.ndarray, dt: float) -> Dict[str, Any]:
+    """
+    Fit dy/dt = r*y*(1 - y/K)
+    We linearize in dy/y = r - (r/K)*y for y>0.
+    """
+    y = y.astype(float)
+    m = np.isfinite(y) & (y > 0)
+    y = y[m]
+    if y.size < 300:
+        return {"note": "skipped", "error": "not_enough_positive_samples"}
+
+    dy = np.gradient(y, dt)
+    z = dy / (y + 1e-12)
+    X = np.column_stack([np.ones_like(y), y])
+    beta, *_ = np.linalg.lstsq(X, z, rcond=None)
+    r = float(beta[0])
+    slope = float(beta[1])
+    K = float(-r / (slope + 1e-12)) if abs(slope) > 1e-12 else np.nan
+
+    pred = (r - (r / (K + 1e-12)) * y)
+    resid = z - pred
+    rmse = float(np.sqrt(np.mean(resid**2)))
+    return {"note": "ok", "model": "logistic", "r": r, "K": K, "rmse": rmse}
+
+
+def fit_damped_oscillator(y: np.ndarray, dt: float) -> Dict[str, Any]:
+    """
+    Approximate a damped oscillator:
+      y'' + 2ζω y' + ω^2 y = 0
+    Discretize by finite differences and solve least squares for parameters.
+    """
+    y = y.astype(float)
+    m = np.isfinite(y)
+    y = y[m]
+    if y.size < 400:
+        return {"note": "skipped", "error": "not_enough_samples"}
+
+    y1 = np.gradient(y, dt)
+    y2 = np.gradient(y1, dt)
+
+    # y2 = -c1*y1 - c2*y
+    X = np.column_stack([-y1, -y])
+    beta, *_ = np.linalg.lstsq(X, y2, rcond=None)
+    c1, c2 = float(beta[0]), float(beta[1])
+
+    # map to oscillator parameters
+    omega = float(np.sqrt(max(c2, 0.0)))
+    zeta = float(c1 / (2.0 * omega + 1e-12)) if omega > 1e-12 else np.nan
+
+    pred = (-c1 * y1 - c2 * y)
+    resid = y2 - pred
+    rmse = float(np.sqrt(np.mean(resid**2)))
+    return {"note": "ok", "model": "damped_oscillator", "c1": c1, "c2": c2, "omega": omega, "zeta": zeta, "rmse": rmse}

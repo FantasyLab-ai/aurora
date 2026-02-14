@@ -1,0 +1,29 @@
+--- pipeline.py
++++ pipeline.py
+@@ -580,7 +580,7 @@
+         # Use enhanced bank if available for the tone, otherwise use regular dialogue generation
+         current_bank = enhanced_bank.get(scene.tone, [])
+         
+-        # Add some raw reactions
++        # Add some raw reactions
+         raw_reactions = [
+             "The fuck?",
+             "No goddamn way...",
+@@ -590,7 +590,7 @@
+         ]
+         
+         lines, last = [], None
+-        for _ in range(random.randint(3, 5)):
++        for _ in range(random.randint(3, 5)):
+             if current_bank:
+                 # Use enhanced bank if available
+                 spk, text = random.choice(current_bank)
+@@ -623,7 +623,7 @@
+                 text += f" {random.choice(raw_reactions)}"
+                 
+             icon = "🧍‍♂️" if spk == "Yeti" else "🐈" if spk == "Kitty" else "🐻"
+-            lines.append(f"{icon} {spk}: {text}")
++            lines.append(f"{icon} {spk}: {text}")
+         
+         dialogue_blocks = "\n\n".join(lines)
+         

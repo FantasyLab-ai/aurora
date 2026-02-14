@@ -1,0 +1,58 @@
+﻿from __future__ import annotations
+
+from typing import Any, Dict, Optional
+import numpy as np
+import pandas as pd
+
+from .physics import _infer_time_col, _get_time_series, _robust_dt_seconds
+from .physics_models import fit_linear_ode, fit_logistic, fit_damped_oscillator
+
+
+def physics_discovery(
+    df: pd.DataFrame,
+    target_col: str,
+    time_col: Optional[str] = None,
+    seed: int = 0,
+) -> Dict[str, Any]:
+    """
+    Try multiple simple dynamical hypotheses and rank by RMSE.
+    Safe: never raises.
+    """
+    try:
+        tc = time_col or _infer_time_col(df)
+        t_arr, used_time = _get_time_series(df, tc) if tc is not None else (None, None)
+
+        y = pd.to_numeric(df[target_col], errors="coerce").replace([np.inf, -np.inf], np.nan).values.astype(float)
+
+        if t_arr is None:
+            dt = 1.0
+            time_axis = "index"
+        else:
+            dt = _robust_dt_seconds(t_arr) or 1.0
+            time_axis = "datetime" if dt != 1.0 else "datetime_unusable_fallback_dt1"
+
+        candidates = []
+        candidates.append(fit_linear_ode(y, dt))
+        candidates.append(fit_logistic(y, dt))
+        candidates.append(fit_damped_oscillator(y, dt))
+
+        # pick best by rmse
+        scored = []
+        for c in candidates:
+            rmse = c.get("rmse", np.inf)
+            scored.append((rmse if np.isfinite(rmse) else np.inf, c))
+        scored.sort(key=lambda t: t[0])
+
+        best = scored[0][1] if scored else {"note": "failed", "error": "no_candidates"}
+
+        return {
+            "note": "ok",
+            "error": None,
+            "time_axis": time_axis,
+            "dt_seconds": float(dt),
+            "time_col": used_time,
+            "best_model": best,
+            "all_models": [s[1] for s in scored],
+        }
+    except Exception as e:
+        return {"note": "failed", "error": f"physics_discovery_failed:{type(e).__name__}:{e}"}

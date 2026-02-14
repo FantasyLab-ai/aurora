@@ -1,0 +1,112 @@
+﻿import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+
+def _run(cmd: list[str]) -> dict:
+    p = subprocess.run(cmd, capture_output=True, text=True)
+    return {
+        "cmd": cmd,
+        "ok": p.returncode == 0,
+        "returncode": p.returncode,
+        "stdout": p.stdout or "",
+        "stderr": p.stderr or "",
+    }
+
+
+def _extract_last_json(stdout_text: str) -> Optional[Dict[str, Any]]:
+    s = (stdout_text or "").strip()
+    if not s:
+        return None
+    a = s.rfind("{")
+    b = s.rfind("}")
+    if a == -1 or b == -1 or b <= a:
+        return None
+    try:
+        return json.loads(s[a : b + 1])
+    except Exception:
+        return None
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--dataset", required=True)
+    ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--also-math", action="store_true")
+    ap.add_argument("--math-v2", action="store_true")
+    ap.add_argument("--deep-math", action="store_true")
+    ap.add_argument("--also-llm", action="store_true")
+    args = ap.parse_args()
+
+    cmd = [
+        sys.executable,
+        "-m",
+        "scripts.run_aurora_dataset_runner",
+        "--dataset",
+        args.dataset,
+        "--seed",
+        str(args.seed),
+    ]
+    if args.also_math:
+        cmd.append("--also-math")
+    if args.math_v2:
+        cmd.append("--math-v2")
+    if args.deep_math:
+        cmd.append("--deep-math")
+    if args.also_llm:
+        cmd.append("--also-llm")
+
+    out = _run(cmd)
+
+    # Generate artifacts/plots for THIS run (best effort, never breaks the run result)
+    artifacts: Optional[Dict[str, Any]] = None
+    artifacts_error: Optional[str] = None
+    plot_pack_v2: Optional[Dict[str, Any]] = None
+    plot_pack_v2_error: Optional[str] = None
+
+    try:
+        runner_json = _extract_last_json(out.get("stdout", ""))
+        run_dir_str = (runner_json or {}).get("run_dir")
+        if run_dir_str:
+                        from scripts.engine_artifacts import generate_all_artifacts
+
+            # ---- Plot Pack v2 FIRST (so engine_artifacts can include plots_v2 in _PLOTS_INDEX) ----
+            try:
+                from scripts.build_plot_pack_v2 import build_plot_pack_v2
+                plot_pack_v2 = build_plot_pack_v2(Path(run_dir_str))
+            except Exception as e:
+                plot_pack_v2_error = f"{type(e).__name__}:{e}"
+
+            # Generate artifacts/plots for THIS run (best effort, never breaks the run result)
+            artifacts = generate_all_artifacts(
+                run_dir=Path(run_dir_str),
+                runner_stdout=runner_json,
+                do_plots=True,
+                do_guarded_llm=True,
+            )
+        else:
+            artifacts_error = "no_run_dir_in_runner_stdout_json"
+    except Exception as e:
+        artifacts_error = f"{type(e).__name__}:{e}"
+
+    # Attach info without changing your existing JSON structure too much
+    out["artifacts"] = artifacts
+    if artifacts_error:
+        out["artifacts_error"] = artifacts_error
+
+    out["plot_pack_v2"] = plot_pack_v2
+    if plot_pack_v2_error:
+        out["plot_pack_v2_error"] = plot_pack_v2_error
+
+    print(json.dumps(out, indent=2))
+    return 0 if out.get("ok") else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
+

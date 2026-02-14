@@ -1,0 +1,206 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+import os, json, logging, time
+from scripts.learners import SmallPromptScorer
+from scripts.trend_sources_free import fetch_trends_free
+from datetime import datetime
+from pathlib import Path
+
+
+def _free_trends_now():
+    import requests, datetime as _dt
+    out=[]
+    # A) Wikimedia: yesterday's enwiki top views
+    try:
+        day=_dt.datetime.utcnow()-_dt.timedelta(days=1)
+        url=f"https://wikimedia.org/api/rest_v1/metrics/pageviews/top/en.wikipedia/all-access/{day:%Y/%m/%d}"
+        r=requests.get(url,timeout=int(os.getenv("OLLAMA_TIMEOUT","30"))); 
+        if r.ok:
+            items=[a.get("article","").replace("_"," ") for a in r.json().get("items",[{}])[0].get("articles",[])]
+            items=[t for t in items if t and not t.startswith("Special:") and t not in ("Main Page","Main_Page")]
+            out+=items[:50]
+    except Exception: pass
+    # B) Hacker News front page
+    try:
+        r=requests.get("https://hn.algolia.com/api/v1/search?tags=front_page",timeout=int(os.getenv("OLLAMA_TIMEOUT","30")))
+        if r.ok: out+=[h.get("title","") for h in r.json().get("hits",[])][:30]
+    except Exception: pass
+    # C) Reddit /r/all (titles only)
+    try:
+        r=requests.get("https://www.reddit.com/r/all.json?limit=50",
+                       headers={"User-Agent":"Mozilla/5.0 FantasyAI/1.0"}, timeout=int(os.getenv("OLLAMA_TIMEOUT","30")))
+        if r.ok:
+            data=r.json(); out+=[c["data"]["title"] for c in data.get("data",{}).get("children",[]) if "data" in c]
+    except Exception: pass
+    # de-dupe + niche filter
+    seen=set(); uniq=[]
+    for t in out:
+        tl=(t or "").strip()
+        if tl and tl.lower() not in seen:
+            seen.add(tl.lower()); uniq.append(tl)
+    niche=("animal","pet","wildlife","nature","cute","funny","yeti","bear","cat","fantasy","ai","viral")
+    filt=[t for t in uniq if any(k in t.lower() for k in niche)]
+    return filt or uniq
+
+# Reuse your existing impls for CDP + edit/validate/social
+from scripts.pipeline import (
+    generate_veo_video_cdp, edit_with_capcut, validate_video_for_tiktok, SocialMediaManager
+)
+from scripts.agents.trend_agent import TrendAgent
+from scripts.agents.characters import pick_team_for_tone, expand_descriptions
+from scripts.agents.prompt_agent import PromptAgent
+from scripts.agents.scoring_agent import ScoringAgent, Bandit
+
+BASE_DIR = os.path.expanduser(os.getenv("BASE_DIR", "~/FantasyAI"))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+OUTPUT_DIR = os.path.expanduser(os.getenv("OUTPUT_DIR", os.path.join(BASE_DIR, "outputs")))
+PROMPTS_DIR = os.path.join(DATA_DIR, "prompts")
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(PROMPTS_DIR, exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[ logging.FileHandler(os.path.join(BASE_DIR, "pipeline_v2.log")), logging.StreamHandler() ],
+)
+logger = logging.getLogger("FantasyAI")
+
+def _append_run_log(row: dict):
+    path = Path(DATA_DIR) / "runs.log.jsonl"
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+def _append_metrics_stub(prompt_text: str, trend: str, team, platform="none", post_id=""):
+    # You can later fill real views/likes/shares and retrain ScoringAgent.
+    path = Path(DATA_DIR) / "metrics.csv"
+    exists = path.exists()
+    import csv
+    with path.open("a", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        if not exists:
+            w.writerow(["ts","trend","platform","post_id","final_prompt","views","likes","shares"])
+        w.writerow([datetime.now().isoformat(), trend, platform, post_id, prompt_text, 0, 0, 0])
+
+def run_once():
+    logger.info("🚀 Starting FantasyAI Agentic Pipeline (v2)")
+
+    # 1) Trends
+    ta = TrendAgent()
+    trends, src = ta.fetch()
+trend = _pick_trend_free_first() or (_pick_trend_free_first() or (_pick_trend_free_first() or (_pick_trend_free_first() or (ta.select(trends)))))
+    logger.info("📊 Selected trend: %s (source=%s)", trend, src)
+
+    # 2) Tone guess → team
+    # quick heuristic: tense if "mystery/cryptid", comedy if "funny/cute", else docu/awe
+    tl = trend.lower()
+    tone = "tense" if any(k in tl for k in ["mystery","cryptid","sighting"]) else \
+           "comedy" if any(k in tl for k in ["funny","cute","compilation"]) else \
+           "awe" if any(k in tl for k in ["beauty","sounds"]) else "docu"
+    team = pick_team_for_tone(tone)
+    logger.info("🧍 Team chosen (%s): %s", tone, team)
+
+    # 3) Prompt candidates (with optional LLM refinement + Critic)
+    pa = PromptAgent()
+    # build a small set of team alternatives to allow bandit exploration
+    alt_teams = [team]
+    import random
+    # add one alternate team for exploration
+    if random.random() < 0.7:
+        alt_teams.append(pick_team_for_tone(tone))
+    cands = pa.generate_candidates(trend, teams=alt_teams, n_per_team=2)  # [(critic, text, json), ...]
+    logger.info("🧪 Generated %d candidates across %d teams", len(cands), len(alt_teams))
+
+    # 4) Score (critic + optional sklearn RF trained from metrics.csv) + bandit selection
+    sa = ScoringAgent()
+    sa.maybe_train()
+    rescored = []
+    for critic, text, pj in cands:
+        s = sa.score(text, critic_score=critic)
+        rescored.append((s, text, pj))
+    rescored.sort(key=lambda x: x[0], reverse=True)
+    pick = Bandit().select(rescored)
+    final_score, final_prompt, prompt_json = pick
+    logger.info("🏅 Selected candidate (score=%.2f) team=%s", final_score, prompt_json.get("character_set"))
+
+    if os.getenv("PRINT_PROMPT","0") in ("1","true","yes"):
+        logger.info("📝 Final prompt\n%s", final_prompt)
+
+    # 5) Generate video (CDP -> Veo), edit and validate
+    video_path = generate_veo_video_cdp(final_prompt)
+    try:
+        postprocess_after_render(video_path, trend, locals().get('team') or [], final_prompt)
+        logging.info('📝 Saved caption/hashtags/metrics alongside output.')
+    except Exception as e:
+        logging.warning('postprocess failed: %s', e)
+    try:
+        postprocess_after_render(video_path, trend, locals().get('team') or [], final_prompt)
+        logging.info('📝 Saved caption/hashtags/metrics alongside output.')
+    except Exception as e:
+        logging.warning('postprocess failed: %s', e)
+    try:
+        postprocess_after_render(video_path, trend, locals().get('team') or [], final_prompt)
+        logging.info('📝 Saved caption/hashtags/metrics alongside output.')
+    except Exception as e:
+        logging.warning('postprocess failed: %s', e)
+    try:
+        postprocess_after_render(video_path, trend, locals().get('team') or [], final_prompt)
+        logging.info('📝 Saved caption/hashtags/metrics alongside output.')
+    except Exception as e:
+        logging.warning('postprocess failed: %s', e)
+    edited = edit_with_capcut(video_path)
+    ok, msg = validate_video_for_tiktok(edited)
+    if not ok:
+        logger.warning("TikTok validation: %s", msg)
+
+    # 6) (Optional) schedule DRY-RUN posts via your SocialMediaManager
+    social = SocialMediaManager()
+    social.schedule_tiktok(edited, caption=f"{trend} | {', '.join(prompt_json.get('character_set', []))}")
+    social.schedule_youtube(edited, caption=f"{trend} | {', '.join(prompt_json.get('character_set', []))}")
+
+    # 7) Persist run + a metrics stub (so you can later fill views/likes and retrain)
+    _append_run_log({
+        "ts": datetime.now().isoformat(),
+        "trend": trend,
+        "tone": tone,
+        "team": prompt_json.get("character_set", []),
+        "score": final_score,
+        "video": edited,
+        "source": src,
+    })
+    _append_metrics_stub(final_prompt, trend, prompt_json.get("character_set", []))
+
+    logger.info("✅ v2 pipeline finished. Output: %s", edited)
+
+if __name__ == "__main__":
+    run_once()
+
+
+def _pick_trend_static_fallback():
+    return "Cute Pet Compilation"
+
+
+def _pick_trend_free_first():
+    import os, logging
+    # 1) Free sources
+    free = []
+    try:
+        free = free_trends_now()
+    except Exception as e:
+        logging.info("free_trends error: %s", e)
+    if free:
+        # pick a concise, content-friendly title
+        sel = sorted(free, key=len)[0]
+        logging.info("🔎 trend source=free fetched=%d selected=%s", len(free), sel)
+        return sel
+
+    # 2) Optional pytrends (if env says so)
+    if os.getenv("USE_PYTRENDS", "1") == "1":
+        try:
+            return _pick_trend()  # existing function (pytrends + static fallback)
+        except Exception as e:
+            logging.info("pytrends picker failed: %s", e)
+
+    # 3) Last resort: static fallback list
+    logging.info("Using static fallback trend list (no network sources available).")
+    return _pick_trend_static_fallback()  # must exist or replace with your static

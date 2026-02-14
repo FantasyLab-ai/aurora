@@ -1,0 +1,1758 @@
+from scripts import llm_client
+from scripts import metrics_writer
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+FantasyAI pipeline with STRUCTURED prompt builder for Google Veo 3
++ PromptScorer (RandomForest) + Google Trends integration.
+
+- Structured PromptGeneratorStructured outputs: 🎬, 📍, 🧍, 🎤, 🎥, 🎭 sections
+- Saves each prompt as JSON in data/prompts/YYYYmmdd_HHMMSS.json
+- Attaches to your logged-in Chromium session via --remote-debugging-port=9222
+- Uses CDP Input.insertText to support emojis (fixes BMP error)
+- Leaves your Veo tab open (no driver.close on attach flow)
+- Tries live trends via pytrends (Google Trends). Falls back to static lists offline.
+- Generates multiple prompt candidates, scores them, and picks the best.
+"""
+
+import os
+from scripts.post_prompt_enhancer import enhance_prompt
+import re
+import json
+import time
+import logging
+import requests
+import subprocess
+import random
+import numpy as np
+from datetime import datetime, timedelta
+import threading
+from dataclasses import dataclass
+# --- CDP / WebSocket ---
+import base64
+import queue
+import urllib.parse
+import websocket  # pip install websocket-client
+
+# ML / data
+import pandas as pd
+USE_LIGHT_MODE = os.getenv("FA_SAFE_MODE", "0") == "1"
+if not USE_LIGHT_MODE:
+    try:
+        from sklearn.cluster import KMeans
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sentence_transformers import SentenceTransformer
+    except Exception as _e:
+        logging.warning("Heavy ML imports failed (%s). Falling back to light mode.", _e)
+        USE_LIGHT_MODE = True
+        KMeans = None; TfidfVectorizer = None; SentenceTransformer = None
+else:
+    KMeans = None; TfidfVectorizer = None; SentenceTransformer = None
+
+
+import joblib
+try:
+    import emoji
+    EMOJI_SET = set(getattr(emoji, "EMOJI_DATA", {}).keys())  # emoji>=2.x
+except Exception:
+    EMOJI_SET = set()
+
+# Optional: Google Trends
+try:
+    from pytrends.request import TrendReq
+    PYTRENDS_AVAILABLE = True
+except Exception:
+    PYTRENDS_AVAILABLE = False
+# Selenium (optional; lazy import for smoke tests)
+SELENIUM_OK = True
+try:
+    from selenium import webdriver
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.chrome.service import Service
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    SELENIUM_IMPORTED = True
+except Exception as _e:
+    SELENIUM_IMPORTED = False
+    SELENIUM_OK = False
+# ----------------------------------
+# Paths / Config
+# ----------------------------------
+HOME = os.path.expanduser("~")
+BASE_DIR = os.path.expanduser(os.getenv("BASE_DIR", "~/FantasyAI"))
+SCRIPT_DIR = os.path.join(BASE_DIR, "scripts")
+OUTPUT_DIR = os.path.expanduser(os.getenv("OUTPUT_DIR", os.path.join(BASE_DIR, "outputs")))
+ASSETS_DIR = os.path.join(BASE_DIR, "assets")
+DATA_DIR = os.path.join(BASE_DIR, "data")
+MODELS_DIR = os.path.join(BASE_DIR, "models")
+PROMPTS_DIR = os.path.join(DATA_DIR, "prompts")
+METRICS_CSV = os.path.join(DATA_DIR, "metrics.csv")  # optional: your own historical views/likes/shares
+
+for d in (OUTPUT_DIR, ASSETS_DIR, DATA_DIR, MODELS_DIR, PROMPTS_DIR, SCRIPT_DIR):
+    os.makedirs(d, exist_ok=True)
+
+# Veo / Chromium attach
+DEFAULT_VEO_URL = "https://deepmind.google/veo"
+GOOGLE_VEO_URL = os.getenv("VEO_URL", DEFAULT_VEO_URL)
+CHROME_REMOTE = os.getenv("CHROME_REMOTE", "127.0.0.1:9222")
+CHROMEDRIVER = os.getenv("CHROMEDRIVER", "/usr/bin/chromedriver")
+
+# Ollama fallback
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://127.0.0.1:11434/api/generate")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral")
+
+# Feature flags
+DO_CAPCUT = os.getenv("DO_CAPCUT", "0") == "1"
+POST_TIKTOK = os.getenv("POST_TIKTOK", "0") == "1"
+POST_YOUTUBE = os.getenv("POST_YOUTUBE", "0") == "1"
+SAVE_PROMPT_JSON = os.getenv("SAVE_PROMPT_JSON", "1") == "1"
+
+# Prompt candidate settings
+PROMPT_CANDIDATES = int(os.getenv("PROMPT_CANDIDATES", "3"))
+PROMPT_SCORE_THRESHOLD = float(os.getenv("PROMPT_SCORE_THRESHOLD", "0.0"))  # set to 0.7 if you want to filter hard
+
+# Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler(os.path.join(BASE_DIR, "pipeline.log")),
+        logging.StreamHandler()
+    ],
+)
+logger = logging.getLogger("FantasyAI")
+
+# Hailo (optional)
+HAILO_AVAILABLE = False
+HAILO_MODNAME = None
+_hailo_rt = None
+try:
+    import hailo_platform as _hailo_rt   # preferred
+    HAILO_AVAILABLE = True
+    HAILO_MODNAME = "hailo_platform"
+except Exception:
+    try:
+        import hailort as _hailo_rt      # alt name
+        HAILO_AVAILABLE = True
+        HAILO_MODNAME = "hailort"
+    except Exception:
+        HAILO_AVAILABLE = False
+        _hailo_rt = None
+        HAILO_MODNAME = None
+if not HAILO_AVAILABLE:
+    logger.warning("Hailo SDK not available, defaulting to CPU/Ollama.")
+# ----------------------------------
+# Small helpers
+# ----------------------------------
+def count_emojis(s: str) -> int:
+    """Count emojis using emoji.EMOJI_DATA if available; otherwise a simple fallback."""
+    if EMOJI_SET:
+        return sum(1 for ch in s if ch in EMOJI_SET)
+    # Fallback: crude regex of common emoji ranges (not perfect but ok if emoji lib is missing)
+    pattern = re.compile(r"[\U0001F300-\U0001FAFF\U00002700-\U000027BF]")
+    return len(pattern.findall(s))
+
+# ----------------------------------
+# Prompt Scorer (RandomForest)
+# ----------------------------------
+class PromptScorer:
+    """
+    Scores prompts using a RandomForest trained on simple prompt features:
+    - length
+    - num_emojis
+    - num_hashtags
+
+    Training sources:
+    - data/metrics.csv  (columns: length,num_emojis,num_hashtags,views)
+    You can build/append this file from your outputs or any tracking you keep.
+    """
+    def __init__(self):
+        self.model_path = os.path.join(MODELS_DIR, "prompt_scorer.pkl")
+        self.model = self._load_model()
+        self.trained = self._check_trained()
+
+    def _load_model(self):
+        if os.path.exists(self.model_path):
+            try:
+                return joblib.load(self.model_path)
+            except Exception:
+                pass
+        return RandomForestRegressor(n_estimators=100, random_state=42)
+
+    def _check_trained(self) -> bool:
+        try:
+            # probe a dummy predict to verify fitted-ness
+            _ = self.model.predict([[10, 1, 0]])
+            return True
+        except Exception:
+            return False
+
+    def maybe_train_from_csv(self, csv_path=METRICS_CSV):
+        if not os.path.exists(csv_path):
+            logger.info("No metrics.csv found; PromptScorer will use heuristic fallback until trained.")
+            return
+        try:
+            df = pd.read_csv(csv_path)
+            if not {"length", "num_emojis", "num_hashtags", "views"} <= set(df.columns):
+                logger.warning("metrics.csv missing required columns; expected: length,num_emojis,num_hashtags,views")
+                return
+            X = df[["length", "num_emojis", "num_hashtags"]].values
+            y = df["views"].values.astype(float)
+            if len(X) < 10:
+                logger.warning("metrics.csv has <10 rows; not training PromptScorer yet.")
+                return
+            self.model.fit(X, y)
+            joblib.dump(self.model, self.model_path)
+            self.trained = True
+            logger.info(f"✅ PromptScorer trained on {len(df)} rows and saved → {self.model_path}")
+        except Exception as e:
+            logger.error(f"Failed training PromptScorer: {e}")
+
+    def _features_from_prompt(self, prompt_json):
+        p = prompt_json.get("final_prompt") or ""
+        length = len(p)
+        num_emojis = count_emojis(p)
+        num_hashtags = p.count("#")
+        return [length, num_emojis, num_hashtags]
+
+    def predict(self, prompt_json) -> float:
+        feats = self._features_from_prompt(prompt_json)
+        if self.trained:
+            try:
+                return float(self.model.predict([feats])[0])
+            except NotFittedError:
+                pass
+            except Exception:
+                pass
+        # Heuristic fallback: length sweet-spot + emojis modest + some hashtags
+        length, num_emojis, num_hashtags = feats
+        # Favor 300–1200 chars, 1–6 emoji, 1–6 hashtags
+        len_score = 1.0 - min(abs(length - 700) / 700.0, 1.0)
+        emo_score = 1.0 - min(abs(num_emojis - 3) / 6.0, 1.0)
+        hash_score = 1.0 - min(abs(num_hashtags - 3) / 6.0, 1.0)
+        return float(0.5 * len_score + 0.25 * emo_score + 0.25 * hash_score)
+
+# ----------------------------------
+# Trend analysis
+# ----------------------------------
+class TrendAnalyzer:
+    def __init__(self):
+        if USE_LIGHT_MODE or SentenceTransformer is None:
+            # Safe/light mode: skip heavy models
+            self.model = None
+            self.vectorizer = None
+        else:
+            self.model = SentenceTransformer('all-MiniLM-L6-v2')
+            self.vectorizer = TfidfVectorizer(max_features=100, stop_words='english')
+        self.trend_data = self._load_trend_data()
+
+    def _load_trend_data(self):
+        p = os.path.join(DATA_DIR, "trend_data.json")
+        if os.path.exists(p):
+            with open(p, "r") as f:
+                return json.load(f)
+        return {"trends": [], "performance": {}}
+
+    def _save_trend_data(self):
+        p = os.path.join(DATA_DIR, "trend_data.json")
+        with open(p, "w") as f:
+            json.dump(self.trend_data, f)
+
+    def _fetch_google_trends(self):
+        """Try Google Trends via pytrends. Returns a list of strings."""
+        if not PYTRENDS_AVAILABLE:
+            return []
+        region_env = os.getenv("TRENDS_REGION", "").strip()
+        region_candidates = [region_env] if region_env else []
+        region_candidates += ["united_states", "global"]
+
+        out = []
+        for reg in region_candidates:
+            try:
+                pt = TrendReq(hl='en-US', tz=360)
+                df = pt.trending_searches(pn=reg) if reg != "global" else pt.trending_searches()
+                out += [str(x) for x in df[0].tolist()][:30]
+                if out:
+                    break
+            except Exception:
+                continue
+        return list(dict.fromkeys(out))  # de-dupe, keep order
+
+    def _fallback_lists(self):
+        # your previous hardcoded fallbacks
+        return [
+            "Animal Challenges", "Pet Reactions", "Wildlife Facts", "Nature Beauty",
+            "Funny Animal Moments", "Cute Pet Compilation", "AI Generated Animals",
+            "Fantasy Creatures", "Mythical Beasts", "Animal Documentaries", "Pet Training",
+            "Wildlife Conservation", "Nature Sounds", "Funny Animal Videos",
+            "Cute Animal Compilations"
+        ]
+
+    def fetch_trends(self, platforms=("tiktok", "youtube")):
+        # Try Google Trends first for freshness
+        trends = self._fetch_google_trends()
+
+        # If nothing, use your fallback lists
+        if not trends:
+            trends = self._fallback_lists()
+
+        # Optional niche filter
+        niche_keywords = ["animal", "pet", "wildlife", "nature", "funny", "cute",
+                          "yeti", "bear", "cat", "fantasy", "ai", "viral"]
+        filtered = [t for t in trends if any(k in t.lower() for k in niche_keywords)]
+        return filtered or trends
+
+    def _load_recent(self):
+        p = os.path.join(DATA_DIR, "recent_trends.json")
+        if os.path.exists(p):
+            with open(p, "r") as f:
+                return json.load(f)
+        return []
+
+    def _update_recent(self, t):
+        p = os.path.join(DATA_DIR, "recent_trends.json")
+        r = self._load_recent()
+        r.append(t)
+        with open(p, "w") as f:
+            json.dump(r[-10:], f)
+
+    def _select_best(self, trends):
+        best_trend, best_score = trends[0], -1
+        perf = self.trend_data.get("performance", {})
+        for t in trends:
+            score = perf.get(t, {}).get("score", 0)
+            if score > best_score:
+                best_score, best_trend = score, t
+        return best_trend
+
+    def cluster_trends(self, trends):
+        """If encoder unavailable (safe mode), just pick the best/novel trend."""
+        if not trends:
+            trends = self._fallback_lists()
+
+        if self.model is None:
+            # Light behavior: avoid embeddings/Sklearn heavy ops
+            recent = self._load_recent()
+            available = [t for t in trends if t not in recent] or trends
+            best = self._select_best(available)
+best = enhance_prompt(best)
+logger.info("ENHANCER(APPLIED) on best")
+            # Build absurdist, trend-grounded final prompt
+best = final_prompt
+self._update_recent(best)
+return best
+
+        # Heavy mode: embed + cluster
+embs = self.model.encode(trends)
+n_clusters = min(3, len(trends))
+if n_clusters <= 1:
+            best = random.choice(trends)
+            self._update_recent(best)
+            return best
+
+            km = KMeans(n_clusters=n_clusters, random_state=0, n_init=10)
+            labels = km.fit_predict(embs)
+
+            sizes = [int((labels == i).sum()) for i in range(n_clusters)]
+            total = sum(sizes)
+            weights = [s / total for s in sizes] if total else [1 / n_clusters] * n_clusters
+            chosen = random.choices(range(n_clusters), weights=weights, k=1)[0]
+            cluster_trends = [trends[i] for i, lab in enumerate(labels) if lab == chosen]
+
+            recent = self._load_recent()
+            available = [t for t in cluster_trends if t not in recent] or cluster_trends
+            best = self._select_best(available)
+            self._update_recent(best)
+            return best
+
+            def update_performance(self, trend, views, likes, shares):
+                pass
+            perf = self.trend_data.setdefault("performance", {})
+            meta = perf.setdefault(trend, {"views": [], "likes": [], "shares": [], "score": 0})
+            meta["views"].append(views); meta["likes"].append(likes); meta["shares"].append(shares)
+
+            import numpy as _np
+            avg_v = _np.mean(meta["views"][-5:]) if meta["views"] else 0
+            avg_l = _np.mean(meta["likes"][-5:]) if meta["likes"] else 0
+            avg_s = _np.mean(meta["shares"][-5:]) if meta["shares"] else 0
+            meta["score"] = (avg_v * 0.5 + avg_l * 0.3 + avg_s * 0.2)
+            self._save_trend_data()
+
+
+# ----------------------------------
+# Structured Prompt Generator
+# ----------------------------------
+@dataclass
+class SceneSpec:
+    location: str
+    time_of_day: str
+    lighting: str
+    weather: str
+    props: list
+    camera_mode: str
+    sound_design: str
+    tone: str  # "comedy", "tense", "docu", etc.
+
+class PromptGeneratorStructured:
+    TEMPLATE_PATH = os.path.join(DATA_DIR, "prompt_structure.json")
+
+    def __init__(self):
+        self.segment_counter = 1
+        self.templates = self._load_templates()
+        self.characters_catalog = {
+            "Yeti": {
+                "short": "🧍‍♂️ Yeti (camera wrangler / deadpan): 7’ tall, pale-gray fur; hi-viz vest; surprisingly delicate thumbs."
+            },
+            "Kitty": {
+                "short": "🐈 Kitty (operations / razor sarcasm): Upright gray tabby; tiny padded vest; ears flick at every micro-sound."
+            },
+            "Bear": {
+                "short": "🐻 Bear (logistics / hungry): Massive brown; neon pack strapped too tight; patient until snacks run out."
+            },
+        }
+        self.SCENE_BANK = {
+            "nature": [
+                SceneSpec("mossy ravine with a trickling creek", "late afternoon", "soft dappled sun through canopy", "misty air", ["abandoned trail cam", "ripped topo map"], "selfie-stick", "birds, water gurgle, distant woodpecker", "docu"),
+                SceneSpec("alpine meadow near snow patches", "golden hour", "warm side-light", "breezy", ["weathered signpost", "forgotten thermos"], "tripod-static", "wind hiss, fabric flap, cowbells far away", "awe"),
+                SceneSpec("switchback trail above treeline", "blue hour", "cool ambient + headlamp spill", "thin air", ["trekking poles", "discarded energy gel"], "chest-cam", "breath, gravel crunch, occasional radio chirp", "tense"),
+            ],
+            "urban": [
+                SceneSpec("dimly lit bodega aisle", "evening", "flicker from old fluorescents", "stale indoor", ["security convex mirror", "handwritten SALE sign"], "selfie-stick", "buzz of lights, fridge hum, street muffled", "comedy"),
+                SceneSpec("multi-story parking garage Level 4B", "night", "sodium vapor pools + dark corners", "echoey", ["orange traffic cone", "abandoned shopping cart"], "body-cam", "footsteps slap, distant engine revs", "tense"),
+                SceneSpec("subway platform endcap", "rush hour", "tube lighting, moving train strobes", "clammy", ["service notice poster", "discarded coffee"], "tripod-static", "PA chimes, wind blast as train arrives", "docu"),
+            ],
+            "domestic/odd": [
+                SceneSpec("laundromat between cycles", "afternoon", "chrome reflections, soft overhead", "dry lint smell", ["lost sock board", "change machine"], "selfie-stick", "washer thrum, coin clinks", "comedy"),
+                SceneSpec("community rec center gym", "morning", "flat gym LEDs", "squeak of shoes", ["broken basketball", "scuffed scoreboard"], "drone-follow", "HVAC hum, distant whistle", "light"),
+                SceneSpec("backyard patio with string lights", "sunset", "warm fairy-light bokeh", "grill smoke in air", ["folding chairs", "tippy cooler"], "handheld-to-tripod", "ice clink, neighbor dog bark", "cozy"),
+            ],
+            "nightvision/horror": [
+                SceneSpec("deep pine stand with pooled mud", "2:15 a.m.", "harsh night vision wash", "humid fog", ["plastic lawn chair", "boot/paw prints"], "selfie-stick", "branch creaks, insects on mic", "tense")
+            ],
+            "absurd/fantasy": [
+                SceneSpec("abandoned animatronic warehouse", "midnight", "moving spotlights, dust motes", "stale", ["half-assembled mascot head", "loose servos"], "gimbal-handheld", "relay clicks, servo whine", "surreal"),
+                SceneSpec("neon mushroom cave", "unknown", "bioluminescent bloom", "dripping stalactites", ["glowing spores", "ancient warning glyphs"], "drone-orbit", "water drips, sub-bass rumble", "awe"),
+            ],
+        }
+        self.TREND_ROUTING = {
+            "Nature Beauty": ("nature", ["awe", "docu", "light"]),
+            "Wildlife Facts": ("nature", ["docu", "tense", "comedy"]),
+            "Animal Documentaries": ("nature", ["docu", "awe"]),
+            "Funny Animal Moments": ("domestic/odd", ["comedy", "light"]),
+            "Cute Animal Compilations": ("domestic/odd", ["comedy", "cozy"]),
+            "Pet Reactions": ("domestic/odd", ["comedy"]),
+            "AI Generated Animals": ("absurd/fantasy", ["surreal", "awe", "comedy"]),
+            "Fantasy Creatures": ("absurd/fantasy", ["surreal", "tense", "awe"]),
+            "Mythical Beasts": ("absurd/fantasy", ["surreal", "docu"]),
+            "Pet Training": ("urban", ["docu", "comedy"]),
+            "Wildlife Conservation": ("nature", ["docu"]),
+            "Nature Sounds": ("nature", ["awe", "cozy"]),
+            "__default__": ("urban", ["comedy", "docu", "tense"]),
+        }
+        self.DIALOGUE_BANK = {
+            "comedy": [
+                ("Yeti", "Okay but who put a {prop} here—urban druid meetup?"),
+                ("Kitty", "Focus. If a camera can see us, so can rent prices."),
+                ("Bear", "If nobody claims the {prop}, can it be a snack? Hypothetically."),
+            ],
+            "tense": [
+                ("Yeti", "Do not love that echo. Feels like we’re being *measured*."),
+                ("Kitty", "Shh. Something just matched our cadence three steps back."),
+                ("Bear", "I smell ozone…or someone’s cheap fog machine."),
+            ],
+            "docu": [
+                ("Yeti", "Field note: {location}. {time}. Recording ambient behavior."),
+                ("Kitty", "Observe the {prop}. Classic sign of recent activity."),
+                ("Bear", "Control your breath. Mic’s clipping at peaks."),
+            ],
+            "awe": [
+                ("Yeti", "Whoa. That light roll—real or refracted?"),
+                ("Kitty", "Every hair is a sensor. This place is loud even when it’s quiet."),
+                ("Bear", "Kinda beautiful. Don’t let it trick you."),
+            ],
+            "surreal": [
+                ("Yeti", "Physics took a coffee break right here."),
+                ("Kitty", "If a cave glows on its own, we leave politely."),
+                ("Bear", "New rule: if it hums in a language, we don’t poke it."),
+            ],
+            "cozy": [
+                ("Yeti", "Ambient noise is perfect. Feels like a loopable vibe."),
+                ("Kitty", "Don’t jinx it. Nothing’s thrown a chair at us yet."),
+                ("Bear", "I can nap here. Post first, nap second."),
+            ],
+            "light": [
+                ("Yeti", "Okay crew, quick sweep, soft feet."),
+                ("Kitty", "Levels are clean. Try not to breathe directly into the mic."),
+                ("Bear", "If we find snacks, we log them. Scientifically."),
+            ],
+        }
+        self.CAMERA_BANK = {
+            "selfie-stick": "Hand extends out of frame; slight pendulum sway; occasional thumb over the lens.",
+            "chest-cam": "Stable center mass; footfalls visible; roll when hopping obstacles.",
+            "body-cam": "Jittery shoulder bounce; quick yaw on peripheral sounds.",
+            "tripod-static": "Locked composition; characters enter/exit; rack-focus moments.",
+            "handheld-to-tripod": "Handheld establishing wobble, then snap to locked tripod for dialogue.",
+            "gimbal-handheld": "Floaty walk-through with controlled pans; orbit around speaker during punchlines.",
+            "drone-follow": "High-angle follow with gentle altitude changes; orbit on emphasis.",
+            "drone-orbit": "Slow 360° orbit revealing environment scale; dips to foreground props.",
+        }
+
+    def _load_templates(self):
+        if os.path.exists(self.TEMPLATE_PATH):
+            try:
+                with open(self.TEMPLATE_PATH, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.warning(f"Could not parse {self.TEMPLATE_PATH}: {e}; using defaults.")
+        return {
+            "segment_header": "🎬 Segment {segment_number} – “{title}” ({camera_mode} POV)",
+"environment": """📍 Environment:
+{environment_text}""",
+            "characters": """⸻
+🧍 Characters:
+
+{character_blocks}""",
+            "dialogue": """⸻
+🎤 Dialogue (Fully Lip-Synced, Human Realism):
+{dialogue_blocks}""",
+            "camera": """⸻
+🎥 Camera Movement:
+{camera_text}""",
+            "vibe": """⸻
+🎭 Vibe:
+{vibe_text}"""
+        }
+
+    def _route_trend(self, trend: str):
+        for key, val in self.TREND_ROUTING.items():
+            if key.lower() in trend.lower():
+                return val
+        return self.TREND_ROUTING["__default__"]
+
+    def _pick_scene(self, trend: str) -> SceneSpec:
+        bucket, tones = self._route_trend(trend)
+        pool = self.SCENE_BANK.get(bucket, self.SCENE_BANK["urban"])
+        candidates = [s for s in pool if s.tone in tones] or pool
+        spec = random.choice(candidates)
+        spec = SceneSpec(
+            location=spec.location,
+            time_of_day=random.choice([spec.time_of_day, "morning", "afternoon", "night", "blue hour", "golden hour"]),
+            lighting=spec.lighting,
+            weather=random.choice([spec.weather, "clear", "light drizzle", "windy", "humid", "crisp cold"]),
+            props=spec.props[:],
+            camera_mode=spec.camera_mode,
+            sound_design=spec.sound_design,
+            tone=spec.tone,
+        )
+        return spec
+
+    def _compose_environment(self, s: SceneSpec) -> str:
+        if s.props:
+            props_txt = ", ".join(s.props[:-1]) + f", and {s.props[-1]}" if len(s.props) > 1 else s.props[0]
+        else:
+            props_txt = "odd debris"
+        return (
+            f"{s.location.capitalize()} at {s.time_of_day}. "
+            f"Lighting: {s.lighting}. Weather: {s.weather}. "
+            f"Foreground props: {props_txt}. Ambient sound: {s.sound_design}."
+        )
+
+    def _compose_characters(self, character_set) -> str:
+        blocks = []
+        for c in character_set:
+            desc = self.characters_catalog.get(c, {}).get("short", c)
+            blocks.append(desc)
+        return """
+
+""".join(blocks)
+
+    def _compose_dialogue(self, s: SceneSpec) -> str:
+        lines = []
+        bank = self.DIALOGUE_BANK.get(s.tone, self.DIALOGUE_BANK["docu"])
+        last_speaker = None
+        for _ in range(random.randint(3, 5)):
+            spk, text = random.choice(bank)
+            if spk == last_speaker:
+                spk, text = random.choice(bank)
+            last_speaker = spk
+            text = text.format(location=s.location, prop=random.choice(s.props) if s.props else "this thing", time=s.time_of_day)
+            icon = "🧍‍♂️" if spk == "Yeti" else "🐈" if spk == "Kitty" else "🐻"
+            lines.append(f"{icon} {spk}: {text}")
+        return """
+
+""".join(lines)
+
+    def _compose_camera(self, s: SceneSpec) -> str:
+        motion = self.CAMERA_BANK.get(s.camera_mode, "Handheld framing; small imperfections sell realism.")
+        glitches = random.sample([
+            "brief lens smear clean with a thumb",
+            "micro-jitter as grip adjusts",
+            "auto-exposure hunts when a highlight enters frame",
+            "focus snaps to a foreground prop before correcting",
+            "audio clips when someone laughs too close to the mic",
+            "drone GPS hiccup causes a small bob",
+        ], k=2)
+        return f"{motion} Incidental imperfections: {glitches[0]}; {glitches[1]}."
+
+    def _compose_vibe(self, s: SceneSpec, trend: str) -> str:
+        labels = {
+            "comedy": "dry absurdism with grounded staging",
+            "tense": "documentary tension without jump scares",
+            "docu": "field-note realism with crisp detail",
+            "awe": "cinematic wonder, slow reveals",
+            "surreal": "dream-logic visuals, stay deadpan",
+            "cozy": "loopable ambience, soft cadence",
+            "light": "gentle curiosity, low stakes",
+        }
+        tag = labels.get(s.tone, "grounded realism")
+        return (
+            f"FantasyLab.ai vlog energy featuring Yeti, Kitty, and Bear. "
+            f"Trend: {trend}. Tone: {s.tone} — {tag}. "
+            f"Keep hyper-real texture; never over-stage the comedy."
+        )
+
+    def _title_from_trend(self, trend: str):
+        return f"{trend} – Pt. {self.segment_counter}"
+
+    def generate_prompt(self, trend: str, character_set=None):
+        if character_set is None:
+            character_set = ["Yeti", "Kitty", "Bear"]
+
+        seg = self.segment_counter
+        scene = self._pick_scene(trend)
+
+        title = self._title_from_trend(trend)
+        environment_text = self._compose_environment(scene)
+        character_blocks = self._compose_characters(character_set)
+        dialogue_blocks = self._compose_dialogue(scene)
+        camera_text = self._compose_camera(scene)
+        vibe_text = self._compose_vibe(scene, trend)
+
+        t = self.templates
+        parts = [
+            t["segment_header"].format(segment_number=seg, title=title, camera_mode=scene.camera_mode.replace("-", " ")),
+            t["environment"].format(environment_text=environment_text),
+            t["characters"].format(character_blocks=character_blocks),
+            t["dialogue"].format(dialogue_blocks=dialogue_blocks),
+            t["camera"].format(camera_text=camera_text),
+            t["vibe"].format(vibe_text=vibe_text),
+        ]
+        final_prompt = """
+
+""".join(parts)
+
+        prompt_json = {
+            "segment_number": seg,
+            "title": title,
+            "trend": trend,
+            "scene": scene.__dict__,
+            "character_set": character_set,
+            "environment_text": environment_text,
+            "characters": {c: self.characters_catalog.get(c, {}) for c in character_set},
+            "dialogue": dialogue_blocks,
+            "camera": camera_text,
+            "vibe": vibe_text,
+            "final_prompt": final_prompt
+        }
+
+        self.segment_counter += 1
+        return final_prompt, prompt_json
+
+# ----------------------------------
+# Hailo + Ollama (adaptive ctx + retry)
+# ----------------------------------
+class HailoInference:
+    def __init__(self):
+        self.hailo_available = HAILO_AVAILABLE
+
+    def _ollama_url(self) -> str:
+        url = os.getenv("OLLAMA_URL", OLLAMA_URL)
+        if url and url != "disabled":
+            return url.replace("localhost", "127.0.0.1")
+        host = os.getenv("OLLAMA_HOST", "127.0.0.1:11434")
+        return f"http://{host}/api/generate"
+
+    def _post(self, url, payload, timeout_s):
+        r = requests.post(url, json=payload, timeout=timeout_s)
+        return r
+
+    def generate_text(self, text, max_tokens=120):
+        if os.getenv("USE_OLLAMA", "1").lower() in ("0", "false", "no") or OLLAMA_URL == "disabled":
+            if os.getenv("PRINT_PROMPT", "0") in ("1", "true", "yes"):
+                logger.info("""📝 Prompt (ollama):
+%s""", text)
+            return text
+
+        url = self._ollama_url()
+        model = os.getenv("OLLAMA_MODEL", OLLAMA_MODEL)
+        timeout_s = int(os.getenv("OLLAMA_TIMEOUT", "8"))
+
+        start_ctx = int(os.getenv("OLLAMA_NUM_CTX", "2048"))
+        ctx_candidates = [start_ctx] + [c for c in (3072, 2048, 1536, 1024) if c < start_ctx]
+
+        if os.getenv("PRINT_PROMPT", "0") in ("1", "true", "yes"):
+            logger.info("""📝 Prompt (to Ollama, model=%s, try ctx in %s):
+%s""", model, ctx_candidates, text)
+
+        last_err = None
+        for num_ctx in ctx_candidates:
+            payload = {
+                "model": model,
+                "prompt": text,
+                "stream": False,
+                "options": {"num_predict": max_tokens, "temperature": 0.7, "num_ctx": num_ctx},
+            }
+            for attempt in (1, 2):
+                try:
+                    r = self._post(url, payload, timeout_s)
+                    if r.status_code != 200:
+                        body = r.text[:500]
+                        if "more system memory" in body or "out of memory" in body.lower():
+                            logger.warning("Ollama OOM at num_ctx=%s; trying smaller window… (HTTP %s, %s)",
+                                           num_ctx, r.status_code, body)
+                            raise RuntimeError("oom")
+                        elif os.getenv("PRINT_PROMPT", "0") in ("1", "true", "yes"):
+                            logger.error("Ollama HTTP %s: %s", r.status_code, body)
+                    r.raise_for_status()
+                    data = r.json()
+                    resp = (data.get("response") or "").strip()
+                    if resp:
+                        logger.info("🧠 Ollama used (model=%s, ctx=%s, attempt=%d)", model, num_ctx, attempt)
+                        return resp
+                except Exception as e:
+                    last_err = e
+                    if attempt == 1:
+                        time.sleep(1)
+                    else:
+                        break
+
+        logger.error("Ollama text generation failed: %s; using original structured text.", last_err)
+        return text
+
+# ----------------------------------
+# Social (scheduling + upload placeholders)
+# ----------------------------------
+class SocialMediaManager:
+    def __init__(self):
+        self.optimal_times = {
+            "tiktok": {"weekday": ["09:00","12:00","15:00","18:00","21:00"],
+                       "weekend": ["10:00","13:00","16:00","19:00","22:00"]},
+            "youtube":{"weekday": ["10:00","14:00","18:00","20:00"],
+                       "weekend": ["11:00","15:00","19:00","21:00"]}
+        }
+
+    def _next_optimal(self, platform):
+        now = datetime.now()
+        is_weekend = now.weekday() >= 5
+        day_type = "weekend" if is_weekend else "weekday"
+        for ts in self.optimal_times[platform][day_type]:
+            h, m = map(int, ts.split(":"))
+            t = now.replace(hour=h, minute=m, second=0, microsecond=0)
+            if t > now:
+                return t
+        tomorrow = now + timedelta(days=1)
+        h, m = map(int, self.optimal_times[platform][day_type][0].split(":"))
+        return tomorrow.replace(hour=h, minute=m, second=0, microsecond=0)
+
+    def schedule_post(self, platform, video_path, caption, when=None):
+        if platform == "tiktok":
+            return self.schedule_tiktok(video_path, caption, when)
+        if platform == "youtube":
+            return self.schedule_youtube(video_path, caption, when)
+        raise ValueError(f"Unknown platform: {platform}")
+
+    def schedule_tiktok(self, video_path, caption, when=None):
+        when = when or self._next_optimal("tiktok")
+        delay = max(0, (when - datetime.now()).total_seconds())
+        if POST_TIKTOK:
+            threading.Timer(delay, self.upload_to_tiktok, args=[video_path, caption]).start()
+            logger.info(f"Scheduled TikTok at {when} (in {int(delay)}s)")
+        else:
+            logger.info(f"[DRY RUN] Would schedule tiktok at {when}")
+        return when
+
+    def schedule_youtube(self, video_path, caption, when=None):
+        when = when or self._next_optimal("youtube")
+        delay = max(0, (when - datetime.now()).total_seconds())
+        if POST_YOUTUBE:
+            threading.Timer(delay, self.upload_to_youtube, args=[video_path, caption]).start()
+            logger.info(f"Scheduled YouTube at {when} (in {int(delay)}s)")
+        else:
+            logger.info(f"[DRY RUN] Would schedule youtube at {when}")
+        return when
+
+    def upload_to_tiktok(self, video_path, caption):
+        logger.info(f"[DRY RUN] Would upload to TikTok: {video_path} | {caption[:80]}...")
+        return True
+
+    def upload_to_youtube(self, video_path, caption):
+        logger.info(f"[DRY RUN] Would upload to YouTube: {video_path} | {caption[:80]}...")
+        return True
+
+# ----------------------------------
+# Unicode-safe typing helpers
+# ----------------------------------
+def _strip_non_bmp(s: str) -> str:
+    return ''.join(ch if ord(ch) <= 0xFFFF else ' ' for ch in s)
+
+def _js_set_value(driver, element, text: str):
+    driver.execute_script("""
+        const el = arguments[0];
+        const val = arguments[1];
+        if (!el) return;
+        const isEditable = el.isContentEditable || (el.getAttribute && el.getAttribute('contenteditable'));
+        if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
+            el.focus();
+            el.value = val;
+            el.dispatchEvent(new Event('input', {bubbles: true}));
+            el.dispatchEvent(new Event('change', {bubbles: true}));
+        } else if (isEditable) {
+            el.focus();
+            if (document.queryCommandSupported && document.queryCommandSupported('insertText')) {
+                document.execCommand('selectAll', false, null);
+                document.execCommand('insertText', false, val);
+            } else {
+                el.textContent = val;
+                el.dispatchEvent(new Event('input', {bubbles: true}));
+                el.dispatchEvent(new Event('change', {bubbles: true}));
+            }
+        } else {
+            el.focus?.();
+            el.textContent = val;
+        }
+    """, element, text)
+
+def _safe_type_full_unicode(driver, element, text: str):
+    try:
+        element.click()
+        driver.execute_cdp_cmd("Input.insertText", {"text": text})
+        return
+    except Exception:
+        pass
+    try:
+        _js_set_value(driver, element, text)
+        return
+    except Exception:
+        pass
+    try:
+        element.clear()
+    except Exception:
+        pass
+    try:
+        element.send_keys(text)
+        return
+    except Exception:
+        pass
+    stripped = _strip_non_bmp(text)
+    element.send_keys(stripped)
+
+def _press_enter(driver):
+    try:
+        driver.execute_cdp_cmd("Input.dispatchKeyEvent", {
+            "type": "keyDown",
+            "key": "Enter",
+            "code": "Enter",
+            "windowsVirtualKeyCode": 13,
+            "nativeVirtualKeyCode": 13,
+        })
+        driver.execute_cdp_cmd("Input.dispatchKeyEvent", {"type": "keyUp", "key": "Enter"})
+    except Exception:
+        pass
+
+def _click_if_present(driver, xpath_list, timeout_each=2):
+    for xp in xpath_list:
+        try:
+            btn = WebDriverWait(driver, timeout_each).until(EC.element_to_be_clickable((By.XPATH, xp)))
+            btn.click()
+            return True
+        except Exception:
+            continue
+    return False
+
+def _find_editor_in_dom(driver):
+    for by, sel in [(By.TAG_NAME, "textarea"),
+                    (By.CSS_SELECTOR, '[contenteditable="true"]'),
+                    (By.XPATH, '//*[@role="textbox"]')]:
+        els = driver.find_elements(by, sel)
+        if els:
+            return els[0]
+    return None
+
+def _shadow_find(driver, css_selectors, max_depth=5):
+    visited = set()
+    queue = driver.find_elements(By.CSS_SELECTOR, "*")
+    depth = 0
+    while queue and depth <= max_depth:
+        nxt = []
+        for host in queue:
+            try:
+                sr = driver.execute_script("return arguments[0].shadowRoot", host)
+                if sr and host.id not in visited:
+                    visited.add(host.id)
+                    for sel in css_selectors:
+                        try:
+                            el = host.shadow_root.find_element(By.CSS_SELECTOR, sel)  # type: ignore
+                            if el:
+                                return el
+                        except Exception:
+                            pass
+                    children = host.shadow_root.find_elements(By.CSS_SELECTOR, "*")  # type: ignore
+                    nxt.extend(children)
+            except Exception:
+                pass
+        queue = nxt
+        depth += 1
+    return None
+
+def _veo_debug_dump(driver, tag):
+    try:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        png = os.path.join(OUTPUT_DIR, f"veo_debug_{tag}_{ts}.png")
+        html = os.path.join(OUTPUT_DIR, f"veo_debug_{tag}_{ts}.html")
+        try:
+            driver.get_screenshot_as_file(png)
+        except Exception:
+            pass
+        try:
+            with open(html, "w", encoding="utf-8") as f:
+                f.write(driver.page_source)
+        except Exception:
+            pass
+        logger.info(f"🧪 Debug dump saved: {os.path.basename(png)}, {os.path.basename(html)}")
+    except Exception:
+        pass
+
+def _click_button_with_text_retry(driver, text, timeout=900, poll=1.0):
+    deadline = time.time() + timeout
+    xp = f"//button[contains(., '{text}')]"
+    while time.time() < deadline:
+        try:
+            driver.switch_to.default_content()
+            btns = driver.find_elements(By.XPATH, xp)
+            for b in btns:
+                try:
+                    if b.is_displayed() and b.is_enabled():
+                        b.click()
+                        return True
+                except StaleElementReferenceException:
+                    continue
+        except Exception:
+            pass
+        time.sleep(poll)
+    return False
+
+def _find_generate_button(driver, timeout=15):
+    end = time.time() + timeout
+    xpath_candidates = [
+        "//button[contains(., 'Generate')]",
+        "//button[contains(., 'Generate video')]",
+        "//button[contains(., 'Create')]",
+        "//button[contains(., 'Create video')]",
+        "//button[contains(., 'Run')]",
+        "//button[contains(., 'Render')]",
+        "//*[@role='button'][contains(., 'Generate') or contains(., 'Create') or contains(., 'Run') or contains(., 'Render')]",
+    ]
+    css_candidates = [
+        "button[aria-label*='Generate']",
+        "button[aria-label*='Create']",
+        "button[aria-label*='Run']",
+        "[data-testid*='generate'] button, button[data-testid*='generate']",
+    ]
+    while time.time() < end:
+        for xp in xpath_candidates:
+            els = driver.find_elements(By.XPATH, xp)
+            for el in els:
+                try:
+                    if el.is_displayed() and el.is_enabled():
+                        return el
+                except Exception:
+                    pass
+        for sel in css_candidates:
+            els = driver.find_elements(By.CSS_SELECTOR, sel)
+            for el in els:
+                try:
+                    if el.is_displayed() and el.is_enabled():
+                        return el
+                except Exception:
+                    pass
+        time.sleep(0.5)
+    return None
+
+def _veo_job_active(driver) -> bool:
+    markers = [
+        "//div[contains(., 'Generating') or contains(., 'Rendering') or contains(., 'Queued') or contains(., 'Processing')]",
+        "//*[@role='progressbar']",
+        "//*[contains(@class, 'progress') or contains(@class, 'spinner') or contains(@class, 'loading')]",
+        "//button[(contains(., 'Generate') or contains(., 'Create') or contains(., 'Run') or contains(., 'Render')) and @disabled]",
+    ]
+    try:
+        for xp in markers:
+            if driver.find_elements(By.XPATH, xp):
+                return True
+    except Exception:
+        pass
+    return False
+# ----------------------------------
+# Pure CDP (no Selenium) – "nuclear" path
+# ----------------------------------
+
+class _CDPConn:
+    def __init__(self, ws_url: str, timeout=10):
+        self.ws = websocket.create_connection(ws_url, timeout=timeout)
+        self._id = 0
+        self._pending = {}
+        self._running = True
+        self._q = queue.Queue()
+        t = threading.Thread(target=self._recv_loop, daemon=True)
+        t.start()
+
+    def _recv_loop(self):
+        try:
+            while self._running:
+                msg = self.ws.recv()
+                data = json.loads(msg)
+                if "id" in data:
+                    fut = self._pending.pop(data["id"], None)
+                    if fut:
+                        fut.put(data)
+                else:
+                    # event; ignore
+                    pass
+        except Exception:
+            pass
+
+    def call(self, method: str, params: dict | None = None, timeout=10):
+        self._id += 1
+        mid = self._id
+        fut = queue.Queue()
+        self._pending[mid] = fut
+        payload = {"id": mid, "method": method, "params": params or {}}
+        self.ws.send(json.dumps(payload))
+        try:
+            res = fut.get(timeout=timeout)
+        except Exception:
+            self._pending.pop(mid, None)
+            raise TimeoutError(f"CDP call timed out: {method}")
+        if "error" in res:
+            raise RuntimeError(f"CDP error in {method}: {res['error']}")
+        return res.get("result", {})
+
+    def close(self):
+        self._running = False
+        try:
+            self.ws.close()
+        except Exception:
+            pass
+
+
+def _cdp_http(base: str, path: str, params: dict | None = None, timeout=5):
+    url = f"http://{base}{path}"
+    if params:
+        q = urllib.parse.urlencode(params)
+        url = f"{url}?{q}"
+    return requests.get(url, timeout=timeout)
+
+
+def _get_browser_ws(base: str) -> str:
+    r = _cdp_http(base, "/json/version")
+    r.raise_for_status()
+    return r.json().get("webSocketDebuggerUrl")
+
+
+def _list_targets(base: str) -> list[dict]:
+    r = _cdp_http(base, "/json/list")
+    r.raise_for_status()
+    return r.json()
+
+
+def _open_new_tab(base: str, url: str) -> dict:
+    r = _cdp_http(base, "/json/new/" + urllib.parse.quote(url, safe=""))
+    r.raise_for_status()
+    return r.json()
+
+
+def _pick_target(base: str, patterns: list[str], fallback_url: str | None, wait_s=120) -> dict:
+    deadline = time.time() + wait_s
+    patterns = [p.lower() for p in patterns if p]
+    while time.time() < deadline:
+        for t in _list_targets(base):
+            L = f"{t.get('url','').lower()} {t.get('title','').lower()}"
+            if any(p in L for p in patterns):
+                return t
+        if fallback_url:
+            try:
+                return _open_new_tab(base, fallback_url)
+            except Exception:
+                pass
+        time.sleep(2)
+    raise RuntimeError("No matching Veo tab found; open your Veo project and try again.")
+
+
+def _cdp_debug_dump(conn: _CDPConn, tag: str, outdir: str):
+    try:
+        # HTML
+        r = conn.call("Runtime.evaluate", {
+            "expression": "document.documentElement.outerHTML",
+            "returnByValue": True
+        })
+        html = r.get("result", {}).get("value", "")
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        with open(os.path.join(outdir, f"veo_debug_{tag}_{ts}.html"), "w", encoding="utf-8") as f:
+            f.write(html)
+
+        # PNG screenshot (if supported)
+        try:
+            s = conn.call("Page.captureScreenshot", {"format": "png"})
+            b = base64.b64decode(s.get("data", ""))
+            with open(os.path.join(outdir, f"veo_debug_{tag}_{ts}.png"), "wb") as f:
+                f.write(b)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
+def generate_veo_video_cdp(prompt_text: str) -> str:
+    """
+    CDP-only video generation:
+      - attaches to Chromium on CHROME_REMOTE
+      - focuses editor, types prompt via Input.insertText
+      - clicks a tolerant Generate/Create/Run/Render CTA
+      - enables downloads+polls for newest .mp4 in OUTPUT_DIR
+    """
+    base = os.getenv("CHROME_REMOTE", "127.0.0.1:9222")
+    veo_url = os.getenv("VEO_URL", GOOGLE_VEO_URL)
+
+    logger.info("🎥 (CDP) Connecting to Chromium at %s …", base)
+    browser_ws = _get_browser_ws(base)
+    bconn = _CDPConn(browser_ws)
+
+    # Make sure downloads go into OUTPUT_DIR
+    try:
+        bconn.call("Browser.setDownloadBehavior", {
+            "behavior": "allow",
+            "downloadPath": OUTPUT_DIR
+        })
+    except Exception:
+        # some builds require the Page domain; we'll also set it later on tab
+        pass
+
+    # Find / open Veo tab
+    target_patterns = [os.getenv("VEO_URL","").strip().lower(), "veo", "deepmind.google", "labs.google"]
+    target = _pick_target(base, target_patterns, veo_url, wait_s=120)
+    ws_url = target["webSocketDebuggerUrl"]
+    tconn = _CDPConn(ws_url)
+
+    # Enable domains
+    for dom in ("Page.enable", "Runtime.enable", "DOM.enable"):
+        try:
+            m = dom if "." in dom else f"{dom}.enable"
+            tconn.call(m, {})
+        except Exception:
+            pass
+
+    # Also set download behavior on the target (older Chrome builds)
+    try:
+        tconn.call("Page.setDownloadBehavior", {
+            "behavior": "allow",
+            "downloadPath": OUTPUT_DIR
+        })
+    except Exception:
+        pass
+
+    # Try to focus an editor and type
+    js_focus = r"""
+    (function(){
+      function visible(el){
+        if(!el) return false;
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        return r.width>0 && r.height>0 && s.visibility!=='hidden' && s.display!=='none' && !el.disabled;
+      }
+      const sels = ['textarea','[contenteditable="true"]','[role="textbox"]'];
+      for(const sel of sels){
+        const el = document.querySelector(sel);
+        if(el && visible(el)){ el.focus(); return true; }
+      }
+      // try shallow iframes (same-origin only)
+      for(const f of document.querySelectorAll('iframe')){
+        try{
+          const doc = f.contentDocument;
+          if(!doc) continue;
+          for(const sel of sels){
+            const el = doc.querySelector(sel);
+            if(el && visible(el)){ el.focus(); return true; }
+          }
+        }catch(e){/* cross-origin; ignore */}
+      }
+      return false;
+    })();
+    """
+    focused = tconn.call("Runtime.evaluate", {"expression": js_focus, "returnByValue": True}).get("result", {}).get("value")
+    if not focused:
+        _cdp_debug_dump(tconn, "no-editor", OUTPUT_DIR)
+        tconn.close(); bconn.close()
+        raise RuntimeError("Could not locate Veo prompt editor; open the project page and try again.")
+
+    # Type prompt (full Unicode) with Input.insertText
+    try:
+        tconn.call("Input.insertText", {"text": prompt_text})
+    except Exception:
+        # Fallback: set text via JS (works for textarea/contenteditable)
+        js_set = """
+        (function(txt){{
+          let el = document.activeElement;
+          const isEditable = el && (el.isContentEditable || el.getAttribute && el.getAttribute('contenteditable'));
+          if(el && (el.tagName==='TEXTAREA' || el.tagName==='INPUT')){
+             el.value = txt;
+             el.dispatchEvent(new Event('input',{{bubbles:true}}));
+             el.dispatchEvent(new Event('change',{{bubbles:true}}));
+             return true;
+          }}
+          if(el && isEditable){{
+             el.textContent = txt;
+             el.dispatchEvent(new Event('input',{{bubbles:true}}));
+             el.dispatchEvent(new Event('change',{{bubbles:true}}));
+             return true;
+          }}
+          return false;
+        }})(`{prompt_text.replace('`','\\`')}`);
+        """
+        tconn.call("Runtime.evaluate", {"expression": js_set, "awaitPromise": True})
+
+    # Press Enter to commit if needed
+    try:
+        tconn.call("Input.dispatchKeyEvent", {"type":"keyDown","key":"Enter","code":"Enter","windowsVirtualKeyCode":13,"nativeVirtualKeyCode":13})
+        tconn.call("Input.dispatchKeyEvent", {"type":"keyUp","key":"Enter"})
+    except Exception:
+        pass
+
+    # Click a tolerant Generate/Create/Run/Render button
+    js_click = r"""
+    (function(){
+      function visible(el){
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        return r.width>0 && r.height>0 && s.visibility!=='hidden' && s.display!=='none' && !el.disabled;
+      }
+      const re = /(Generate|Generate video|Create|Create video|Run|Render)/i;
+      const btns = Array.from(document.querySelectorAll('button,[role="button"]'));
+      for(const b of btns){
+        const txt = (b.innerText||b.textContent||'').trim();
+        const aria = (b.getAttribute && b.getAttribute('aria-label'))||'';
+        if(re.test(txt) || re.test(aria)){
+          if(visible(b)){ b.click(); return true; }
+        }
+      }
+      // try opening "More…" menus quickly
+      const more = Array.from(document.querySelectorAll('button,[role="button"]')).find(b=>{
+        const t=(b.innerText||b.textContent||'').trim();
+        return /(More|⋯|…)/i.test(t);
+      });
+      if(more){ more.click(); }
+      const btns2 = Array.from(document.querySelectorAll('button,[role="menuitem"],[role="button"]'));
+      for(const b of btns2){
+        const txt=(b.innerText||b.textContent||'').trim();
+        if(re.test(txt) && visible(b)){ b.click(); return true; }
+      }
+      return false;
+    })();
+    """
+    clicked = tconn.call("Runtime.evaluate", {"expression": js_click, "returnByValue": True}).get("result", {}).get("value")
+    if not clicked:
+        # If page already rendering, continue; else bail with dump
+        js_busy = r"""
+        (function(){
+          const xp = /(Generating|Rendering|Queued|Processing)/i;
+          const bars = document.querySelectorAll('[role="progressbar"], .progress, .spinner, .loading');
+          if(bars.length) return true;
+          const all = document.querySelectorAll('body *');
+          for(const el of all){
+            const t=(el.innerText||'') + ' ' + (el.textContent||'');
+            if(xp.test(t)) return true;
+          }
+          return false;
+        })();
+        """
+        busy = tconn.call("Runtime.evaluate", {"expression": js_busy, "returnByValue": True}).get("result", {}).get("value")
+        if not busy:
+            _cdp_debug_dump(tconn, "no-generate-button", OUTPUT_DIR)
+            tconn.close(); bconn.close()
+            raise RuntimeError("No Generate/Create/Run/Render button found.")
+
+    logger.info("Generation started; polling for .mp4 in %s …", OUTPUT_DIR)
+
+    start_ts = time.time()
+    # Best-effort allow downloads again (new Chrome sometimes flips domains)
+    try:
+        bconn.call("Browser.setDownloadBehavior", {"behavior": "allow", "downloadPath": OUTPUT_DIR})
+        tconn.call("Page.setDownloadBehavior", {"behavior": "allow", "downloadPath": OUTPUT_DIR})
+    except Exception:
+        pass
+
+    # Wait for the MP4 to appear
+    deadline = time.time() + 900  # up to 15 min
+    out = None
+    while time.time() < deadline:
+        latest = get_latest_file(OUTPUT_DIR, ".mp4")
+        if latest:
+            try:
+                if os.path.getmtime(latest) >= start_ts - 1:
+                    out = latest
+                    break
+            except Exception:
+                pass
+        time.sleep(2)
+
+    if not out:
+        _cdp_debug_dump(tconn, "no-download", OUTPUT_DIR)
+        tconn.close(); bconn.close()
+        raise RuntimeError("Timed out waiting for download; check debug dump in outputs/.")
+
+    logger.info("Downloaded (by filesystem detection): %s", out)
+
+    tconn.close()
+    bconn.close()
+    time.sleep(2)
+    return out
+
+# ----------------------------------
+# Veo automation (attach to existing session)
+# ----------------------------------
+def get_latest_file(directory: str, ext: str):
+    files = [f for f in os.listdir(directory) if f.endswith(ext)]
+    if not files:
+        return None
+    paths = [os.path.join(directory, f) for f in files]
+    return max(paths, key=os.path.getctime)
+
+def generate_veo_video(prompt_text: str) -> str:
+    if not SELENIUM_OK:
+
+        raise RuntimeError(f"Selenium is not available: {SELENIUM_IMPORT_ERR}. Set FA_SAFE_MODE=1 for smoke tests or install a compatible Selenium.")
+    logger.info("🎥 Generating video with Google Veo via existing Chromium session...")
+
+    options = webdriver.ChromeOptions()
+    options.add_experimental_option("debuggerAddress", CHROME_REMOTE)
+    driver = webdriver.Chrome(service=Service(CHROMEDRIVER), options=options)
+
+    try:
+        driver.execute_cdp_cmd("Browser.setDownloadBehavior", {
+            "behavior": "allow",
+            "downloadPath": OUTPUT_DIR
+        })
+    except Exception:
+        try:
+            driver.execute_cdp_cmd("Page.setDownloadBehavior", {
+                "behavior": "allow",
+                "downloadPath": OUTPUT_DIR
+            })
+        except Exception:
+            pass
+
+    target_patterns = [p for p in [os.getenv("VEO_URL","").strip().lower(),
+                                   "veo", "deepmind.google", "labs.google"] if p]
+
+    def _match(url, title):
+        L = (url or "").lower() + " " + (title or "").lower()
+        return any(p in L for p in target_patterns)
+
+    matched = None
+    for h in driver.window_handles:
+        driver.switch_to.window(h)
+        if _match(driver.current_url, driver.title):
+            matched = h
+            break
+
+    if not matched and os.getenv("VEO_URL"):
+        driver.execute_script("window.open(arguments[0], '_blank')", os.getenv("VEO_URL"))
+        time.sleep(3)
+        for h in driver.window_handles:
+            driver.switch_to.window(h)
+            if _match(driver.current_url, driver.title):
+                matched = h
+                break
+
+    if not matched:
+        logger.info("Open your Veo project tab; waiting up to 120s…")
+        deadline = time.time() + 120
+        while time.time() < deadline and not matched:
+            for h in driver.window_handles:
+                driver.switch_to.window(h)
+                if _match(driver.current_url, driver.title):
+                    matched = h
+                    break
+            if not matched:
+                time.sleep(2)
+
+    if not matched:
+        _veo_debug_dump(driver, "no-veo-tab")
+        raise RuntimeError("No Veo editor tab found.")
+
+    driver.switch_to.window(matched)
+    logger.info(f"Attached to Veo tab: {driver.title} | {driver.current_url}")
+
+    _click_if_present(driver, [
+        "//button[contains(., 'Accept all')]",
+        "//button[contains(., 'I agree')]",
+        "//button[contains(., 'Got it')]",
+        "//button[contains(., 'Accept & continue')]",
+        "//button[contains(., 'Continue')]",
+    ])
+
+    try:
+        driver.execute_script("document.body.style.zoom='1.0'")
+    except Exception:
+        pass
+    time.sleep(0.25)
+
+    # Find editor
+    editor = None
+    try:
+        editor = WebDriverWait(driver, 8).until(EC.presence_of_element_located((By.TAG_NAME, "textarea")))
+    except Exception:
+        pass
+    if editor is None:
+        try:
+            editor = WebDriverWait(driver, 4).until(EC.presence_of_element_located((By.CSS_SELECTOR, '[contenteditable=\"true\"]')))
+        except Exception:
+            pass
+    if editor is None:
+        try:
+            editor = WebDriverWait(driver, 4).until(EC.presence_of_element_located((By.XPATH, '//*[@role=\"textbox\"]')))
+        except Exception:
+            pass
+    if editor is None:
+        for iframe in driver.find_elements(By.TAG_NAME, "iframe"):
+            try:
+                driver.switch_to.frame(iframe)
+                editor = _find_editor_in_dom(driver)
+                if editor:
+                    break
+            except Exception:
+                pass
+            finally:
+                driver.switch_to.default_content()
+    if editor is None:
+        editor = _shadow_find(driver, ["textarea",'[contenteditable=\"true\"]','*[role=\"textbox\"]'], max_depth=5)
+
+    if editor is None:
+        _veo_debug_dump(driver, "no-editor")
+        raise RuntimeError("Could not locate Veo prompt editor; update selectors or share HTML.")
+
+    # Type prompt (full Unicode)
+    try:
+        editor.clear()
+    except Exception:
+        pass
+    _safe_type_full_unicode(driver, editor, prompt_text)
+    time.sleep(0.5)
+    _press_enter(driver)
+    time.sleep(0.5)
+
+    # Click Generate / Create
+    btn = _find_generate_button(driver, timeout=20)
+    if btn:
+        try:
+            btn.click()
+            clicked = True
+        except Exception:
+            clicked = False
+    else:
+        clicked = False
+
+    if not clicked:
+        if _veo_job_active(driver):
+            logger.info("Detected active Veo job; waiting for completion…")
+        else:
+            if not _click_if_present(driver, ["//button[contains(translate(., 'GENERATE','generate'),'generate')]"]):
+                _veo_debug_dump(driver, "no-generate-button")
+                raise RuntimeError("No 'Generate' button found.")
+
+    logger.info("Generation started; waiting for Download…")
+
+    try:
+        driver.execute_cdp_cmd("Browser.setDownloadBehavior", {
+            "behavior": "allow",
+            "downloadPath": OUTPUT_DIR
+        })
+    except Exception:
+        try:
+            driver.execute_cdp_cmd("Page.setDownloadBehavior", {
+                "behavior": "allow",
+                "downloadPath": OUTPUT_DIR
+            })
+        except Exception:
+            pass
+
+    start_ts = time.time()
+
+    # Try various download labels
+    download_clicked = False
+    download_labels = ["Download", "Export", "Export video", "Save", "Save video", "Render", "Export MP4"]
+    for lbl in download_labels:
+        if _click_button_with_text_retry(driver, lbl, timeout=8, poll=0.5):
+            download_clicked = True
+            break
+    if not download_clicked:
+        _click_if_present(driver, [
+            "//button[contains(., 'More') or @aria-label='More actions') or contains(., '…') or contains(., '⋯')]",
+            "//div[@role='button' and (contains(., 'More') or contains(., '…') or contains(., '⋯'))]"
+        ], timeout_each=3)
+        for lbl in download_labels:
+            if _click_button_with_text_retry(driver, lbl, timeout=8, poll=0.5):
+                download_clicked = True
+                break
+    if not download_clicked:
+        download_clicked = _click_if_present(driver, [
+            "//button[contains(translate(., 'DOWNLOAD','download'),'download')]",
+            "//*[@role='menuitem' and contains(translate(., 'DOWNLOAD','download'),'download')]"
+        ], timeout_each=4)
+
+    if download_clicked:
+        logger.info("Clicked a Download/Export action; polling for file appearance…")
+    else:
+        logger.info("No explicit Download/Export button clicked; polling filesystem anyway…")
+
+    deadline = time.time() + 900  # up to 15 minutes
+    out = None
+    while time.time() < deadline:
+        latest = get_latest_file(OUTPUT_DIR, ".mp4")
+        if latest:
+            try:
+                mtime = os.path.getmtime(latest)
+                if mtime >= start_ts - 1:
+                    out = latest
+                    break
+            except Exception:
+                pass
+        time.sleep(2)
+    else:
+        _veo_debug_dump(driver, "no-download")
+        raise RuntimeError("Timed out waiting for 'Download'.")
+
+    logger.info("Downloaded (by filesystem detection): %s", out)
+    time.sleep(3)
+    return out
+
+# --- Veo CDP/Selenium selector (no changes to call sites needed) ---
+# This wrapper replaces the global name `generate_veo_video` so your existing code keeps working.
+try:
+    _cdp_fn_exists = callable(generate_veo_video_cdp)
+except NameError:
+    _cdp_fn_exists = False
+
+_original_generate_veo_video = generate_veo_video  # keep the Selenium version
+
+def generate_veo_video(prompt_text: str) -> str:  # override the name with a smart dispatcher
+    if not SELENIUM_OK:
+
+        raise RuntimeError(f"Selenium is not available: {SELENIUM_IMPORT_ERR}. Set FA_SAFE_MODE=1 for smoke tests or install a compatible Selenium.")
+    use_cdp = os.getenv("VEO_USE_CDP", "1") == "1"
+    if use_cdp and _cdp_fn_exists:
+        try:
+            return generate_veo_video_cdp(prompt_text)
+        except Exception as e:
+            logger.warning(f"CDP path failed ({e}); falling back to Selenium.")
+    return _original_generate_veo_video(prompt_text)
+
+# ----------------------------------
+# Editing (CapCut optional) + utilities
+# ----------------------------------
+def edit_with_capcut(video_path: str) -> str:
+    if DO_CAPCUT and pyautogui:
+        try:
+            logger.info("✂️ Editing with CapCut (GUI)…")
+            os.system("xdg-open 'capcut://template/detail?template_id=YOUR_CAPCUT_TEMPLATE_ID'")
+            time.sleep(10)
+            pyautogui.hotkey('ctrl', 'i'); time.sleep(2)
+            pyautogui.write(video_path); pyautogui.press('enter'); time.sleep(5)
+            pyautogui.click(x=1200, y=650); time.sleep(3)
+            pyautogui.click(x=1350, y=800); time.sleep(2)
+            out = os.path.join(OUTPUT_DIR, f"final_{int(time.time())}.mp4")
+            pyautogui.write(out); pyautogui.press('enter'); time.sleep(30)
+            return out
+        except Exception as e:
+            logger.error(f"CapCut flow failed: {e}; falling back to ffmpeg")
+    out = os.path.join(OUTPUT_DIR, f"edited_{int(time.time())}.mp4")
+    try:
+        cmd = ['ffmpeg', '-y', '-i', video_path, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+               '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', out]
+        subprocess.run(cmd, check=True)
+        return out
+    except Exception as e:
+        logger.error(f"ffmpeg edit failed, copying: {e}")
+        import shutil
+        shutil.copy2(video_path, out)
+        return out
+
+def validate_video_for_tiktok(video_path):
+    try:
+        cmd = ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', '-show_streams', video_path]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        info = json.loads(result.stdout)
+        ok, reasons = True, []
+        if float(info['format']['size']) >= 287.6 * 1024 * 1024:
+            ok = False; reasons.append("file too large")
+        dur = float(info['format']['duration'])
+        if not (5 <= dur <= 600):
+            ok = False; reasons.append("duration out of range")
+        v = next((s for s in info['streams'] if s.get('codec_type') == 'video'), {})
+        if v.get('codec_name') != 'h264':
+            ok = False; reasons.append("video codec not h264")
+        w, h = int(v.get('width', 0)), int(v.get('height', 0))
+        ar = w / h if h else 0
+        if not any(abs(ar - x) < 0.01 for x in (9/16, 1/1, 16/9)):
+            ok = False; reasons.append("aspect ratio not 9:16/1:1/16:9")
+        return ok, "ok" if ok else f"failed: {', '.join(reasons)}"
+    except Exception as e:
+        return False, f"ffprobe error: {e}"
+
+# ----------------------------------
+# Pipeline
+# ----------------------------------
+class FantasyAIPipeline:
+    def __init__(self):
+        self.trend_analyzer = TrendAnalyzer()
+        self.prompt_builder = PromptGeneratorStructured()
+        self.hailo_inference = HailoInference()
+        self.social = SocialMediaManager()
+        self.prompt_scorer = PromptScorer()
+        self.prompt_scorer.maybe_train_from_csv(METRICS_CSV)
+def _save_prompt_json(self, prompt_json: dict):
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out = os.path.join(PROMPTS_DIR, f"prompt_{ts}.json")
+    os.makedirs(PROMPTS_DIR, exist_ok=True)
+    with open(out, "w", encoding="utf-8") as f:
+        # --- enhancer: apply to string fields safely ---
+        try:
+            if isinstance(prompt_json.get("final_prompt"), str):
+                prompt_json["final_prompt"] = enhance_prompt(prompt_json["final_prompt"])
+            if isinstance(prompt_json.get("dialogue"), str):
+                prompt_json["dialogue"] = enhance_prompt(prompt_json["dialogue"])
+        except Exception:
+            pass
+        json.dump(prompt_json, f, ensure_ascii=False, indent=2)
+    logger.info("📝 Saved prompt JSON → %s", out)
+
+    def _caption(self, trend, character_set):
+        character_slug = "".join(c[0] for c in character_set)
+        hashtags = [
+            "#FantasyLabAI", f"#{character_slug}Vlog", f"#{trend.replace(' ','')}",
+            "#AIgenerated", "#ViralVideo", "#Trending", "#AIContent"
+        ]
+        lines = [
+            f"{', '.join(character_set)} take on {trend}! 🤩",
+            f"Night vision mayhem: {', '.join(character_set)} vs {trend}! 👀",
+            f"{', '.join(character_set)} explore {trend} — chaos ensues. 🔥",
+        ]
+        return random.choice(lines) + " " + " ".join(hashtags)
+
+    def _best_prompt_for_trend(self, trend, character_set):
+        """Generate several candidates, score them, return the best."""
+        candidates = []
+        for _ in range(max(1, PROMPT_CANDIDATES)):
+            ptxt, pjson = self.prompt_builder.generate_prompt(trend, character_set=character_set)
+            # Optionally run LLM rewrite before scoring
+            ptxt = self.hailo_inference.generate_text(ptxt, max_tokens=160)
+            pjson["final_prompt"] = ptxt
+            score = self.prompt_scorer.predict(pjson)
+            pjson["score"] = score
+            candidates.append((score, ptxt, pjson))
+        candidates.sort(key=lambda x: x[0], reverse=True)
+        best = candidates[0]
+        logger.info(f"🏅 Best prompt score={best[0]:.3f} (of {len(candidates)} candidates)")
+        if PROMPT_SCORE_THRESHOLD > 0 and best[0] < PROMPT_SCORE_THRESHOLD:
+            logger.warning(f"Top prompt score {best[0]:.3f} is below threshold {PROMPT_SCORE_THRESHOLD:.2f}")
+        return best[1], best[2], candidates  # final_prompt, prompt_json, all candidates
+
+    def run(self):
+        logger.info("🚀 Starting FantasyAI Pipeline")
+
+        trends = self.trend_analyzer.fetch_trends()
+        selected = self.trend_analyzer.cluster_trends(trends)
+        logger.info(f"📊 Selected trend: {selected}")
+
+        final_prompt, prompt_json, all_cands = self._best_prompt_for_trend(selected, character_set=["Yeti", "Kitty"])
+
+        if SAVE_PROMPT_JSON:
+            # Save the winner
+            self._save_prompt_json(prompt_json)
+            # Save a lite log of candidates too (optional)
+            try:
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                cpath = os.path.join(PROMPTS_DIR, f"prompt_candidates_{ts}.json")
+                with open(cpath, "w", encoding="utf-8") as f:
+                    out = [{"score": float(s), "final_prompt": p, "title": pj.get("title","")} for (s,p,pj) in all_cands]
+                    try:
+                        for _it in out:
+                            fpv = _it.get("final_prompt")
+                            if isinstance(fpv, str):
+                                _it["final_prompt"] = enhance_prompt(fpv)
+                    except Exception:
+                        pass
+                    json.dump(out, f, ensure_ascii=False, indent=2)
+                logger.info(f"🧪 Saved {len(all_cands)} prompt candidates → {cpath}")
+            except Exception:
+                pass
+
+        logger.info(f"🎬 Prompt ready (len={len(final_prompt)} chars)")
+
+        video_path = generate_veo_video(final_prompt)
+        try:
+            write_metric(trend=(trend_name if "trend_name" in locals() else ""), pair=os.getenv("PAIR","auto"), score=(best_score if "best_score" in locals() else ""), provider=os.getenv("LLM_PROVIDER","ollama"), len_chars=len(best), source_kw=os.getenv("NICHE",""), fact_hit=("🧠 Fact seed" in best), video_path=video_path, notes="enhanced")
+        except Exception:
+            pass
+        if not video_path:
+            raise RuntimeError("Video generation failed (no file).")
+
+        edited = edit_with_capcut(video_path)
+
+        caption = self._caption(selected, prompt_json["character_set"])
+        ok, msg = validate_video_for_tiktok(edited)
+        if not ok:
+            logger.warning(f"TikTok check: {msg}")
+
+        # Schedule posts (DRY RUN unless POST_* flags are 1)
+        self.social.schedule_tiktok(edited, caption)
+        self.social.schedule_youtube(edited, caption)
+
+        logger.info("✅ Pipeline finished (jobs scheduled).")
+
+        try:
+            _pair = globals().get("last_pair","")
+            _kw = globals().get("last_kw","")
+            _prov = globals().get("provider","LLM")
+            _outfile = globals().get("last_outfile","")
+            metrics_writer.write_row(provider=_prov, pair=_pair, trend_kw=_kw,
+                                     prompt_len=len(str(globals().get("last_prompt",""))),
+                                     outfile=_outfile)
+        except Exception:
+            pass
+        if POST_TIKTOK or POST_YOUTUBE:
+            logger.info("⏳ Waiting for scheduled uploads (Ctrl+C to exit)…")
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                logger.info("Exiting.")
+        else:
+            logger.info("DRY RUN complete (no uploads enabled).")
+
+# ----------------------------------
+# Entrypoint
+# ----------------------------------
+if __name__ == "__main__":
+    try:
+        FantasyAIPipeline().run()
+    except Exception as e:
+        logger.error(f"❌ Pipeline failed: {e}")
+        raise
+
+
+def _ensure_enhanced(text):
+    try:
+        return enhance_prompt(text)
+    except Exception:
+        return text

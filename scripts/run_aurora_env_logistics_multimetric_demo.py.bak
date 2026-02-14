@@ -1,0 +1,197 @@
+﻿import os
+from pprint import pprint
+from typing import Dict, Any
+
+import numpy as np
+import pandas as pd
+
+from fantasyai.config import DATA_DIR
+from fantasyai.aurora.anomaly_scoring import compute_multimetric_anomaly_scores
+from fantasyai.aurora.research_memory import log_experiment
+
+
+def _print_section(title: str) -> None:
+    print("=" * 80)
+    print(title)
+    print("=" * 80)
+
+
+def _run_noaa_multimetric() -> Dict[str, Any]:
+    path = os.path.join(DATA_DIR, "noaa_timeseries.csv")
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"NOAA timeseries CSV not found at {path}. "
+            "Use generate_demo_public_data or drop a real file."
+        )
+
+    df = pd.read_csv(path)
+    # Expect at least these columns from your existing demo generator:
+    #   date, temperature_C, precip_mm
+    for col in ["date", "temperature_C", "precip_mm"]:
+        if col not in df.columns:
+            raise ValueError(f"Expected column '{col}' in NOAA CSV, got {df.columns.tolist()}")
+
+    sub = df[["date", "temperature_C", "precip_mm"]].copy()
+    sub = sub.dropna()
+
+    # Multi-metric feature frame
+    X = sub[["temperature_C", "precip_mm"]].copy()
+
+    weights = {
+        "temperature_C": 0.7,
+        "precip_mm": 0.3,
+    }
+
+    scores = compute_multimetric_anomaly_scores(X, weights)
+    sub["aurora_anomaly_score"] = scores
+
+    # Basic summary
+    quantiles = {
+        "max": float(sub["aurora_anomaly_score"].max()),
+        "q50": float(sub["aurora_anomaly_score"].quantile(0.50)),
+        "q75": float(sub["aurora_anomaly_score"].quantile(0.75)),
+        "q90": float(sub["aurora_anomaly_score"].quantile(0.90)),
+        "q95": float(sub["aurora_anomaly_score"].quantile(0.95)),
+    }
+
+    # Top anomaly days
+    top = sub.sort_values("aurora_anomaly_score", ascending=False).head(10)
+
+    result = {
+        "dataset_meta": {
+            "path": path,
+            "num_days": int(sub.shape[0]),
+            "columns": sub.columns.tolist(),
+        },
+        "weights_used": weights,
+        "score_quantiles": quantiles,
+        "top_anomaly_days_preview": top[
+            ["date", "temperature_C", "precip_mm", "aurora_anomaly_score"]
+        ].to_dict(orient="records"),
+    }
+
+    # Log experiment
+    try:
+        log_experiment(
+            spec={
+                "problem_type": "multimetric_anomaly",
+                "domain": "climate",
+                "description": (
+                    "NOAA daily climate pattern anomalies over temperature and precipitation."
+                ),
+                "data_path": path,
+                "features_used": ["temperature_C", "precip_mm"],
+                "weights_used": weights,
+            },
+            result=result,
+            tag="noaa_multimetric_anomaly_demo",
+        )
+    except Exception as e:
+        print(f"[AURORA] Warning: failed to log NOAA experiment: {e}")
+
+    return result, top
+
+
+def _run_nyc_multimetric() -> Dict[str, Any]:
+    path = os.path.join(DATA_DIR, "nyc_taxi_sample.csv")
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"NYC taxi CSV not found at {path}. "
+            "Use generate_demo_public_data or drop a real file."
+        )
+
+    df = pd.read_csv(path)
+    for col in ["trip_distance", "total_amount"]:
+        if col not in df.columns:
+            raise ValueError(f"Expected column '{col}' in NYC taxi CSV, got {df.columns.tolist()}")
+
+    sub = df[["trip_distance", "total_amount"]].copy()
+    sub = sub.dropna()
+
+    # Derived feature: cost per mile
+    sub["cost_per_mile"] = np.where(
+        sub["trip_distance"] > 0,
+        sub["total_amount"] / sub["trip_distance"],
+        np.nan,
+    )
+    sub = sub.dropna()
+
+    X = sub[["trip_distance", "total_amount", "cost_per_mile"]].copy()
+
+    weights = {
+        "trip_distance": 0.3,
+        "total_amount": 0.3,
+        "cost_per_mile": 0.4,
+    }
+
+    scores = compute_multimetric_anomaly_scores(X, weights)
+    sub["aurora_anomaly_score"] = scores
+
+    quantiles = {
+        "max": float(sub["aurora_anomaly_score"].max()),
+        "q50": float(sub["aurora_anomaly_score"].quantile(0.50)),
+        "q75": float(sub["aurora_anomaly_score"].quantile(0.75)),
+        "q90": float(sub["aurora_anomaly_score"].quantile(0.90)),
+        "q95": float(sub["aurora_anomaly_score"].quantile(0.95)),
+    }
+
+    top = sub.sort_values("aurora_anomaly_score", ascending=False).head(10)
+
+    result = {
+        "dataset_meta": {
+            "path": path,
+            "num_trips": int(sub.shape[0]),
+            "columns": sub.columns.tolist(),
+        },
+        "weights_used": weights,
+        "score_quantiles": quantiles,
+        "top_anomaly_trips_preview": top[
+            ["trip_distance", "total_amount", "cost_per_mile", "aurora_anomaly_score"]
+        ].to_dict(orient="records"),
+    }
+
+    # Log experiment
+    try:
+        log_experiment(
+            spec={
+                "problem_type": "multimetric_anomaly",
+                "domain": "logistics_cost",
+                "description": (
+                    "NYC taxi trip cost anomalies on distance, total fare, and cost per mile."
+                ),
+                "data_path": path,
+                "features_used": ["trip_distance", "total_amount", "cost_per_mile"],
+                "weights_used": weights,
+            },
+            result=result,
+            tag="nyc_taxi_multimetric_anomaly_demo",
+        )
+    except Exception as e:
+        print(f"[AURORA] Warning: failed to log NYC taxi experiment: {e}")
+
+    return result, top
+
+
+def main() -> None:
+    _print_section("[AURORA x NOAA] Multi-metric anomaly demo")
+    noaa_res, noaa_top = _run_noaa_multimetric()
+    pprint(noaa_res)
+    print("\nTop 10 anomaly days:\n")
+    print(
+        noaa_top[["date", "temperature_C", "precip_mm", "aurora_anomaly_score"]]
+        .to_string(index=False)
+    )
+
+    _print_section("[AURORA x NYC Taxi] Multi-metric anomaly demo")
+    nyc_res, nyc_top = _run_nyc_multimetric()
+    pprint(nyc_res)
+    print("\nTop 10 anomaly trips:\n")
+    print(
+        nyc_top[
+            ["trip_distance", "total_amount", "cost_per_mile", "aurora_anomaly_score"]
+        ].to_string(index=False)
+    )
+
+
+if __name__ == "__main__":
+    main()

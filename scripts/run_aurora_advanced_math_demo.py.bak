@@ -1,0 +1,122 @@
+﻿from __future__ import annotations
+
+import numpy as np
+
+def lp_demo():
+    # Minimize c^T x subject to A_ub x <= b_ub, x >= 0
+    # Simple "shipping / allocation" style LP
+    from scipy.optimize import linprog
+
+    # 6 decision vars
+    c = np.array([6.0, 8.0, 5.0, 9.0, 7.0, 4.0])
+
+    # Constraints (example):
+    # demand-style lower bounds can be modeled by -A x <= -b
+    A_ub = np.array([
+        [1, 1, 1, 0, 0, 0],      # group 1 capacity
+        [0, 0, 0, 1, 1, 1],      # group 2 capacity
+        [-1, 0, 0, -1, 0, 0],    # ensure x0 + x3 >= 20
+        [0, -1, 0, 0, -1, 0],    # ensure x1 + x4 >= 30
+        [0, 0, -1, 0, 0, -1],    # ensure x2 + x5 >= 50
+    ], dtype=float)
+
+    b_ub = np.array([
+        80,   # group 1 cap
+        70,   # group 2 cap
+        -20,
+        -30,
+        -50,
+    ], dtype=float)
+
+    bounds = [(0, None)] * 6
+    res = linprog(c, A_ub=A_ub, b_ub=b_ub, bounds=bounds, method="highs")
+    return res
+
+def heat_1d_demo(nx=50, nt=500, alpha=0.01):
+    # Explicit finite-difference heat equation on [0,1]:
+    # u_t = alpha u_xx, with u(0)=u(1)=0
+    x = np.linspace(0.0, 1.0, nx)
+    dx = x[1] - x[0]
+    dt = 0.1 * dx * dx / alpha  # stable-ish explicit step
+
+    # initial condition: Gaussian bump centered at 0.5
+    u0 = np.exp(-((x - 0.5) ** 2) / (2 * (0.08 ** 2)))
+    u0[0] = 0.0
+    u0[-1] = 0.0
+
+    u = u0.copy()
+    for _ in range(nt):
+        u_new = u.copy()
+        u_new[1:-1] = u[1:-1] + alpha * dt * (u[2:] - 2 * u[1:-1] + u[:-2]) / (dx * dx)
+        u = u_new
+        u[0] = 0.0
+        u[-1] = 0.0
+
+    return {
+        "nx": int(nx),
+        "nt": int(nt),
+        "dx": float(dx),
+        "dt": float(dt),
+        "alpha": float(alpha),
+        "u0_center": float(u0[nx // 2]),
+        "uT_center": float(u[nx // 2]),
+        "u0_first5": [float(v) for v in u0[:5]],
+        "uT_first5": [float(v) for v in u[:5]],
+    }
+
+def monte_carlo_portfolio_demo(n_paths=10000, horizon_days=252, mu=0.0005, sigma=0.01, seed=7):
+    rng = np.random.default_rng(seed)
+    rets = rng.normal(loc=mu, scale=sigma, size=(n_paths, horizon_days))
+    cum = (1.0 + rets).prod(axis=1) - 1.0
+
+    var95 = float(np.quantile(cum, 0.05))
+    cvar95 = float(cum[cum <= var95].mean())
+    return {
+        "n_paths": int(n_paths),
+        "horizon_days": int(horizon_days),
+        "mu": float(mu),
+        "sigma": float(sigma),
+        "var95": var95,
+        "cvar95": cvar95,
+    }
+
+def main():
+    print("=" * 80)
+    print("[AURORA ADVANCED MATH] Linear programming (LP) demo")
+    print("=" * 80)
+    lp = lp_demo()
+    print("Success:", bool(lp.success))
+    if lp.success:
+        print(f"Min cost: {lp.fun:.4f}")
+        print("Solution vector x:")
+        print(lp.x)
+    print("Diagnostics:", {"status": int(lp.status), "message": str(lp.message), "nit": int(getattr(lp, "nit", -1))})
+    print()
+
+    print("=" * 80)
+    print("[AURORA ADVANCED MATH] 1D heat equation demo")
+    print("=" * 80)
+    heat = heat_1d_demo()
+    print(f"nx={heat['nx']}, nt={heat['nt']}, dx={heat['dx']:.4f}, dt={heat['dt']:.4f}, alpha={heat['alpha']}")
+    print("Initial center temperature:", heat["u0_center"])
+    print("Final center temperature:  ", heat["uT_center"])
+    print("First 5 initial temperatures:", heat["u0_first5"])
+    print("First 5 final temperatures:  ", heat["uT_first5"])
+    print()
+
+    print("=" * 80)
+    print("[AURORA ADVANCED MATH] Monte Carlo portfolio risk demo")
+    print("=" * 80)
+    mc = monte_carlo_portfolio_demo()
+    print(f"Num paths: {mc['n_paths']}, horizon_days: {mc['horizon_days']}")
+    print(f"Daily mean return: {mc['mu']:.6f}, std: {mc['sigma']:.6f}")
+    print(f"VaR 95% (5th percentile final return): {mc['var95']:.4f}")
+    print(f"CVaR 95% (mean of worst 5%):          {mc['cvar95']:.4f}")
+    print()
+
+    print("=" * 80)
+    print("[AURORA ADVANCED MATH] Demo completed successfully.")
+    print("=" * 80)
+
+if __name__ == "__main__":
+    main()

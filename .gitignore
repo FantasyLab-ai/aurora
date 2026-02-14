@@ -1,0 +1,37 @@
+﻿# ---- Python ----
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+*.log
+
+# ---- Virtualenv ----
+.venv/
+venv/
+
+# ---- Data / external ----
+fantasyai/data/external/
+data/
+datasets/
+*.csv
+*.parquet
+*.zip
+*.gz
+*.txt
+*.exe
+
+# ---- Outputs ----
+outputs/
+plots/
+plots_data/
+runs/
+
+# ---- Large artifacts ----
+*.pkl
+*.joblib
+*.npy
+*.npz
+*.db
+*.sqlite*

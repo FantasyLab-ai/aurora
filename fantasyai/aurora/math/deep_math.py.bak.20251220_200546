@@ -1,0 +1,337 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Dict, Any, Optional
+
+import numpy as np
+import pandas as pd
+
+# Optional dependency for changepoints
+try:
+    import ruptures as rpt  # type: ignore
+except Exception:
+    rpt = None
+
+from scipy import stats
+import statsmodels.api as sm
+from statsmodels.stats.diagnostic import het_breuschpagan
+from statsmodels.stats.stattools import durbin_watson
+from statsmodels.tsa.stattools import adfuller
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.metrics import r2_score, accuracy_score
+
+
+@dataclass
+class DeepMathConfig:
+    max_rows: int = 25000
+    max_cols: int = 60
+    random_state: int = 42
+
+
+def _coerce_numeric(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    for c in out.columns:
+        if out[c].dtype == object:
+            out[c] = pd.to_numeric(out[c], errors="ignore")
+    return out
+
+
+def _sample_df(df: pd.DataFrame, cfg: DeepMathConfig) -> pd.DataFrame:
+    df2 = df.copy()
+    if df2.shape[1] > cfg.max_cols:
+        df2 = df2.iloc[:, : cfg.max_cols]
+    if len(df2) > cfg.max_rows:
+        df2 = df2.sample(cfg.max_rows, random_state=cfg.random_state)
+    return df2
+
+
+def _pick_target(df: pd.DataFrame) -> Optional[str]:
+    candidates = [c for c in df.columns if c.lower() in ("target", "label", "y", "outcome", "class")]
+    if candidates:
+        return candidates[0]
+    num = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    if not num:
+        return None
+    # pick a numeric column with the smallest distinct count (often a label / bucket)
+    best, best_u = None, 10**18
+    for c in num:
+        u = df[c].nunique(dropna=True)
+        if 1 < u < best_u:
+            best, best_u = c, u
+    return best
+
+
+def _hypothesis_tests(df: pd.DataFrame, target: str) -> Dict[str, Any]:
+    res: Dict[str, Any] = {"target": target, "tests": []}
+    y = df[target]
+
+    if pd.api.types.is_numeric_dtype(y) and y.nunique(dropna=True) == 2:
+        groups = sorted([v for v in y.dropna().unique()])
+        g0, g1 = groups[0], groups[1]
+        m0 = (y == g0)
+        m1 = (y == g1)
+
+        for c in df.columns:
+            if c == target:
+                continue
+            x = df[c]
+            if pd.api.types.is_numeric_dtype(x):
+                a = pd.to_numeric(x[m0], errors="coerce").dropna().astype(float)
+                b = pd.to_numeric(x[m1], errors="coerce").dropna().astype(float)
+                if len(a) >= 20 and len(b) >= 20:
+                    t, p = stats.ttest_ind(a, b, equal_var=False, nan_policy="omit")
+                    res["tests"].append({"feature": c, "type": "welch_ttest", "p": float(p), "t": float(t), "n0": int(len(a)), "n1": int(len(b))})
+            else:
+                ct = pd.crosstab(x.fillna("NA").astype(str).str.slice(0, 60), y)
+                if ct.shape[0] >= 2 and ct.shape[1] >= 2:
+                    chi2, p, dof, _ = stats.chi2_contingency(ct.values)
+                    res["tests"].append({"feature": c, "type": "chi2", "p": float(p), "chi2": float(chi2), "dof": int(dof), "rows": int(ct.shape[0])})
+    else:
+        if pd.api.types.is_numeric_dtype(y):
+            yv = pd.to_numeric(y, errors="coerce")
+            for c in df.columns:
+                if c == target:
+                    continue
+                x = df[c]
+                if pd.api.types.is_numeric_dtype(x):
+                    xv = pd.to_numeric(x, errors="coerce")
+                    ok = xv.notna() & yv.notna()
+                    if ok.sum() >= 50:
+                        r, p = stats.pearsonr(xv[ok].astype(float), yv[ok].astype(float))
+                        res["tests"].append({"feature": c, "type": "pearsonr", "p": float(p), "r": float(r), "n": int(ok.sum())})
+
+    res["tests"] = sorted(res["tests"], key=lambda d: d.get("p", 1.0))[:25]
+    return res
+
+
+def _assumption_tests(df: pd.DataFrame, target: Optional[str]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {"normality": [], "stationarity": [], "heteroskedasticity": None, "autocorrelation": None, "multicollinearity": None}
+    num_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+
+    for c in num_cols[:10]:
+        x = pd.to_numeric(df[c], errors="coerce").dropna().astype(float)
+        if len(x) >= 50:
+            x2 = x.sample(min(5000, len(x)), random_state=0)
+            stat, p = stats.normaltest(x2)
+            out["normality"].append({"col": c, "test": "dagostino", "p": float(p), "n": int(len(x2))})
+
+    for c in num_cols[:5]:
+        x = pd.to_numeric(df[c], errors="coerce").dropna().astype(float)
+        if len(x) >= 200:
+            x2 = x.iloc[:5000]
+            try:
+                adf = adfuller(x2, autolag="AIC")
+                out["stationarity"].append({"col": c, "test": "adf", "p": float(adf[1]), "stat": float(adf[0]), "n": int(len(x2))})
+            except Exception:
+                pass
+
+    if target and target in df.columns and pd.api.types.is_numeric_dtype(df[target]):
+        y = pd.to_numeric(df[target], errors="coerce")
+        X = df[[c for c in num_cols if c != target]].copy()
+
+        if X.shape[1] >= 2:
+            X = X.fillna(X.median(numeric_only=True))
+            y = y.fillna(y.median())
+            X = X.iloc[:, : min(20, X.shape[1])]
+            Xc = sm.add_constant(X, has_constant="add")
+
+            try:
+                m = sm.OLS(y, Xc).fit()
+                resid = m.resid
+
+                try:
+                    bp = het_breuschpagan(resid, Xc)
+                    out["heteroskedasticity"] = {"test": "breusch_pagan", "p": float(bp[1])}
+                except Exception:
+                    pass
+
+                try:
+                    out["autocorrelation"] = {"test": "durbin_watson", "dw": float(durbin_watson(resid))}
+                except Exception:
+                    pass
+
+                try:
+                    vifs = []
+                    for col in X.columns:
+                        Xi = sm.add_constant(X.drop(columns=[col]), has_constant="add")
+                        r2 = sm.OLS(X[col], Xi).fit().rsquared
+                        vif = 1.0 / max(1e-9, (1.0 - r2))
+                        vifs.append({"col": col, "vif": float(vif)})
+                    out["multicollinearity"] = sorted(vifs, key=lambda d: d["vif"], reverse=True)[:10]
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+    out["normality"] = sorted(out["normality"], key=lambda d: d["p"])[:10]
+    return out
+
+
+def _dimensionality_reduction(df: pd.DataFrame) -> Dict[str, Any]:
+    num = df.select_dtypes(include=[np.number]).copy()
+    if num.shape[1] < 3:
+        return {"status": "skipped", "reason": "not_enough_numeric_cols", "n_numeric": int(num.shape[1])}
+    num = num.fillna(num.median(numeric_only=True))
+    X = StandardScaler().fit_transform(num.values)
+    pca = PCA(n_components=min(10, X.shape[1]), random_state=0)
+    Z = pca.fit_transform(X)
+    return {
+        "status": "ok",
+        "n_rows": int(num.shape[0]),
+        "n_cols": int(num.shape[1]),
+        "explained_variance_ratio": [float(v) for v in pca.explained_variance_ratio_[:10]],
+        "example_scores": Z[:5].tolist(),
+    }
+
+
+def _multivariate_modeling(df: pd.DataFrame, target: str) -> Dict[str, Any]:
+    num = df.select_dtypes(include=[np.number]).copy()
+    if target not in num.columns:
+        return {"status": "skipped", "reason": "target_not_numeric_or_missing"}
+
+    y = num[target]
+    X = num.drop(columns=[target])
+    if X.shape[1] < 2:
+        return {"status": "skipped", "reason": "not_enough_features", "n_features": int(X.shape[1])}
+
+    X = X.fillna(X.median(numeric_only=True))
+    y = y.fillna(y.median())
+    X = X.iloc[:, : min(30, X.shape[1])]
+
+    if y.nunique(dropna=True) == 2:
+        Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.2, random_state=0, stratify=y)
+        clf = LogisticRegression(max_iter=1000)
+        clf.fit(Xtr, ytr)
+        pred = clf.predict(Xte)
+        return {"status": "ok", "type": "logistic_regression", "accuracy": float(accuracy_score(yte, pred)), "n_features": int(X.shape[1])}
+
+    Xtr, Xte, ytr, yte = train_test_split(X, y, test_size=0.2, random_state=0)
+    reg = LinearRegression()
+    reg.fit(Xtr, ytr)
+    pred = reg.predict(Xte)
+    return {"status": "ok", "type": "linear_regression", "r2": float(r2_score(yte, pred)), "n_features": int(X.shape[1])}
+
+
+def _regime_detection(df: pd.DataFrame) -> Dict[str, Any]:
+    num_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    if not num_cols:
+        return {"status": "skipped", "reason": "no_numeric_cols"}
+
+    c = num_cols[0]
+    x = pd.to_numeric(df[c], errors="coerce").dropna().astype(float)
+    if len(x) < 500:
+        return {"status": "skipped", "reason": "too_few_points", "col": c, "n": int(len(x))}
+
+    x2 = x.iloc[: min(10000, len(x))].values
+
+    if rpt is None:
+        w = 200
+        if len(x2) < 3 * w:
+            return {"status": "skipped", "reason": "no_ruptures_and_short_series", "col": c, "n": int(len(x2))}
+        rmean = pd.Series(x2).rolling(w).mean()
+        dif = rmean.diff().abs().fillna(0)
+        idx = int(dif.idxmax())
+        return {"status": "ok_fallback", "method": "rolling_mean_shift", "col": c, "best_change_index": idx}
+
+    algo = rpt.Pelt(model="rbf").fit(x2)
+    bkps = algo.predict(pen=10)
+    return {"status": "ok", "method": "ruptures_pelt_rbf", "col": c, "changepoints": [int(b) for b in bkps]}
+
+
+def _uncertainty(df: pd.DataFrame, target: Optional[str]) -> Dict[str, Any]:
+    num_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    if not num_cols:
+        return {"status": "skipped", "reason": "no_numeric_cols"}
+
+    metric = target if (target and target in num_cols) else num_cols[0]
+    x = pd.to_numeric(df[metric], errors="coerce").dropna().astype(float)
+    if len(x) < 100:
+        return {"status": "skipped", "reason": "too_few_points", "metric": metric, "n": int(len(x))}
+
+    x2 = x.sample(min(5000, len(x)), random_state=0).values
+    rng = np.random.default_rng(0)
+
+    boots = []
+    for _ in range(300):
+        samp = rng.choice(x2, size=len(x2), replace=True)
+        boots.append(np.mean(samp))
+
+    lo, hi = np.quantile(boots, [0.025, 0.975])
+    return {"status": "ok", "metric": metric, "mean": float(np.mean(x2)), "bootstrap_ci95": [float(lo), float(hi)], "n": int(len(x2))}
+
+
+def _causal_signals(df: pd.DataFrame, target: str) -> Dict[str, Any]:
+    num = df.select_dtypes(include=[np.number]).copy()
+    if target not in num.columns or num.shape[1] < 3:
+        return {"status": "skipped", "reason": "need_numeric_target_and_features"}
+
+    y = pd.to_numeric(num[target], errors="coerce").fillna(num[target].median())
+    X = num.drop(columns=[target]).fillna(num.median(numeric_only=True))
+    X = X.iloc[:, : min(25, X.shape[1])]
+    Xc = sm.add_constant(X, has_constant="add")
+
+    try:
+        m = sm.OLS(y, Xc).fit()
+        top = []
+        for k, v in m.params.items():
+            if k == "const":
+                continue
+            top.append({"feature": k, "coef": float(v), "p": float(m.pvalues.get(k, np.nan))})
+        top = sorted(top, key=lambda d: (np.nan_to_num(d["p"], nan=1.0), -abs(d["coef"])))[:15]
+        return {"status": "ok", "method": "ols_controls", "note": "Observational signals with controls; not definitive causality.", "top_effects": top, "r2": float(m.rsquared)}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+def _cluster_summary(df: pd.DataFrame) -> Dict[str, Any]:
+    num = df.select_dtypes(include=[np.number]).copy()
+    if num.shape[1] < 3 or len(num) < 200:
+        return {"status": "skipped", "reason": "need_more_numeric_data"}
+
+    num = num.fillna(num.median(numeric_only=True))
+    X = StandardScaler().fit_transform(num.values)
+    k = 4
+    km = KMeans(n_clusters=k, n_init=10, random_state=0)
+    labels = km.fit_predict(X)
+    counts = pd.Series(labels).value_counts().sort_index()
+    return {"status": "ok", "k": k, "cluster_counts": {int(i): int(v) for i, v in counts.to_dict().items()}}
+
+
+def analyze(df: pd.DataFrame, *, seed: int = 42) -> Dict[str, Any]:
+    cfg = DeepMathConfig(random_state=seed)
+    df0 = _coerce_numeric(df)
+    df1 = _sample_df(df0, cfg)
+
+    target = _pick_target(df1)
+
+    out: Dict[str, Any] = {
+        "status": "ok",
+        "shape_used": {"rows": int(len(df1)), "cols": int(df1.shape[1])},
+        "target_guess": target,
+        "hypothesis_testing": None,
+        "causal_inference": None,
+        "multivariate_modeling": None,
+        "dimensionality_reduction": None,
+        "regime_detection": None,
+        "model_uncertainty": None,
+        "formal_assumptions_testing": None,
+        "clustering": None,
+    }
+
+    if target:
+        out["hypothesis_testing"] = _hypothesis_tests(df1, target)
+        out["multivariate_modeling"] = _multivariate_modeling(df1, target)
+        out["causal_inference"] = _causal_signals(df1, target)
+
+    out["dimensionality_reduction"] = _dimensionality_reduction(df1)
+    out["regime_detection"] = _regime_detection(df1)
+    out["model_uncertainty"] = _uncertainty(df1, target)
+    out["formal_assumptions_testing"] = _assumption_tests(df1, target)
+    out["clustering"] = _cluster_summary(df1)
+
+    return out

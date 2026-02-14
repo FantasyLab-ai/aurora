@@ -1,0 +1,62 @@
+
+import os, re
+from scripts.data_sources import sample_trend_keyword, get_fact_with_fallback
+
+SAFE_SWEARS = ["damn","hell","crap","friggin","freakin","holy hell","what the hell","dammit","pain in the ass","bullshit","BS"]
+
+def _spice(line: str, intensity: int, force: bool) -> str:
+    if not re.match(r'^\s*[🧍🐈🐻].*?:', line): return line
+    if len(line) > 200: return line
+    pool = SAFE_SWEARS[:]
+    if intensity >= 3: pool += ["batshit","clusterfuck"]
+    if os.getenv("ALLOW_SWEARING","0") != "1": return line
+    import random
+    if not force and random.random() > (0.45 + 0.1*max(0,intensity-2)): return line
+    s = random.choice(pool)
+    return re.sub(r':\s*', f': {s}, ', line, count=1)
+
+def enhance_prompt(_ignored_original: str) -> str:
+    niche = os.getenv("NICHE","wildlife")
+    kw = sample_trend_keyword(niche) or niche
+    fact = get_fact_with_fallback(kw, niche=niche, max_chars=240)
+
+    # choose pair (env var may pin it)
+    pair_env = os.getenv("PAIR","").strip()
+    a,b = pair_env.split("+",1) if "+" in pair_env else ("Yeti","Bear")
+
+    env_title = f'“{a} & {b} — {kw.title()} in the Wild”'
+    env_body = (f"Grounded in real trend: **{kw}**. Small-town public library used as staging because it looks wrong for {niche}. "
+                "Dusty sunlight through broken blinds. Carpet stained, faint mildew. Leaning shelves; sideways romance paperbacks. "
+                "Flickering fluorescent over a heavy oak table with coffee rings.")
+    cam = (f"Handheld vlog — {a} grips a selfie stick. Autofocus bounces between {b} smacking props and startled patrons. "
+           "Mic picks page rustle, distant cough, and bulb hiss.")
+    chars_desc = (f"{a} (filming):\n"
+                  f"• Pale-gray fur; offensive tee; cargo shorts; chain wallet.\n"
+                  f"• Laughing too hard; struggles to keep cam steady.\n\n"
+                  f"{b} (performing):\n"
+                  f"• Brown fur; tank that reads “Knowledge is F***ing Power.” Crooked glasses; red-faced.\n"
+                  f"• Slams a random book for emphasis.\n")
+    lines = [
+        f'{b} (slamming book): "This says {kw} is trending—BRO I BEEN LIED TO!"',
+        f'{a} (off-cam, wheezing): "You’re yelling at f**kin’ Goosebumps, dude!"',
+        'Old lady shushes like a smoke alarm.',
+        f'{b} (pointing at cam): "Tell her to shush THESE nuts!"'
+    ]
+    # force spicy language on every dialogue line if requested
+    force = os.getenv("FORCE_SWEAR","0") == "1"
+    intensity = int(os.getenv("EDGY_INTENSITY","3") or "3")
+    spiced = [ _spice(L, intensity, force) for L in lines ]
+
+    artifacts = ("Camera shakes on slam; lens smudged by dust. Mic peaks on the shout, then muffles when laughter clips.")
+    vibe = ("Hyper-real absurdism: cryptids melting down in a ‘quiet’ space. Vulgar but natural, looks like a real phone clip someone caught.")
+    fact_seed = f"\n\n🧠 Fact seed ({kw}): {fact}" if fact else ""
+
+    return (
+        f"📋 Veo 3 Prompt — {env_title}\n\n"
+        f"Environment\n{env_body}\n\n"
+        f"Camera\n{cam}\n\n"
+        f"Characters\n\n{chars_desc}\n\n"
+        f"Action & Dialogue (8s)\n" + "\n\n".join(spiced) + fact_seed + "\n\n"
+        f"Artifacts\n{artifacts}\n\n"
+        f"Vibe\n{vibe}\n"
+    )

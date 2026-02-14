@@ -1,0 +1,112 @@
+﻿from __future__ import annotations
+
+from typing import Any, Dict, Optional
+
+import numpy as np
+import pandas as pd
+
+
+def _to_datetime_series(s: pd.Series) -> Optional[pd.Series]:
+    """Try to parse a single column as datetime. Returns parsed series if enough values parse."""
+    if pd.api.types.is_datetime64_any_dtype(s):
+        return s
+
+    if pd.api.types.is_object_dtype(s) or pd.api.types.is_string_dtype(s):
+        dt = pd.to_datetime(s, errors="coerce")
+        if dt.notna().mean() > 0.6:
+            return dt
+    return None
+
+
+def _infer_datetime_cols(df: pd.DataFrame) -> list[str]:
+    """Infer datetime-like columns, including common Date+Time pairing."""
+    cols: list[str] = []
+
+    # direct datetime-like columns
+    for c in df.columns[:120]:
+        dt = _to_datetime_series(df[c])
+        if dt is not None:
+            cols.append(c)
+
+    # common pair: Date + Time (AirQualityUCI uses this)
+    if ("Date" in df.columns) and ("Time" in df.columns):
+        try:
+            comb = (df["Date"].astype(str).str.strip() + " " + df["Time"].astype(str).str.strip())
+            dt2 = pd.to_datetime(comb, errors="coerce", dayfirst=True)
+            if dt2.notna().mean() > 0.6:
+                cols.append("Date+Time")
+        except Exception:
+            pass
+
+    return cols[:10]
+
+
+def _robust_z(x: pd.Series) -> pd.Series:
+    v = pd.to_numeric(x, errors="coerce").astype(float)
+
+    if v.notna().sum() == 0:
+        return pd.Series(np.zeros(len(v)), index=v.index)
+
+    med = np.nanmedian(v)
+    if np.isnan(med):
+        return pd.Series(np.zeros(len(v)), index=v.index)
+
+    mad = np.nanmedian(np.abs(v - med))
+    if mad == 0 or np.isnan(mad):
+        return pd.Series(np.zeros(len(v)), index=v.index)
+
+    return 0.6745 * (v - med) / mad
+
+
+def compute_math_stack_v2(df: pd.DataFrame, max_corr_cols: int = 40) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    out["rows"] = int(df.shape[0])
+    out["cols"] = int(df.shape[1])
+    out["dtypes"] = {c: str(df[c].dtype) for c in df.columns}
+
+    miss = df.isna().mean().sort_values(ascending=False)
+    out["missing_top"] = [{"col": c, "pct_missing": float(miss.loc[c])} for c in miss.head(40).index]
+
+    num = df.select_dtypes(include="number")
+    out["numeric_cols"] = int(num.shape[1])
+
+    # correlations (limited)
+    out["top_correlations"] = []
+    if num.shape[1] >= 2:
+        cols = list(num.columns[:max_corr_cols])
+        corr = num[cols].corr(numeric_only=True)
+        pairs = []
+        for i in range(len(cols)):
+            for j in range(i + 1, len(cols)):
+                v = corr.iloc[i, j]
+                if pd.notna(v):
+                    pairs.append((cols[i], cols[j], float(v)))
+        pairs.sort(key=lambda t: abs(t[2]), reverse=True)
+        out["top_correlations"] = [{"a": a, "b": b, "corr": v} for a, b, v in pairs[:30]]
+
+    # anomaly ranking
+    out["top_anomalies"] = []
+    if num.shape[1] > 0 and len(df) > 50:
+        use_cols = list(num.columns[:30])
+        zmax = None
+        for c in use_cols:
+            z = _robust_z(df[c]).abs()
+            zmax = z if zmax is None else np.maximum(zmax, z)
+        zmax = pd.Series(zmax, index=df.index)
+        top_idx = zmax.sort_values(ascending=False).head(20).index
+
+        for idx in top_idx:
+            contrib = []
+            for c in use_cols:
+                contrib.append((c, float(abs(_robust_z(df[c]).loc[idx]))))
+            contrib.sort(key=lambda t: t[1], reverse=True)
+            out["top_anomalies"].append(
+                {
+                    "row_index": int(idx),
+                    "score": float(zmax.loc[idx]),
+                    "top_contributors": [{"col": c, "abs_robust_z": v} for c, v in contrib[:5]],
+                }
+            )
+
+    out["datetime_cols"] = _infer_datetime_cols(df)
+    return out

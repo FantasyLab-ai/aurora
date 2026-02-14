@@ -1,0 +1,179 @@
+from __future__ import annotations
+import os, time, glob
+from typing import Optional, List
+from datetime import datetime
+from tenacity import retry, stop_after_attempt, wait_fixed
+
+from selenium.webdriver import Chrome
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+
+# --------- config from env ----------
+DEBUGGER_ADDR = os.getenv("CHROME_DEBUGGER_ADDR", "127.0.0.1:9222")
+PROJECT_HINT  = os.getenv("PROJECT_HINT", "veo")
+OUTPUT_DIR    = os.getenv("OUTPUT_DIR", os.path.expanduser("~/Desktop/FantasyAI/outputs"))
+WAIT_S        = float(os.getenv("SELENIUM_WAIT_S", "0.5"))
+MAX_WAIT      = int(os.getenv("SELENIUM_MAX_WAIT", "60"))
+
+# Common selectors we try in order (editor UIs change; we try multiple robustly)
+PROMPT_CANDIDATES: List[str] = [
+    'textarea[placeholder*="Describe"]',
+    'div[contenteditable="true"]',
+    'textarea',
+    'div[role="textbox"]'
+]
+GEN_BUTTON_CANDIDATES: List[str] = [
+    'button:has-text("Generate")',
+    'button[aria-label*="Generate"]',
+    'button[class*="generate"]',
+    'button[type="submit"]'
+]
+IN_PROGRESS_CUES: List[str] = [
+    'button:has-text("Generating")',
+    '[aria-busy="true"]',
+    '[data-state="loading"]',
+    '.spinner,.loading'
+]
+
+def _timestamp() -> float:
+    return time.time()
+
+def _newest_mp4_since(folder: str, since_ts: float) -> Optional[str]:
+    best = None
+    best_mtime = 0.0
+    for p in glob.glob(os.path.join(folder, "*.mp4")):
+        try:
+            m = os.path.getmtime(p)
+            if m >= since_ts and m > best_mtime:
+                best_mtime, best = m, p
+        except FileNotFoundError:
+            pass
+    return best
+
+def _attach_existing_chrome() -> Chrome:
+    opts = Options()
+    # attach to the already-open browser so it uses your real Google session
+    opts.add_experimental_option("debuggerAddress", DEBUGGER_ADDR)
+    # IMPORTANT: when attaching to an existing Chrome, you generally DO NOT set binary_location/driver path.
+    # Use the system Chrome and Chromedriver that matches.
+    driver = Chrome(options=opts)
+    driver.implicitly_wait(2)
+    return driver
+
+def _switch_to_project_tab(driver: Chrome, hint: str) -> None:
+    # Iterate windows; pick the first whose title or URL contains hint
+    for handle in driver.window_handles:
+        driver.switch_to.window(handle)
+        try:
+            if hint.lower() in (driver.title or "").lower(): return
+            if hint.lower() in (driver.current_url or "").lower(): return
+        except Exception:
+            continue
+    # If not found, stay on current tab; caller may still succeed if only one VEO tab is open.
+
+def _find_first(driver: Chrome, candidates: List[str]):
+    for css in candidates:
+        try:
+            # CSS4 :has() is not supported by Selenium's engine; we emulate for simple "has-text".
+            if ":has-text(" in css:
+                # crude text filter: find all buttons then match text
+                if css.startswith("button"):
+                    text = css.split(':has-text("',1)[1].rsplit('")',1)[0]
+                    els = driver.find_elements(By.TAG_NAME, "button")
+                    for el in els:
+                        try:
+                            if text.lower() in (el.text or "").lower():
+                                return el
+                        except Exception:
+                            pass
+                    continue
+            el = driver.find_element(By.CSS_SELECTOR, css)
+            return el
+        except Exception:
+            continue
+    return None
+
+def _clear_and_set(driver: Chrome, el, value: str):
+    # Avoid Enter being interpreted mid-typing by setting value via JS when possible
+    tag = el.tag_name.lower()
+    if tag in ("textarea","input"):
+        driver.execute_script("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input',{bubbles:true}))", el, value)
+    else:
+        driver.execute_script("arguments[0].innerText = arguments[1]; arguments[0].dispatchEvent(new Event('input',{bubbles:true}))", el, value)
+
+def _is_busy(driver: Chrome) -> bool:
+    # Look for any obvious “loading/generating” cue
+    for css in IN_PROGRESS_CUES:
+        try:
+            # same note as _find_first re :has-text
+            if ":has-text(" in css:
+                text = css.split(':has-text("',1)[1].rsplit('")',1)[0]
+                btns = driver.find_elements(By.TAG_NAME, "button")
+                for b in btns:
+                    if text.lower() in (b.text or "").lower():
+                        return True
+                continue
+            els = driver.find_elements(By.CSS_SELECTOR, css)
+            if els:
+                return True
+        except Exception:
+            continue
+    # Fallback: disabled Generate button implies busy
+    btn = _find_first(driver, GEN_BUTTON_CANDIDATES)
+    try:
+        if btn and (not btn.is_enabled()):
+            return True
+    except Exception:
+        pass
+    return False
+
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(1))
+def _click_generate_once(driver: Chrome):
+    btn = _find_first(driver, GEN_BUTTON_CANDIDATES)
+    if not btn:
+        raise RuntimeError("Generate button not found")
+    # Guard: only click if not busy
+    if _is_busy(driver):
+        raise RuntimeError("Editor is still busy; not clicking")
+    btn.click()
+
+def generate_veo_video(prompt_text: str) -> str:
+    """
+    Attach to existing Chrome, select the VEO project tab, paste the prompt,
+    click Generate ONCE (debounced), and wait for a new MP4 to appear in OUTPUT_DIR.
+    Returns the new MP4 path.
+    """
+    since = _timestamp()
+    driver = _attach_existing_chrome()
+    _switch_to_project_tab(driver, PROJECT_HINT)
+
+    # 1) Find the prompt field and set text without pressing Enter.
+    prompt_el = _find_first(driver, PROMPT_CANDIDATES)
+    if not prompt_el:
+        raise RuntimeError("Prompt field not found. Update PROMPT_CANDIDATES if the UI changed.")
+    _clear_and_set(driver, prompt_el, prompt_text)
+    time.sleep(WAIT_S)  # let the UI settle
+
+    # 2) Wait until not busy, then click Generate exactly once.
+    t_end = time.time() + MAX_WAIT
+    while time.time() < t_end:
+        if not _is_busy(driver):
+            _click_generate_once(driver)
+            break
+        time.sleep(0.4)
+    else:
+        raise TimeoutError("Editor never became idle to click Generate")
+
+    # 3) Wait for a new MP4 to appear (download/render pipeline)
+    t_end = time.time() + max(300, MAX_WAIT)  # up to 5 minutes for render/download
+    last_seen = None
+    while time.time() < t_end:
+        mp4 = _newest_mp4_since(OUTPUT_DIR, since)
+        if mp4 and mp4 != last_seen:
+            # Extra settle—some tools write then move file
+            time.sleep(1.0)
+            return mp4
+        time.sleep(1.0)
+    raise TimeoutError(f"No new .mp4 found in {OUTPUT_DIR} after clicking Generate")
