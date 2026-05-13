@@ -77,7 +77,7 @@ These are seductive but distracting. We'd rather be excellent at the core than m
 ## How to influence the roadmap
 
 - **File a feature request** issue describing the use case
-- **Back on [Patreon](https://patreon.com/FantasyLabAI)** — backers get input on priorities
+- **Back on [Patreon](https://www.patreon.com/c/FantasyLab3DStudio)** — backers get input on priorities
 - **Submit a Decision Contract** for a use case we haven't covered — concrete usage shapes the action backlog
 - **Contribute a method or knowledge bank entry** — see [CONTRIBUTING.md](CONTRIBUTING.md)
 - **Join the conversation** in [GitHub Discussions](https://github.com/fantasylab/aurora/discussions)

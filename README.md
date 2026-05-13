@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="frontend/assets/brand/aurora-mascot-standing.svg" alt="Aurora" width="180"/>
+  <img src="docs/screenshots/aurora-mascot-wizard.png" alt="Aurora" width="200"/>
 
   # Aurora
 
@@ -13,10 +13,58 @@
   [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
   [![Status](https://img.shields.io/badge/status-v1.1%20launch-purple.svg)](#)
   [![Tests](https://img.shields.io/badge/tests-320%20passing-brightgreen.svg)](#)
-  [![Patreon](https://img.shields.io/badge/support-Patreon-f96854.svg)](https://patreon.com/FantasyLabAI)
+  [![Patreon](https://img.shields.io/badge/support-Patreon-f96854.svg)](https://www.patreon.com/c/FantasyLab3DStudio)
 
-  [Install](#install) · [Aurora Copilot](#-aurora-copilot--for-humans) · [Aurora Cortex](#%EF%B8%8F-aurora-cortex--for-ai-systems) · [Roadmap](ROADMAP.md) · [FantasyLab.ai](https://fantasylab.ai)
+  [Install](#install) · [See it in action](#see-aurora-in-action) · [Aurora Copilot](#-aurora-copilot--for-humans) · [Aurora Cortex](#%EF%B8%8F-aurora-cortex--for-ai-systems) · [Roadmap](ROADMAP.md) · [FantasyLab.ai](https://fantasylab.ai)
 </div>
+
+---
+
+## See Aurora in action
+
+A real run on an environmental air-quality dataset — captured straight from a Studio session.
+
+<div align="center">
+  <img src="docs/screenshots/07-summary-run.png" alt="Aurora run summary banner — domain selector, run status, fabricated chip, and confidence"/>
+  <p><em><strong>The run banner.</strong> Domain selector across the top (Research / Ops / Industrial / Finance / Medical / Economics / Sports / Logistics / Custom+) sets context. The Aurora Pulse line below states the run's status in plain English. The <code>0 fabricated</code> chip is the contractual signal that every finding traces to a method.</em></p>
+</div>
+
+<div align="center">
+  <img src="docs/screenshots/01-hero-studio.png" alt="Aurora Studio — Overview cube and Intelligence tiles after a real analytical run"/>
+  <p><em><strong>The Studio.</strong> The Overview cube rotates through six analytical lenses (Overview, Anomalies, Regimes, Motifs, Forecast, Physics). Below it, the Intelligence row surfaces the top anomalies (20 critical), the forecast peak prediction, a what-if causal answer, and the discovered physics law — <code>y = a·t² + b·t + c</code> at RMSE 126.720 — all live and grounded in artifacts, not LLM guesses.</em></p>
+</div>
+
+### The moat: every sentence cites a source
+
+<div align="center">
+  <img src="docs/screenshots/02-cited-synthesis.png" alt="What This Means — cited synthesis with Grounded in 12 knowledge entries panel below"/>
+  <p><em><strong>"What This Means" reads like a research paragraph because it is one.</strong> Each claim is tagged with a <code>seed:*</code> citation — <code>seed:diurnal_cycle</code>, <code>seed:mutual_information_kg</code>, <code>seed:causal_chain</code>, <code>seed:physics_match</code>, <code>seed:wavelet_morlet</code>, <code>seed:sindy</code> — that links to the exact knowledge-bank entry backing it. The panel below lists all 12 entries Aurora actually retrieved, each with its real source: Newton (1701), French AP (1971), Pierson &amp; Moskowitz (1964), NIST, NOAA NDBC, Torrence &amp; Compo (1998). <strong>No invented citations. No invented numbers. No invented papers.</strong></em></p>
+</div>
+
+<table>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="docs/screenshots/06-findings.png" alt="Findings cards with method chip, severity, threshold and seed citation"/>
+      <br/><sub><b>Findings as structured atoms.</b> Each card is a typed object — method, severity (crit / high / med), threshold, evidence, citation — not a paragraph of LLM prose. <code>+448.6σ</code> with <code>p &lt; 0E+0</code> isn't a vibes-level "anomaly"; it's a Hampel z-score on row 6715 you can re-run.</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src="docs/screenshots/03-advanced-methods.png" alt="Advanced methods panel showing 19 research-grade methods with honest skip reasons"/>
+      <br/><sub><b>19 advanced methods, honestly disclosed.</b> HMM (3 latent regimes), mutual info (13-feature matrix), Granger (5 causal pairs), Wavelet Morlet CWT, Gaussian process, persistent topology, multivariate outliers (325 of 5000 flagged by ≥2 detectors). Methods that couldn't run are explicitly <code>skipped</code> with the reason — <code>no_time_axis</code>, <code>negative_values_present</code>, <code>cross_sectional_no_time_axis</code>. No silent failure.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center" valign="top">
+      <img src="docs/screenshots/04-spacetime.png" alt="Spacetime view — entity worldlines with a threshold cross marker in the forecast cone"/>
+      <br/><sub><b>Spacetime worldlines.</b> Eight entity worldlines (Wind, Atmospheric pressure, Solar input, Humidity, Air temperature, Sea-surface temp, Wave height, Precipitation) plotted against time. The vertical "NOW" line separates past from the forecast cone. The orange marker is a <strong>predicted threshold cross at +2.0h</strong> — fired by Aurora, not a human.</sub>
+    </td>
+    <td width="50%" align="center" valign="top">
+      <img src="docs/screenshots/05-phase-space.png" alt="Phase space view — the system's state trajectory through its attractor basin"/>
+      <br/><sub><b>Phase Space.</b> The system reduced to a 2D state projection. The cyan <strong>NOW</strong> marker is current position; the trail behind it is the trajectory it took to get there. Pressure ↔ solar, pressure ↔ humidity, pressure ↔ air_temp resonances (35.71m, coh 1.0) drive the geometry.</sub>
+    </td>
+  </tr>
+</table>
+
+<sub><em>Captured on a 9,357-row cross-sectional air-quality dataset at AUTO tier. Run took ≈14 seconds local on consumer hardware. <code>0 fabricated</code>. 12 cited knowledge entries. Three methods deferred with reason.</em></sub>
 
 ---
 
@@ -216,9 +264,10 @@ Aurora is fully open source under Apache 2.0. The engine, the schema, the baseli
 
 The roadmap is public. The build is documented on YouTube. Domain experts who contribute knowledge bank entries or templates will be able to earn from the upcoming marketplace (v2.0). Aurora gets smarter as the community grows.
 
-- ⭐ [Star on GitHub](https://github.com/fantasylab/aurora) — visibility
-- 💜 [Back on Patreon](https://patreon.com/FantasyLabAI) — recurring support funds the build
-- 📺 [Follow the build on YouTube](https://youtube.com/@Fantasy_lab_ai)
+- ⭐ [Star on GitHub](https://github.com/FantasyLab-ai/aurora) — visibility
+- 💜 [Back on Patreon](https://www.patreon.com/c/FantasyLab3DStudio) — recurring support funds the build
+- 📺 [Follow the build on YouTube](https://www.youtube.com/channel/UCUtqOJYK9qBIXmpNaeJRjfQ)
+- 🎬 [Daily clips on TikTok](https://www.tiktok.com/@fantasylab.ai)
 - 🐦 [Daily progress on X](https://twitter.com/Fantasylab_ai)
 
 ---
