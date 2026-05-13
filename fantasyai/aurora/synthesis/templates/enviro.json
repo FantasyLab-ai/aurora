@@ -1,0 +1,56 @@
+[
+  {
+    "id": "enviro_storm_precursor",
+    "domain": "enviro",
+    "specificity": 9,
+    "match_condition": {
+      "requires": [
+        {"kind": "regime_change", "min_count": 1},
+        {"kind": "anomaly",       "min_count": 2}
+      ],
+      "optional": [
+        {"kind": "forecast_peak"},
+        {"kind": "physics_match"},
+        {"kind": "discovered_motif"}
+      ]
+    },
+    "skeleton": "The dataset shows a classic storm-precursor signature: barometric pressure drops while wind and waves build, with a measurable lag between cause and effect. Aurora flagged {anomaly_count} anomalous events and {regime_count} regime change{regime_plural} consistent with a transition from calm to active conditions. {forecast_clause} {physics_clause} The lag arcs visible in the system graph make the cause-and-effect chain physical, not statistical.",
+    "slot_extractors": {
+      "anomaly_count":   "count(findings[kind=anomaly])",
+      "regime_count":    "count(findings[kind=regime_change])",
+      "regime_plural":   "if regime_count > 1: 's'",
+      "forecast_clause": "if forecast.available: 'The forecast extends the trajectory forward; the cone widens as the storm passes through the operational threshold.'",
+      "physics_clause":  "if has(findings[kind=physics_match]): 'A canonical wave-fetch relationship matches the wind-wave pair, which is the signature pattern for surface-driven swell.'"
+    }
+  },
+  {
+    "id": "enviro_calm_baseline",
+    "domain": "enviro",
+    "specificity": 5,
+    "match_condition": {
+      "requires": [
+        {"kind": "discovered_motif", "min_count": 1}
+      ]
+    },
+    "skeleton": "Conditions in this window sit in the calm-baseline regime: the dominant dynamic is {motif_label}, with no regime breaks and few anomalies above significance. Forecasts in this state are typically reliable at multi-hour horizons, and the system stays inside its documented attractor.",
+    "slot_extractors": {
+      "motif_label": "first(findings[kind=discovered_motif].title)"
+    }
+  },
+  {
+    "id": "enviro_anomaly_cluster",
+    "domain": "enviro",
+    "specificity": 6,
+    "match_condition": {
+      "requires": [
+        {"kind": "anomaly", "min_count": 5}
+      ]
+    },
+    "skeleton": "Aurora flagged {anomaly_count} anomalous environmental readings, {critical_clause} clustered tightly enough to suggest a single contiguous event rather than independent excursions. Inspect the top-ranked rows in the anomaly card and cross-reference with the time-axis labels to bound the event.",
+    "slot_extractors": {
+      "anomaly_count":   "count(findings[kind=anomaly])",
+      "overview_critical":"overview.critical_anomalies",
+      "critical_clause": "if overview.critical_anomalies > 0: '{overview_critical} of which are critical,'"
+    }
+  }
+]

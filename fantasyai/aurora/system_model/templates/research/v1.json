@@ -1,0 +1,94 @@
+{
+  "id": "research",
+  "version": "v1",
+  "display_name": "Research / cohort / observational biology",
+  "domain_tag": "research",
+  "description": "Subjects, exposures, outcomes, confounders. Dose-response, survival decay, biomarker trajectories, multi-test landscapes.",
+  "identification": {
+    "column_keywords": [
+      "patient_id", "subject", "cohort", "outcome", "exposure",
+      "treatment", "control", "dose", "endpoint", "biomarker",
+      "trial", "arm", "follow_up", "survived", "p_value", "effect_size"
+    ],
+    "value_range_hints": {
+      "p_value": [0.0, 1.0],
+      "dose":    [0.0, 1e4]
+    },
+    "cadence_hints": ["one_shot", "daily", "weekly", "monthly"],
+    "domain_tags": ["research", "biology", "clinical_research"],
+    "min_keyword_hits": 2
+  },
+  "topology_skeleton": {
+    "entities": [
+      {"id": "subject",       "label": "Subject / sample", "role": "actor"},
+      {"id": "exposure",      "label": "Exposure",         "role": "forcing"},
+      {"id": "covariate",     "label": "Covariate",        "role": "indicator"},
+      {"id": "confounder",    "label": "Confounder",       "role": "indicator"},
+      {"id": "biomarker",     "label": "Biomarker",        "role": "state"},
+      {"id": "outcome",       "label": "Outcome / endpoint","role": "response"},
+      {"id": "effect_modifier","label": "Effect modifier", "role": "indicator"}
+    ],
+    "expected_relationships": [
+      {"id": "rel_exp_outcome", "source": "exposure",    "target": "outcome",   "kind": "causal",   "rationale": "primary effect under study"},
+      {"id": "rel_conf_outcome","source": "confounder",  "target": "outcome",   "kind": "causal",   "rationale": "must be adjusted for"},
+      {"id": "rel_exp_bio",     "source": "exposure",    "target": "biomarker", "kind": "causal",   "rationale": "mediator candidate"},
+      {"id": "rel_bio_outcome", "source": "biomarker",   "target": "outcome",   "kind": "causal"}
+    ]
+  },
+  "characteristic_patterns": [
+    {"id": "dose_response", "name": "Dose-response curve",
+     "signature": "monotonic or sigmoid response of outcome vs dose",
+     "detection_rule": "symbolic discovery winner in {sigmoid, saturation, logistic}"},
+    {"id": "survival_decay", "name": "Survival decay",
+     "signature": "exponential or Weibull survival vs time",
+     "detection_rule": "symbolic discovery winner in {weibull, exponential, gompertz}"},
+    {"id": "effect_heterogeneity", "name": "Treatment-effect heterogeneity",
+     "signature": "effect size differs across covariate strata",
+     "detection_rule": "regime detection on outcome conditioned on covariate"},
+    {"id": "multitest_landscape", "name": "Multiple-testing landscape",
+     "signature": "many tests; uncorrected p-values clustered near 0",
+     "detection_rule": "≥ 10 columns labelled p_value or _pval"}
+  ],
+  "vocabulary": {
+    "anomaly_term": "outlier",
+    "regime_term":  "stratum",
+    "pattern_term": "trajectory",
+    "action_term":  "follow-up",
+    "breach_term":  "endpoint reached",
+    "advisory_term": "investigator note",
+    "extra": {
+      "high_state": "responder",
+      "low_state":  "non-responder",
+      "transition": "treatment effect onset",
+      "growth_term": "response",
+      "decay_term":  "washout"
+    }
+  },
+  "action_library": [
+    {"id": "prioritise_hypothesis", "label": "Prioritise hypothesis for follow-up",
+     "description": "Promote the relationship with highest effect size + lowest FDR-adjusted p-value to a confirmatory experiment.",
+     "triggered_when": ["effect size > 0.3 SD", "FDR q < 0.10"],
+     "predicted_outcome_summary": "≈55% of pre-registered follow-ups confirm in independent samples.",
+     "base_rate_success": 0.55, "confidence_band_required": "medium",
+     "falsification": ["replication fails", "effect attenuates with covariate adjustment"],
+     "assumptions": ["sample is representative", "outcome ascertainment is unbiased"],
+     "relevant_states": ["dose_response", "effect_heterogeneity"]},
+    {"id": "multiple_test_correction", "label": "Apply multiple-comparison correction",
+     "description": "When ≥ 10 hypothesis tests run on the same dataset, apply BH-FDR or Bonferroni to the reported p-values before any narrative claims significance.",
+     "triggered_when": ["≥ 10 reported p-values"],
+     "predicted_outcome_summary": "Correction collapses ≈70% of nominal significances on noisy data.",
+     "base_rate_success": 0.95, "confidence_band_required": "high",
+     "falsification": [], "assumptions": ["tests are exchangeable enough for FDR"],
+     "relevant_states": ["multitest_landscape"]},
+    {"id": "design_replication", "label": "Design replication study",
+     "description": "Specify sample size and pre-registered analysis plan to confirm a flagged finding.",
+     "triggered_when": ["promising effect identified"],
+     "predicted_outcome_summary": "Pre-registered replications confirm ≈40-60% of original findings.",
+     "base_rate_success": 0.5, "confidence_band_required": "medium",
+     "falsification": [], "assumptions": [], "relevant_states": ["dose_response", "effect_heterogeneity"]}
+  ],
+  "constraints": [
+    {"id": "p_value_bound", "description": "p-values ∈ [0,1]", "kind": "bound", "hardness": "hard", "on_entity": null, "expression": "0 ≤ p_value ≤ 1"},
+    {"id": "subject_unique", "description": "subject IDs unique within cohort", "kind": "bound", "hardness": "soft"}
+  ]
+}

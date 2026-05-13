@@ -1,0 +1,16 @@
+[
+  {
+    "id": "bio_feedback_regulation",
+    "title": "Feedback regulation through degradation",
+    "note": "In gene-expression and metabolic data, oscillation or saturation almost always reflects feedback regulation: production balanced by degradation, or upstream regulator balanced by downstream sink. The fitted dynamic captures the steady-state behavior; the perturbation experiment captures the loop's response time.",
+    "trigger": {
+      "requires": [{"kind": "discovered_motif", "min_count": 1}]
+    }
+  },
+  {
+    "id": "bio_screening_caveat",
+    "title": "Statistical signal, not diagnosis",
+    "note": "Biological-data outputs from Aurora are screening signals, not diagnoses. The relevant downstream step is always the experimentalist's interpretation — which condition, which timepoint, which control. Aurora's role is to surface the candidate; the human decides what it means.",
+    "trigger": {}
+  }
+]

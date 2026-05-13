@@ -1,0 +1,22 @@
+{
+  "id": "mean_reverting",
+  "match": {
+    "title_substrings": ["ornstein-uhlenbeck", "mean-reverting",
+                          "mean reverting", "ou process"],
+    "equation_substrings": ["dx = -kappa", "mean-revert", "ornstein"]
+  },
+  "summary": "Mean-reverting (Ornstein–Uhlenbeck) process: deviations from the long-run mean μ shrink at rate κ; volatility σ sets the noise. Half-life of deviations ≈ ln(2)/κ.",
+  "param_to_intuition": [
+    {
+      "param": "kappa",
+      "ranges": [
+        {"min": 0.0,  "max": 0.05,
+         "phrase": "Slow reversion — the series wanders far from the mean for long stretches."},
+        {"min": 0.05, "max": 0.5,
+         "phrase": "Moderate reversion — half-life is short relative to the observed window."},
+        {"min": 0.5,  "max": 9999.0,
+         "phrase": "Fast reversion — the series stays tightly clustered around the mean."}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+[
+  {
+    "id": "logistics_littles_law",
+    "title": "Little's Law constrains the network",
+    "note": "Little's Law (L = λW) is the canonical conservation rule for any flow network: the average number of items in the system equals the throughput times the average wait. When throughput saturates, every additional unit of flow becomes wait time, not output — adding capacity is the only response that changes the equilibrium.",
+    "trigger": {
+      "requires": [{"kind": "anomaly", "min_count": 1}]
+    }
+  },
+  {
+    "id": "logistics_cascade_propagation",
+    "title": "Cascade propagation",
+    "note": "Single-node delays propagate to downstream nodes with measurable lag. The propagation pattern is the signature of the network topology — the lag arcs in the system graph make this physical, and the cascade-projection card surfaces which downstream nodes feel the pressure soonest.",
+    "trigger": {
+      "requires": [{"kind": "regime_change", "min_count": 1}]
+    }
+  }
+]

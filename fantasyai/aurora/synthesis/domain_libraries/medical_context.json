@@ -1,0 +1,8 @@
+[
+  {
+    "id": "medical_screening_role",
+    "title": "Screening tool, not diagnosis",
+    "note": "Aurora's clinical-context outputs are statistical screening signals only. The decision-grade interpretation requires clinician judgement, the patient's longitudinal record, and the standard differential-diagnosis process. The tool surfaces; the clinician decides.",
+    "trigger": {}
+  }
+]

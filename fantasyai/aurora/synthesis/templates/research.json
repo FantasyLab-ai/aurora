@@ -1,0 +1,49 @@
+[
+  {
+    "id": "research_publishable_signal",
+    "domain": "research",
+    "specificity": 9,
+    "match_condition": {
+      "requires": [
+        {"kind": "physics_match", "min_count": 1}
+      ],
+      "optional": [
+        {"kind": "discovered_motif"},
+        {"kind": "regime_change"}
+      ]
+    },
+    "skeleton": "The fitted dynamics match a canonical law in the prior library: {law_label}. For a research context this is the pre-registration sweet spot — a known mechanism, parameters in the documented range, and reproducible from the run's artifacts. The next step is replication on a hold-out window before claiming the relationship; Aurora's overnight learning loop will do this automatically as new data arrives.",
+    "slot_extractors": {
+      "law_label": "first(findings[kind=physics_match].title)"
+    }
+  },
+  {
+    "id": "research_novel_pattern",
+    "domain": "research",
+    "specificity": 7,
+    "match_condition": {
+      "requires": [
+        {"kind": "discovered_motif", "min_count": 1}
+      ]
+    },
+    "skeleton": "Aurora discovered a model of the form {motif_label} but did not match it to a canonical prior. This is candidate territory: the fit is statistically meaningful but the structural form isn't yet in the prior library. Replicate on independent data and, if it holds, the form becomes a candidate prior — the overnight loop tracks promotion thresholds (3 confirmations, 60% consensus).",
+    "slot_extractors": {
+      "motif_label": "first(findings[kind=discovered_motif].title)"
+    }
+  },
+  {
+    "id": "research_exploratory",
+    "domain": "research",
+    "specificity": 4,
+    "match_condition": {
+      "requires": [
+        {"kind": "anomaly", "min_count": 1}
+      ]
+    },
+    "skeleton": "Aurora found {anomaly_count} pattern{s_or_empty} worth exploring. In research mode the bar for surfacing a finding is intentionally low; the bar for claiming a finding is intentionally high. Treat what's surfaced here as the start of investigation, not the end.",
+    "slot_extractors": {
+      "anomaly_count": "count(findings[kind=anomaly])",
+      "s_or_empty":    "if anomaly_count > 1: 's'"
+    }
+  }
+]

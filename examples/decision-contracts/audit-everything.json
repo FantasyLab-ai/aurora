@@ -1,0 +1,23 @@
+{
+  "id": "audit-everything",
+  "name": "Append every Aurora run to the audit log",
+  "description": "Always fires (the trigger is trivially satisfied). Writes one JSON line per Aurora run to audit.jsonl under AURORA_CONTRACTS_OUTPUT. Recommended baseline for regulated environments — ship this file to your SIEM via a sidecar.",
+  "enabled": true,
+  "trigger": {
+    "field": "findings.count",
+    "op": ">=",
+    "value": 0
+  },
+  "actions": [
+    {
+      "type": "file",
+      "path": "audit.jsonl",
+      "include_metadata": true
+    }
+  ],
+  "rate_limit": null,
+  "metadata": {
+    "owner": "compliance@example.com",
+    "retention_policy": "30 days local, then ship to SIEM"
+  }
+}

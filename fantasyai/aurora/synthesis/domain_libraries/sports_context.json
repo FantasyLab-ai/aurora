@@ -1,0 +1,18 @@
+[
+  {
+    "id": "sports_regression_to_mean",
+    "title": "Regression to mean",
+    "note": "Most extreme performance windows revert. The 'hot streak' is a real psychological phenomenon but it's also a statistical artifact of selecting on outcomes. Aurora can flag the streak; only opponent-context and matchup-conditional analysis distinguish real form change from a run of favourable variance.",
+    "trigger": {
+      "requires": [{"kind": "anomaly", "min_count": 1}]
+    }
+  },
+  {
+    "id": "sports_fatigue_calendar",
+    "title": "Fatigue is a calendar phenomenon",
+    "note": "Modern rest-management theory treats fatigue as primarily a function of rolling minutes and back-to-back game density rather than the individual-game performance. The leading indicator surfaces in the schedule, not the box score; cross-reference any flagged underperformance with rest days.",
+    "trigger": {
+      "requires": [{"kind": "anomaly", "min_count": 2}]
+    }
+  }
+]

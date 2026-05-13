@@ -163,5 +163,242 @@ def _fit_damped_oscillator(t: np.ndarray, y: np.ndarray) -> Dict[str, Any]:
     }
 
 
+# ============================================================
+# Algebraic / static candidates — added v2.0
+# These don't solve ODEs forward; they fit closed-form algebraic
+# relationships of y(t). Mathematically simpler than the ODE candidates
+# but cover shapes the ODE candidates can't (e.g. Stefan-Boltzmann's T⁴).
+# ============================================================
+
+def _fit_power_law(t: np.ndarray, y: np.ndarray) -> Dict[str, Any]:
+    """y = a · t^b — recovers Stefan-Boltzmann (b≈4), Kepler's 3rd (b≈3/2),
+    allometry (b≈3/4). Requires t > 0 and y > 0 (works on positive series)."""
+    import math
+    t = np.asarray(t, dtype=float)
+    y = np.asarray(y, dtype=float)
+    # Shift t so it's positive (use rank-based time if t starts at 0).
+    t_eff = t.copy()
+    if t_eff.min() <= 0:
+        t_eff = t_eff - t_eff.min() + 1.0
+    mask = (t_eff > 0) & (y > 0) & np.isfinite(t_eff) & np.isfinite(y)
+    if mask.sum() < 30:
+        return {"ok": False, "error": "not_enough_positive_rows"}
+    log_t = np.log(t_eff[mask])
+    log_y = np.log(y[mask])
+    try:
+        b, log_a = np.polyfit(log_t, log_y, 1)
+        a = math.exp(log_a)
+    except Exception as e:
+        return {"ok": False, "error": f"polyfit_failed: {e}"}
+    yhat = a * np.power(t_eff, b)
+    yhat = np.where(np.isfinite(yhat), yhat, np.nan)
+    sse = float(np.nansum((y - yhat) ** 2))
+    return {
+        "ok": True,
+        "name": "power_law",
+        "model": "y = a · t^b",
+        "params": {"a": float(a), "b": float(b)},
+        "yhat": yhat,
+        "rmse": _rmse(y, yhat),
+        "aic": _aic(int(mask.sum()), 2, sse),
+        "k": 2,
+    }
+
+
+def _fit_exponential_static(t: np.ndarray, y: np.ndarray) -> Dict[str, Any]:
+    """y = a · exp(b·t) + c — closed-form exponential with explicit asymptote.
+
+    Distinct from linear_ode: linear_ode integrates dy/dt = a*y + b numerically.
+    This one is the algebraic solution. Fitted via scipy.curve_fit when available;
+    falls back to least-squares on log(y - c) when not."""
+    t = np.asarray(t, dtype=float)
+    y = np.asarray(y, dtype=float)
+    mask = np.isfinite(t) & np.isfinite(y)
+    if mask.sum() < 30:
+        return {"ok": False, "error": "not_enough_rows"}
+    t_use = t[mask]
+    y_use = y[mask]
+    span = float(t_use.max() - t_use.min()) or 1.0
+    t_norm = (t_use - t_use.min()) / span
+    try:
+        from scipy.optimize import curve_fit
+        c0 = float(np.median(y_use))
+        a0 = float(np.max(y_use) - c0) or 1.0
+        popt, _ = curve_fit(
+            lambda x, a, b, c: a * np.exp(b * x) + c,
+            t_norm, y_use, p0=[a0, 0.1, c0], maxfev=2000,
+        )
+        a_, b_, c_ = (float(v) for v in popt)
+    except Exception:
+        # Fall back: assume c = min(y), fit log(y-c) linearly.
+        c_ = float(np.min(y_use)) - 0.01 * float(np.std(y_use) or 1.0)
+        diff = y_use - c_
+        if (diff > 0).sum() < 20:
+            return {"ok": False, "error": "exponential_fit_failed"}
+        log_diff = np.log(diff[diff > 0])
+        t_for_log = t_norm[diff > 0]
+        try:
+            b_, log_a_ = np.polyfit(t_for_log, log_diff, 1)
+            import math as _m
+            a_ = _m.exp(log_a_)
+        except Exception as e:
+            return {"ok": False, "error": f"fallback_exponential_failed: {e}"}
+        b_, a_ = float(b_), float(a_)
+    t_norm_full = (t - t_use.min()) / span
+    yhat = a_ * np.exp(b_ * t_norm_full) + c_
+    sse = float(np.nansum((y - yhat) ** 2))
+    return {
+        "ok": True,
+        "name": "exponential",
+        "model": "y = a · exp(b·t) + c",
+        "params": {"a": float(a_), "b": float(b_), "c": float(c_),
+                   "t_span": span, "t_min": float(t_use.min())},
+        "yhat": yhat,
+        "rmse": _rmse(y, yhat),
+        "aic": _aic(int(mask.sum()), 3, sse),
+        "k": 3,
+    }
+
+
+def _fit_sigmoid(t: np.ndarray, y: np.ndarray) -> Dict[str, Any]:
+    """y = L / (1 + exp(-k·(t - t₀))) — algebraic sigmoid.
+
+    Distinct from logistic ODE: logistic integrates dy/dt = r·y·(1-y/K).
+    This is the closed-form solution. Used for adoption curves, dose-response,
+    saturation kinetics."""
+    t = np.asarray(t, dtype=float)
+    y = np.asarray(y, dtype=float)
+    mask = np.isfinite(t) & np.isfinite(y)
+    if mask.sum() < 30:
+        return {"ok": False, "error": "not_enough_rows"}
+    try:
+        from scipy.optimize import curve_fit
+    except Exception:
+        return {"ok": False, "error": "scipy_not_available"}
+    t_use, y_use = t[mask], y[mask]
+    L0 = float(np.max(y_use)) or 1.0
+    t0 = float(np.median(t_use))
+    k0 = 1.0 / (float(np.std(t_use)) or 1.0)
+    try:
+        popt, _ = curve_fit(
+            lambda x, L, k, x0: L / (1.0 + np.exp(-k * (x - x0))),
+            t_use, y_use, p0=[L0, k0, t0], maxfev=2000,
+        )
+        L_, k_, t0_ = (float(v) for v in popt)
+    except Exception as e:
+        return {"ok": False, "error": f"sigmoid_curve_fit_failed: {e!s}"}
+    yhat = L_ / (1.0 + np.exp(-k_ * (t - t0_)))
+    sse = float(np.nansum((y - yhat) ** 2))
+    return {
+        "ok": True,
+        "name": "sigmoid",
+        "model": "y = L / (1 + exp(-k·(t - t₀)))",
+        "params": {"L": L_, "k": k_, "t0": t0_},
+        "yhat": yhat,
+        "rmse": _rmse(y, yhat),
+        "aic": _aic(int(mask.sum()), 3, sse),
+        "k": 3,
+    }
+
+
+def _fit_polynomial(t: np.ndarray, y: np.ndarray) -> Dict[str, Any]:
+    """y = a·t² + b·t + c — quadratic polynomial. Catches deceleration /
+    acceleration patterns the ODE candidates miss (e.g. ballistic motion h = ½gt²).
+
+    For richer use cases we'd also offer cubic / quartic; v1 is just degree 2.
+    """
+    t = np.asarray(t, dtype=float)
+    y = np.asarray(y, dtype=float)
+    mask = np.isfinite(t) & np.isfinite(y)
+    if mask.sum() < 30:
+        return {"ok": False, "error": "not_enough_rows"}
+    try:
+        a, b, c = np.polyfit(t[mask], y[mask], 2)
+    except Exception as e:
+        return {"ok": False, "error": f"polyfit_failed: {e}"}
+    yhat = a * t ** 2 + b * t + c
+    sse = float(np.nansum((y - yhat) ** 2))
+    return {
+        "ok": True,
+        "name": "polynomial_2",
+        "model": "y = a·t² + b·t + c",
+        "params": {"a": float(a), "b": float(b), "c": float(c)},
+        "yhat": yhat,
+        "rmse": _rmse(y, yhat),
+        "aic": _aic(int(mask.sum()), 3, sse),
+        "k": 3,
+    }
+
+
+def _fit_saturation_static(t: np.ndarray, y: np.ndarray) -> Dict[str, Any]:
+    """y = Vmax · t / (K + t) — Michaelis-Menten / Hill (n=1) saturation.
+
+    Hyperbolic approach to a maximum. Used for enzyme kinetics, dose-response,
+    ad-spend ROI curves, and any "diminishing returns" pattern."""
+    t = np.asarray(t, dtype=float)
+    y = np.asarray(y, dtype=float)
+    # Shift t to be non-negative (Michaelis-Menten requires t ≥ 0).
+    t_eff = t.copy()
+    if t_eff.min() < 0:
+        t_eff = t_eff - t_eff.min()
+    mask = np.isfinite(t_eff) & np.isfinite(y) & (t_eff >= 0) & (y >= 0)
+    if mask.sum() < 30:
+        return {"ok": False, "error": "not_enough_nonnegative_rows"}
+    try:
+        from scipy.optimize import curve_fit
+    except Exception:
+        return {"ok": False, "error": "scipy_not_available"}
+    Vmax0 = float(np.max(y[mask])) or 1.0
+    K0 = float(np.median(t_eff[mask])) or 1.0
+    try:
+        popt, _ = curve_fit(
+            lambda x, V, K: V * x / (K + x),
+            t_eff[mask], y[mask],
+            p0=[Vmax0, K0],
+            bounds=([0, 1e-9], [np.inf, np.inf]),
+            maxfev=2000,
+        )
+        V_, K_ = (float(v) for v in popt)
+    except Exception as e:
+        return {"ok": False, "error": f"saturation_curve_fit_failed: {e!s}"}
+    yhat = V_ * t_eff / (K_ + t_eff)
+    sse = float(np.nansum((y - yhat) ** 2))
+    return {
+        "ok": True,
+        "name": "saturation",
+        "model": "y = Vmax · t / (K + t)",
+        "params": {"Vmax": V_, "K": K_},
+        "yhat": yhat,
+        "rmse": _rmse(y, yhat),
+        "aic": _aic(int(mask.sum()), 2, sse),
+        "k": 2,
+    }
+
+
 def candidate_models() -> List[Callable[[np.ndarray, np.ndarray], Dict[str, Any]]]:
-    return [_fit_linear_ode, _fit_logistic, _fit_damped_oscillator]
+    """Return all 8 candidate physics models tried by physics_discovery.
+
+    ODE candidates (integrated forward via Euler):
+      * linear_ode             dy/dt = a·y + b
+      * logistic               dy/dt = r·y·(1 - y/K)
+      * damped_oscillator      y'' + c·y' + k·y = 0
+
+    Algebraic / closed-form candidates (added v2.0):
+      * power_law              y = a · t^b           (Stefan-Boltzmann, allometry)
+      * exponential            y = a · exp(b·t) + c  (decay / growth toward asymptote)
+      * sigmoid                y = L / (1 + exp(-k(t-t₀)))  (S-curve adoption)
+      * polynomial_2           y = a·t² + b·t + c    (ballistic, deceleration)
+      * saturation             y = Vmax·t / (K + t)  (Michaelis-Menten)
+    """
+    return [
+        # ODE candidates
+        _fit_linear_ode,
+        _fit_logistic,
+        _fit_damped_oscillator,
+        # Algebraic candidates (v2.0)
+        _fit_power_law,
+        _fit_exponential_static,
+        _fit_sigmoid,
+        _fit_polynomial,
+        _fit_saturation_static,
+    ]

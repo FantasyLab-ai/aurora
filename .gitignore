@@ -10,6 +10,10 @@ __pycache__/
 # ---- Virtualenv ----
 .venv/
 venv/
+.venv_*/
+venv_*/
+**/.venv/
+**/venv/
 
 # ---- Data / external ----
 fantasyai/data/external/
@@ -35,3 +39,67 @@ runs/
 *.npz
 *.db
 *.sqlite*
+
+# ---- Dev backups (created locally during refactors; never publish) ----
+_backups_*/
+*.bak
+*.bak_*
+*.bak.*
+**/*.py.bak_*
+**/*.py.bak.*
+
+# ---- Data uploads (the studio's per-session upload cache) ----
+data/uploads/
+data/external/
+
+# ---- Test scratch + tmp ----
+tmp/
+.tmp/
+*.tmp
+
+# ---- Claude Code working state — keep local, never publish ----
+.claude/
+
+# ---- Aurora user-data (knowledge bank, learning store, contract output) ----
+# Per-user state; not for sharing by default. Users opt in to share via
+# the federated knowledge contribution flow (roadmap).
+.aurora/
+**/.aurora/
+
+# ---- Decision-contract output (per-user audit logs) ----
+contracts_output/
+
+# ---- IDE / OS ----
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ---- Test artifacts ----
+.coverage
+htmlcov/
+.tox/
+
+# ---- Build / dist ----
+build/
+dist/
+*.egg-info/
+*.egg
+
+# ---- Secrets — never commit (defense in depth) ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
+credentials.json
+config/secrets.yml
+
+# ---- Scratch / TODO files ----
+.github/PINNED_ISSUES_TODO.md
+SCRATCH.md
+TODO_PRIVATE.md

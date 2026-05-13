@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Aurora KB Admin — Quarantine</title>
+<style>
+  body { margin:0; padding:0; background:#0e0e1a; color:#d8d8f0;
+          font-family:'Inter',-apple-system,system-ui,sans-serif; font-size:13px;}
+  .top { padding:14px 24px; background:#14152a; border-bottom:1px solid #25264a;
+          display:flex; align-items:baseline; justify-content:space-between;}
+  h1 { font-family:'Major Mono Display',monospace; font-size:18px; color:#7c5cff;
+        letter-spacing:4px; margin:0;}
+  .container { padding:24px; max-width:1200px; margin:0 auto;}
+  .controls { display:flex; gap:8px; margin-bottom:14px; align-items:center;}
+  .controls input { padding:6px 10px; background:#0e0e1a; color:#d8d8f0;
+                      border:1px solid #25264a; font-family:inherit;}
+  .controls button { padding:6px 12px; background:#14152a; border:1px solid #25264a;
+                       color:#d8d8f0; cursor:pointer; font-family:inherit; font-size:11px;
+                       letter-spacing:1.2px; text-transform:uppercase;}
+  table { width:100%; border-collapse:collapse; font-size:11px;
+           font-family:'JetBrains Mono',monospace;}
+  th, td { padding:6px 8px; border-bottom:1px solid #25264a; text-align:left;
+            vertical-align:top;}
+  th { color:#88ffd1; font-family:'Major Mono Display',monospace;
+        font-size:10px; letter-spacing:1.5px;}
+  td.reason { color:#ff9a4a; max-width:340px;}
+  td.id { color:#6ee7ff;}
+  td.actions { white-space:nowrap;}
+  td button { padding:3px 8px; font-size:10px; margin-right:4px;
+                background:#1a1a30; border:1px solid #25264a; color:#d8d8f0;
+                cursor:pointer; letter-spacing:1px;}
+  td button:hover { border-color:#88ffd1;}
+  details { margin:4px 0; }
+  details summary { color:#9595c0; cursor:pointer; font-size:10px;}
+  details pre { background:#0e0e1a; padding:6px; border:1px solid #25264a;
+                  font-size:10px; max-height:200px; overflow:auto;
+                  color:#9595c0; white-space:pre-wrap;}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>kb admin · quarantine</h1>
+  <a href="/knowledge_bank" style="color:#6ee7ff;font-family:'VT323',monospace;letter-spacing:1.5px;">← public browser</a>
+</div>
+<div class="container">
+  <div class="controls">
+    <span style="color:#9595c0;font-family:'VT323',monospace;letter-spacing:1px;">admin token:</span>
+    <input id="tok" type="password" placeholder="env: AURORA_KB_ADMIN_TOKEN">
+    <button onclick="load()">LOAD</button>
+    <label style="color:#9595c0;"><input id="unresolvedOnly" type="checkbox" checked> unresolved only</label>
+    <span id="counter" style="margin-left:auto;color:#88ffd1;font-family:'JetBrains Mono',monospace;">—</span>
+  </div>
+  <table id="tbl"><thead><tr>
+    <th>id</th><th>attempted_id</th><th>source</th><th>reason</th>
+    <th>at</th><th>actions</th>
+  </tr></thead><tbody id="body"></tbody></table>
+</div>
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+const tok = () => document.getElementById('tok').value.trim();
+const hdr = () => tok() ? {'X-Admin-Token': tok()} : {};
+
+async function load() {
+  const unres = document.getElementById('unresolvedOnly').checked ? '1' : '0';
+  const r = await fetch('/api/knowledge_bank/admin/quarantine?unresolved=' + unres,
+                          {headers: hdr()});
+  const j = await r.json();
+  if (!j.ok) {
+    document.getElementById('body').innerHTML =
+      `<tr><td colspan="6" style="color:#ff5577;">${esc(j.error || 'unauthorised')}</td></tr>`;
+    return;
+  }
+  document.getElementById('counter').textContent =
+    `${j.count} entries`;
+  document.getElementById('body').innerHTML = (j.quarantine || []).map(q => `
+    <tr>
+      <td>${q.id}</td>
+      <td class="id">${esc(q.attempted_id || '')}</td>
+      <td>${esc(q.source || '')}</td>
+      <td class="reason">${esc(q.reason || '')}</td>
+      <td>${esc((q.quarantined_at || '').slice(0, 19))}</td>
+      <td class="actions">
+        <button onclick="resolve(${q.id}, 'rejected')">reject</button>
+        <button onclick="resolve(${q.id}, 'fixed_manually')">mark fixed</button>
+        <details><summary>raw</summary><pre>${esc(q.raw_data_json || '').slice(0, 2000)}</pre></details>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function resolve(qid, resolution) {
+  const r = await fetch('/api/knowledge_bank/admin/quarantine/' + qid + '/resolve',
+                          {method:'POST',
+                           headers:{'Content-Type':'application/json', ...hdr()},
+                           body: JSON.stringify({resolution})});
+  const j = await r.json();
+  if (j.ok) load();
+  else alert('failed: ' + (j.error || ''));
+}
+
+load();
+</script>
+</body>
+</html>

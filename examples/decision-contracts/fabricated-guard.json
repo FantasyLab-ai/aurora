@@ -1,0 +1,32 @@
+{
+  "id": "fabricated-guard",
+  "name": "Aurora contract violation: a finding was flagged as fabricated",
+  "description": "Should never fire. Aurora's contract is that no finding is fabricated (every claim has a method + threshold + citation). If this contract ever fires, that's a regression — either Aurora itself produced something it shouldn't have, OR an extension / fork is mis-tagging findings. Treat the alert as urgent.",
+  "enabled": true,
+  "trigger": {
+    "field": "fabricated_count",
+    "op": ">",
+    "value": 0
+  },
+  "actions": [
+    {
+      "type": "webhook",
+      "url": "https://hooks.example.com/aurora/contract-violation"
+    },
+    {
+      "type": "log",
+      "level": "critical",
+      "message": "AURORA CONTRACT VIOLATION: fabricated_count > 0"
+    },
+    {
+      "type": "file",
+      "path": "contract-violations.jsonl",
+      "include_metadata": true
+    }
+  ],
+  "rate_limit": null,
+  "metadata": {
+    "owner": "security@example.com",
+    "severity": "critical"
+  }
+}

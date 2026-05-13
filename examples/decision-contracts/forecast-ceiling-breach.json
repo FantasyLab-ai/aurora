@@ -1,0 +1,29 @@
+{
+  "id": "forecast-ceiling-breach",
+  "name": "Forecast peak exceeds operational ceiling",
+  "description": "Fires when Aurora's forecast peak (max value across all forecast horizon points) crosses an operational ceiling. Adjust the value to match your system's safe operating limit.",
+  "enabled": true,
+  "trigger": {
+    "field": "forecast.peak",
+    "op": ">",
+    "value": 3.0
+  },
+  "actions": [
+    {
+      "type": "webhook",
+      "url": "https://hooks.example.com/aurora/ceiling-breach"
+    },
+    {
+      "type": "log",
+      "level": "warn",
+      "message": "forecast peak above ceiling"
+    }
+  ],
+  "rate_limit": {
+    "max_per_hour": 6
+  },
+  "metadata": {
+    "owner": "controls@example.com",
+    "ceiling_units": "m/s^2 (vibration_g equivalent)"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "id": "logistic_growth",
+  "match": {
+    "title_substrings": ["logistic", "saturation curve",
+                          "carrying capacity"],
+    "equation_substrings": ["k/(1+", "k / (1 +", "logistic"],
+    "desc_substrings":  ["logistic", "carrying capacity",
+                          "saturation"]
+  },
+  "summary": "Sigmoid growth toward a carrying capacity K. Early growth approximates exponential; once the population approaches K, growth slows toward zero.",
+  "param_to_intuition": [
+    {
+      "param": "K",
+      "ranges": [
+        {"min": -1e18, "max": 1e18,
+         "phrase": "The fitted carrying capacity is K = {K_value}; the trajectory cannot exceed this asymptote without a regime change."}
+      ]
+    },
+    {
+      "param": "r",
+      "ranges": [
+        {"min": 0.0,  "max": 0.05,
+         "phrase": "Slow intrinsic growth rate — the system takes many time units to approach K."},
+        {"min": 0.05, "max": 0.5,
+         "phrase": "Moderate intrinsic growth — visible curvature in the observed window."},
+        {"min": 0.5,  "max": 9999.0,
+         "phrase": "Fast intrinsic growth — the system reaches a high fraction of K within the observed window."}
+      ]
+    }
+  ]
+}

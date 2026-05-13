@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Aurora KB Admin — Ingest</title>
+<style>
+  body { margin:0; padding:0; background:#0e0e1a; color:#d8d8f0;
+          font-family:'Inter',-apple-system,system-ui,sans-serif; font-size:13px;}
+  .top { padding:14px 24px; background:#14152a; border-bottom:1px solid #25264a;
+          display:flex; align-items:baseline; justify-content:space-between;}
+  h1 { font-family:'Major Mono Display',monospace; font-size:18px; color:#7c5cff;
+        letter-spacing:4px; margin:0;}
+  .container { padding:24px; max-width:1100px; margin:0 auto;}
+  .card { background:#14152a; border:1px solid #25264a; border-radius:2px;
+           padding:16px; margin-bottom:14px;}
+  h2 { font-family:'Major Mono Display',monospace; font-size:13px;
+        color:#88ffd1; letter-spacing:2px; margin:0 0 12px;}
+  .stages { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+             gap:10px;}
+  .stage-card { background:#1a1a30; border:1px solid #25264a; border-left:3px solid #7c5cff;
+                padding:12px; cursor:pointer;}
+  .stage-card:hover { border-left-color:#b794ff; }
+  .stage-card .lbl { color:#88ffd1; font-family:'Major Mono Display',monospace;
+                       font-size:10px; letter-spacing:1.5px; margin-bottom:4px;}
+  .stage-card .ttl { font-weight:600; color:#d8d8f0; font-size:14px;}
+  .stage-card .meta { color:#9595c0; font-size:11px; margin-top:4px;}
+  .stage-card .sources { color:#5e5e85; font-size:10px; margin-top:6px;
+                            font-family:'JetBrains Mono',monospace;}
+  .progress {
+    margin-top:14px; padding:14px; background:#1a1a30; border:1px solid #25264a;
+    border-left:3px solid #88ffd1; min-height:120px;
+  }
+  .progress h3 { font-family:'Major Mono Display',monospace; font-size:11px;
+                  color:#88ffd1; letter-spacing:1.5px; margin:0 0 8px;}
+  .progress .row { font-family:'JetBrains Mono',monospace; font-size:11px;
+                     line-height:1.7; color:#d8d8f0;}
+  .progress .row b { color:#88ffd1; }
+  .events { max-height:200px; overflow-y:auto; margin-top:10px;
+              font-family:'JetBrains Mono',monospace; font-size:10px;
+              color:#9595c0; padding:8px; background:#0e0e1a; border:1px solid #25264a;}
+  button.run { background:#7c5cff; color:white; border:1px solid #7c5cff;
+                padding:8px 16px; cursor:pointer; font-family:inherit;
+                font-size:11px; letter-spacing:1.5px; text-transform:uppercase;}
+  button.run:disabled { opacity:0.5; cursor:not-allowed;}
+  .token-row { margin-bottom:14px; }
+  .token-row input { padding:6px 10px; background:#0e0e1a; color:#d8d8f0;
+                       border:1px solid #25264a; font-family:inherit; width:300px;}
+  .preflight ul { margin: 6px 0 0 18px; color:#9595c0; }
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>kb admin · ingest</h1>
+  <a href="/knowledge_bank" style="color:#6ee7ff;font-family:'VT323',monospace;letter-spacing:1.5px;">← public browser</a>
+</div>
+<div class="container">
+  <div class="card token-row">
+    <span style="color:#9595c0;font-family:'VT323',monospace;font-size:11px;letter-spacing:1px;">admin token (env: AURORA_KB_ADMIN_TOKEN):</span>
+    <input id="tok" type="password" placeholder="leave empty if running on loopback">
+  </div>
+
+  <div class="card preflight">
+    <h2>preflight</h2>
+    <div id="preflight">loading…</div>
+  </div>
+
+  <div class="card">
+    <h2>ingest stages</h2>
+    <div class="stages" id="stages"></div>
+  </div>
+
+  <div class="card">
+    <h2>live progress</h2>
+    <div class="progress" id="progress">
+      <div class="row" style="color:#5e5e85;">no ingest currently running.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+const tok = () => document.getElementById('tok').value.trim();
+const hdr = () => tok() ? {'X-Admin-Token': tok()} : {};
+
+async function loadPreflight() {
+  const r = await fetch('/api/knowledge_bank/preflight');
+  const j = await r.json();
+  if (!j.ok) { document.getElementById('preflight').textContent = 'preflight error'; return; }
+  const c = j.report.checks;
+  const w = j.report.warnings || [];
+  let html = `<div class="row"><b>${j.report.ok ? 'READY' : 'BLOCKED'}</b> — embedder: ${esc(c.embedder?.name || '?')} (${c.embedder?.dim || '?'}-d) · gpu: ${c.gpu?.available ? 'yes (' + esc(c.gpu.device_name) + ')' : 'no/CPU'} · disk free: ${c.disk?.free_gb || '?'} GB · entries: ${c.bank_embedder_consistency?.bank_total_entries ?? '?'}</div>`;
+  if (w.length) html += '<ul>' + w.map(s=>`<li>${esc(s)}</li>`).join('') + '</ul>';
+  if ((j.report.blocking_errors || []).length)
+    html += '<ul style="color:#ff5577;">' + j.report.blocking_errors.map(s=>`<li>${esc(s)}</li>`).join('') + '</ul>';
+  document.getElementById('preflight').innerHTML = html;
+}
+
+async function loadStages() {
+  const r = await fetch('/api/knowledge_bank/admin/stages', {headers: hdr()});
+  const j = await r.json();
+  if (!j.ok) {
+    document.getElementById('stages').innerHTML =
+      `<div style="color:#ff5577;">unauthorised — set the admin token</div>`;
+    return;
+  }
+  document.getElementById('stages').innerHTML = Object.entries(j.stages).map(([id, info]) => `
+    <div class="stage-card" data-stage="${esc(id)}">
+      <div class="lbl">${esc(id)}</div>
+      <div class="ttl">${esc(info.label)}</div>
+      <div class="meta">expected: ${esc(info.expected_entries || '?')}</div>
+      <div class="sources">${(info.sources || []).join(' · ')}</div>
+      <button class="run" data-stage="${esc(id)}" style="margin-top:10px;">START INGEST</button>
+    </div>
+  `).join('');
+  for (const btn of document.querySelectorAll('button.run')) {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true; btn.textContent = 'starting…';
+      const r2 = await fetch('/api/knowledge_bank/admin/ingest/start', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', ...hdr()},
+        body: JSON.stringify({stage_id: btn.dataset.stage}),
+      });
+      const j2 = await r2.json();
+      btn.textContent = j2.ok ? 'started' : (j2.error || 'failed');
+      if (!j2.ok) setTimeout(()=>{btn.disabled=false; btn.textContent='START INGEST';}, 2000);
+    });
+  }
+}
+
+async function pollProgress() {
+  const r = await fetch('/api/knowledge_bank/admin/ingest/status', {headers: hdr()});
+  const j = await r.json();
+  if (!j.ok) return;
+  const s = j.state;
+  let html = '';
+  if (s.running) {
+    html += `<div class="row"><b>RUNNING</b> stage <b>${esc(s.stage || '?')}</b> · current source <b>${esc(s.source || '?')}</b> · n_done <b>${(s.n_done||0).toLocaleString()}</b></div>`;
+    if (s.started_at)
+      html += `<div class="row" style="color:#5e5e85;">elapsed ${Math.round(Date.now()/1000 - s.started_at)}s</div>`;
+  } else if (s.result) {
+    html += `<div class="row"><b>COMPLETED</b> last stage <b>${esc(s.stage || '?')}</b></div>`;
+    html += `<div class="row" style="color:#5e5e85;">${esc(JSON.stringify(s.result).slice(0, 300))}…</div>`;
+  } else {
+    html += `<div class="row" style="color:#5e5e85;">no ingest currently running.</div>`;
+  }
+  if (s.events && s.events.length) {
+    html += '<div class="events">' + s.events.slice(-30).reverse().map(ev =>
+      `[${new Date(ev.ts*1000).toLocaleTimeString()}] ${esc(ev.source||'')} ${ev.stage||''} n_done=${ev.n_done||0}`
+    ).join('<br>') + '</div>';
+  }
+  document.getElementById('progress').innerHTML = html;
+}
+
+loadPreflight();
+loadStages();
+setInterval(pollProgress, 2000);
+</script>
+</body>
+</html>

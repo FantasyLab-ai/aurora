@@ -1,0 +1,1 @@
+{"dataset_key": "C:\\Users\\bgrut\\Desktop\\Aurora_QIE\\.claude\\worktrees\\peaceful-easley-8514ec\\docs\\captures\\2026-05-05\\after\\data\\noaa_buoy_2024.csv", "target_col": "wave_height_m", "time_col": "timestamp", "n_rows": 8760, "n_cols": 6, "has_time_axis": true, "dt_seconds": 3600}

@@ -1,0 +1,51 @@
+{
+  "schema_version": "system_model_v1",
+  "template_id": "(none)",
+  "template_version": "(none)",
+  "topology": {
+    "entities": [],
+    "relationships": []
+  },
+  "state": {
+    "active_regime": null,
+    "regime_confidence": null,
+    "active_patterns": [],
+    "key_readings": {},
+    "stability_score": null,
+    "drift_indicators": []
+  },
+  "constraints": [],
+  "characteristic_patterns": [],
+  "vocabulary": {
+    "anomaly_term": "anomaly",
+    "regime_term": "regime",
+    "pattern_term": "pattern",
+    "action_term": "action",
+    "breach_term": "threshold breach",
+    "advisory_term": "alert",
+    "extra": {
+      "high_state": "high",
+      "low_state": "low",
+      "transition": "shift",
+      "growth_term": "growth",
+      "decay_term": "decay"
+    }
+  },
+  "action_library": [],
+  "provenance": {
+    "template_id": "(none)",
+    "template_version": "(none)",
+    "instantiated_from": ".",
+    "instantiated_at": "2026-05-08T15:26:23",
+    "data_columns_used": [],
+    "priors_used": [],
+    "confirmed_relationships": [],
+    "discovered_relationships": [],
+    "deviation_relationships": [],
+    "open_assumptions": [
+      "no domain template matched the dataset's columns; rendering as a generic numeric-column graph. Add a domain template under system_model/templates/<name>/v1.json to enable richer behaviour.",
+      "best template scores: economics=0.00; enviro=0.00; finance=0.00"
+    ]
+  },
+  "confidence": 0.0
+}

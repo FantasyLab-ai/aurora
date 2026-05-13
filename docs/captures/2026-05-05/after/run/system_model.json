@@ -1,0 +1,424 @@
+{
+  "schema_version": "system_model_v1",
+  "template_id": "enviro",
+  "template_version": "v1",
+  "topology": {
+    "entities": [
+      {
+        "id": "wind",
+        "label": "Wind",
+        "role": "forcing",
+        "data_column": "wind_speed_ms",
+        "unit": "m/s",
+        "dimension": null,
+        "typical_range": null,
+        "current_value": null,
+        "current_drift": null,
+        "presence": "present",
+        "notes": []
+      },
+      {
+        "id": "pressure",
+        "label": "Atmospheric pressure",
+        "role": "forcing",
+        "data_column": "barometric_pressure_hpa",
+        "unit": "hPa",
+        "dimension": null,
+        "typical_range": null,
+        "current_value": null,
+        "current_drift": null,
+        "presence": "present",
+        "notes": []
+      },
+      {
+        "id": "solar",
+        "label": "Solar input",
+        "role": "forcing",
+        "data_column": null,
+        "unit": null,
+        "dimension": null,
+        "typical_range": null,
+        "current_value": null,
+        "current_drift": null,
+        "presence": "missing",
+        "notes": []
+      },
+      {
+        "id": "humidity",
+        "label": "Humidity",
+        "role": "state",
+        "data_column": "humidity_pct",
+        "unit": "%",
+        "dimension": null,
+        "typical_range": null,
+        "current_value": null,
+        "current_drift": null,
+        "presence": "present",
+        "notes": []
+      },
+      {
+        "id": "air_temp",
+        "label": "Air temperature",
+        "role": "state",
+        "data_column": "sea_surface_temp_c",
+        "unit": "K",
+        "dimension": null,
+        "typical_range": null,
+        "current_value": null,
+        "current_drift": null,
+        "presence": "present",
+        "notes": []
+      },
+      {
+        "id": "sst",
+        "label": "Sea-surface temp",
+        "role": "state",
+        "data_column": "sea_surface_temp_c",
+        "unit": "K",
+        "dimension": null,
+        "typical_range": null,
+        "current_value": null,
+        "current_drift": null,
+        "presence": "present",
+        "notes": []
+      },
+      {
+        "id": "wave_height",
+        "label": "Wave height",
+        "role": "response",
+        "data_column": "wave_height_m",
+        "unit": "m",
+        "dimension": null,
+        "typical_range": null,
+        "current_value": null,
+        "current_drift": null,
+        "presence": "present",
+        "notes": []
+      },
+      {
+        "id": "precip",
+        "label": "Precipitation",
+        "role": "response",
+        "data_column": null,
+        "unit": "mm",
+        "dimension": null,
+        "typical_range": null,
+        "current_value": null,
+        "current_drift": null,
+        "presence": "missing",
+        "notes": []
+      },
+      {
+        "id": "fetch",
+        "label": "Fetch",
+        "role": "indicator",
+        "data_column": null,
+        "unit": "km",
+        "dimension": null,
+        "typical_range": null,
+        "current_value": null,
+        "current_drift": null,
+        "presence": "missing",
+        "notes": []
+      }
+    ],
+    "relationships": [
+      {
+        "id": "rel_wind_wave",
+        "source": "wind",
+        "target": "wave_height",
+        "kind": "physical",
+        "direction": "unidirectional",
+        "strength": null,
+        "confidence": 0.6,
+        "lag": null,
+        "source_origin": "data",
+        "prior_id": null,
+        "rationale": "wind-wave coupling (Pierson-Moskowitz)",
+        "falsification": []
+      },
+      {
+        "id": "rel_press_storm",
+        "source": "pressure",
+        "target": "wind",
+        "kind": "causal",
+        "direction": "unidirectional",
+        "strength": null,
+        "confidence": null,
+        "lag": null,
+        "source_origin": "template_expected",
+        "prior_id": null,
+        "rationale": "pressure drop \u2192 frontal wind",
+        "falsification": []
+      },
+      {
+        "id": "rel_solar_temp",
+        "source": "solar",
+        "target": "air_temp",
+        "kind": "causal",
+        "direction": "unidirectional",
+        "strength": null,
+        "confidence": null,
+        "lag": null,
+        "source_origin": "template_expected",
+        "prior_id": null,
+        "rationale": "diurnal heating",
+        "falsification": []
+      },
+      {
+        "id": "rel_temp_humid",
+        "source": "air_temp",
+        "target": "humidity",
+        "kind": "correlational",
+        "direction": "unidirectional",
+        "strength": null,
+        "confidence": null,
+        "lag": null,
+        "source_origin": "template_expected",
+        "prior_id": null,
+        "rationale": "",
+        "falsification": []
+      },
+      {
+        "id": "rel_fetch_wave",
+        "source": "fetch",
+        "target": "wave_height",
+        "kind": "physical",
+        "direction": "unidirectional",
+        "strength": null,
+        "confidence": null,
+        "lag": null,
+        "source_origin": "template_expected",
+        "prior_id": null,
+        "rationale": "fetch-limited growth",
+        "falsification": []
+      },
+      {
+        "id": "discovered_corr_wind_wave_height",
+        "source": "wind",
+        "target": "wave_height",
+        "kind": "correlational",
+        "direction": "unidirectional",
+        "strength": 0.86,
+        "confidence": 0.86,
+        "lag": null,
+        "source_origin": "discovered",
+        "prior_id": null,
+        "rationale": "data shows |\u03c1| = 0.86 (no template-expected edge here)",
+        "falsification": []
+      }
+    ]
+  },
+  "state": {
+    "active_regime": "HIGH",
+    "regime_confidence": 0.7,
+    "active_patterns": [
+      {
+        "pattern_id": "diurnal_cycle",
+        "name": "Diurnal cycle",
+        "confidence": 0.6,
+        "rationale": "calculus signature is oscillatory"
+      }
+    ],
+    "key_readings": {
+      "anomalies_count": {
+        "value": 47,
+        "interpretation": "number of flagged anomalies"
+      },
+      "regimes_count": {
+        "value": 2,
+        "interpretation": "regime segments identified"
+      }
+    },
+    "stability_score": 0.88,
+    "drift_indicators": [
+      "derivative flips sign 2636\u00d7"
+    ]
+  },
+  "constraints": [
+    {
+      "id": "humidity_bound",
+      "description": "Relative humidity \u2208 [0, 100]%",
+      "kind": "bound",
+      "hardness": "hard",
+      "on_entity": "humidity",
+      "expression": "0 \u2264 humidity \u2264 100",
+      "currently_satisfied": null,
+      "deviation_metric": null
+    },
+    {
+      "id": "pressure_plausible",
+      "description": "Sea-level pressure typically \u2208 [870, 1085] hPa",
+      "kind": "bound",
+      "hardness": "soft",
+      "on_entity": "pressure",
+      "expression": "870 \u2264 pressure \u2264 1085",
+      "currently_satisfied": null,
+      "deviation_metric": null
+    },
+    {
+      "id": "wave_nonneg",
+      "description": "Wave height non-negative",
+      "kind": "bound",
+      "hardness": "hard",
+      "on_entity": "wave_height",
+      "expression": "wave_height \u2265 0",
+      "currently_satisfied": null,
+      "deviation_metric": null
+    }
+  ],
+  "characteristic_patterns": [
+    {
+      "id": "diurnal_cycle",
+      "name": "Diurnal cycle",
+      "signature": "\u224824h sinusoid in temperature/solar; pressure semi-diurnal",
+      "typical_duration_seconds": 86400,
+      "typical_successors": [
+        "frontal_passage"
+      ],
+      "detection_rule": "FFT dominant frequency near 1/86400 Hz on temp or solar",
+      "domain_specific_notes": []
+    },
+    {
+      "id": "frontal_passage",
+      "name": "Frontal passage",
+      "signature": "rapid pressure drop + wind direction shift + temperature jump",
+      "typical_duration_seconds": 14400,
+      "typical_successors": [
+        "calm_after_front",
+        "storm_precursor"
+      ],
+      "detection_rule": "pressure dy/dt < -1.5 hPa/h sustained \u2265 90 min",
+      "domain_specific_notes": []
+    },
+    {
+      "id": "storm_precursor",
+      "name": "Storm precursor",
+      "signature": "pressure < seasonal mean \u2212 2\u03c3 AND wind rising AND humidity rising",
+      "typical_duration_seconds": 21600,
+      "typical_successors": [
+        "storm_active"
+      ],
+      "detection_rule": "joint anomaly on pressure/wind/humidity",
+      "domain_specific_notes": []
+    },
+    {
+      "id": "fetch_limited_wave_growth",
+      "name": "Fetch-limited wave growth",
+      "signature": "wave height plateaus at \u221afetch \u00b7 wind\u00b2 scaling",
+      "typical_duration_seconds": null,
+      "typical_successors": [
+        "fully_developed_sea"
+      ],
+      "detection_rule": "discovered allometric H \u221d wind\u00b2 \u00b7 \u221afetch",
+      "domain_specific_notes": []
+    }
+  ],
+  "vocabulary": {
+    "anomaly_term": "anomaly",
+    "regime_term": "regime",
+    "pattern_term": "signature",
+    "action_term": "advisory action",
+    "breach_term": "operational threshold breach",
+    "advisory_term": "advisory",
+    "extra": {
+      "high_state": "storm",
+      "low_state": "calm",
+      "transition": "frontal passage",
+      "growth_term": "intensification",
+      "decay_term": "decay"
+    }
+  },
+  "action_library": [
+    {
+      "id": "issue_advisory",
+      "label": "Issue operational advisory",
+      "description": "When a forecast peak crosses the operational ceiling at high confidence, issue an advisory to downstream operators with predicted timing, expected magnitude, and falsification window.",
+      "triggered_when": [
+        "forecast peak > operational ceiling",
+        "confidence \u2265 0.7"
+      ],
+      "predicted_outcome_summary": "Pre-emptive advisories reduce uncoordinated breach response by \u224870%.",
+      "base_rate_success": 0.75,
+      "confidence_band_required": "high",
+      "falsification": [
+        "wind dies before predicted peak",
+        "pressure rebounds"
+      ],
+      "assumptions": [
+        "downstream operators read advisories",
+        "fetch geometry stable"
+      ],
+      "relevant_states": [
+        "frontal_passage",
+        "storm_precursor"
+      ]
+    },
+    {
+      "id": "raise_monitoring_cadence",
+      "label": "Raise monitoring cadence",
+      "description": "Switch buoys / stations from default sampling to high-frequency mode while a precursor pattern is active, then revert when the regime ends.",
+      "triggered_when": [
+        "pattern in {storm_precursor, frontal_passage}"
+      ],
+      "predicted_outcome_summary": "Higher cadence catches transitions \u22483\u00d7 faster.",
+      "base_rate_success": 0.65,
+      "confidence_band_required": "medium",
+      "falsification": [
+        "pattern dies before transition observed"
+      ],
+      "assumptions": [
+        "sensor budget allows higher cadence"
+      ],
+      "relevant_states": [
+        "storm_precursor",
+        "frontal_passage"
+      ]
+    },
+    {
+      "id": "scenario_forecast_intervention",
+      "label": "Run scenario forecast under intervention",
+      "description": "Use the what-if engine to test how shifting fetch / wind speed perturbs predicted wave height; supports operational planning.",
+      "triggered_when": [
+        "operational decision pending"
+      ],
+      "predicted_outcome_summary": "Scenario forecasting clarifies trade-offs but doesn't reduce uncertainty.",
+      "base_rate_success": 0.6,
+      "confidence_band_required": "medium",
+      "falsification": [
+        "model lacks the perturbation variable"
+      ],
+      "assumptions": [
+        "counterfactual is physically plausible"
+      ],
+      "relevant_states": []
+    }
+  ],
+  "provenance": {
+    "template_id": "enviro",
+    "template_version": "v1",
+    "instantiated_from": "docs\\captures\\2026-05-05\\after\\run",
+    "instantiated_at": "2026-05-07T10:09:01",
+    "data_columns_used": [
+      "timestamp",
+      "wave_height_m",
+      "wind_speed_ms",
+      "barometric_pressure_hpa",
+      "sea_surface_temp_c",
+      "humidity_pct"
+    ],
+    "priors_used": [],
+    "confirmed_relationships": [
+      "rel_wind_wave"
+    ],
+    "discovered_relationships": [
+      "discovered_corr_wind_wave_height"
+    ],
+    "deviation_relationships": [],
+    "open_assumptions": [
+      "missing template slots: solar, precip, fetch",
+      "domain identified by template scores: enviro=0.12; industrial=0.03; medical=0.02"
+    ]
+  },
+  "confidence": 0.6983333333333333
+}

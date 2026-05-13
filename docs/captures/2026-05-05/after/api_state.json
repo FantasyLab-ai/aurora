@@ -1,0 +1,5025 @@
+{
+  "ok": true,
+  "run_dir": "C:\\Users\\bgrut\\Desktop\\Aurora_QIE\\.claude\\worktrees\\peaceful-easley-8514ec\\docs\\captures\\2026-05-05\\after\\run",
+  "state": {
+    "run_id": "run",
+    "run_dir": "C:\\Users\\bgrut\\Desktop\\Aurora_QIE\\.claude\\worktrees\\peaceful-easley-8514ec\\docs\\captures\\2026-05-05\\after\\run",
+    "dataset": {
+      "available": true,
+      "name": "noaa_buoy_2024.csv",
+      "path": "C:\\Users\\bgrut\\Desktop\\Aurora_QIE\\.claude\\worktrees\\peaceful-easley-8514ec\\docs\\captures\\2026-05-05\\after\\data\\noaa_buoy_2024.csv",
+      "rows": 8760,
+      "cols": 6,
+      "size_mb": 0.0
+    },
+    "structure": {
+      "available": true,
+      "time_axis": true,
+      "time_col": "timestamp",
+      "cadence": "1h",
+      "gaps": 0,
+      "duplicates": 0,
+      "columns": [
+        {
+          "name": "timestamp",
+          "kind": "time",
+          "fill_pct": 100.0,
+          "unit": "datetime",
+          "dimension": "time",
+          "unit_confidence": 0.85
+        },
+        {
+          "name": "wave_height_m",
+          "kind": "n",
+          "fill_pct": 100.0,
+          "unit": "m",
+          "dimension": "length",
+          "unit_confidence": 0.85
+        },
+        {
+          "name": "wind_speed_ms",
+          "kind": "n",
+          "fill_pct": 100.0
+        },
+        {
+          "name": "barometric_pressure_hpa",
+          "kind": "n",
+          "fill_pct": 100.0,
+          "unit": "hpa",
+          "dimension": "pressure",
+          "unit_confidence": 0.95
+        },
+        {
+          "name": "sea_surface_temp_c",
+          "kind": "n",
+          "fill_pct": 100.0,
+          "unit": "celsius",
+          "dimension": "temperature",
+          "unit_confidence": 0.95
+        },
+        {
+          "name": "humidity_pct",
+          "kind": "n",
+          "fill_pct": 100.0,
+          "unit": "pct",
+          "dimension": "dimensionless",
+          "unit_confidence": 0.85
+        }
+      ],
+      "eligibility": {
+        "forecast": true,
+        "regime": true,
+        "physics": true
+      }
+    },
+    "overview": {
+      "available": true,
+      "health": 0.85,
+      "confidence": 0.82,
+      "stability": 0.88,
+      "drift": 0.81,
+      "anomalies_count": 47,
+      "critical_anomalies": 7,
+      "regimes_count": 2,
+      "last_regime": "HIGH",
+      "motifs_count": 8,
+      "top_motif": "High variability: wave_height_m",
+      "forecast_score": 0.78,
+      "physics_score": 0.74
+    },
+    "anomalies": [
+      {
+        "rank": 1,
+        "when": "row 3512",
+        "column": "wave_height_m",
+        "description": "wave_height_m=high z=+5.5, wind_speed_ms=high z=+4.6",
+        "z": 5.521570097233795,
+        "score": 7.069867180834493,
+        "p_value": null,
+        "severity": "crit",
+        "drivers": [
+          {
+            "feature": "wave_height_m",
+            "robust_z": 5.521570097233795,
+            "direction": "high"
+          },
+          {
+            "feature": "wind_speed_ms",
+            "robust_z": 4.622554395138993,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0000",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 0
+        },
+        "referent": {
+          "primary_label": "2024-05-26 08:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-05-26T08:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 3512,
+            "row": {
+              "timestamp": "2024-05-26 08:00:00",
+              "wave_height_m": 6.085752622416501,
+              "wind_speed_ms": 23.88088301361622,
+              "barometric_pressure_hpa": 1000.7631051498756,
+              "sea_surface_temp_c": 19.96059216997384,
+              "humidity_pct": 73.22642128260391
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 2,
+        "when": "row 3531",
+        "column": "wave_height_m",
+        "description": "wave_height_m=high z=+5.0, wind_speed_ms=high z=+4.5",
+        "z": 4.9875911927287815,
+        "score": 7.156450769931841,
+        "p_value": null,
+        "severity": "crit",
+        "drivers": [
+          {
+            "feature": "wave_height_m",
+            "robust_z": 4.9875911927287815,
+            "direction": "high"
+          },
+          {
+            "feature": "wind_speed_ms",
+            "robust_z": 4.545465658763988,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0001",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 1
+        },
+        "referent": {
+          "primary_label": "2024-05-27 03:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-05-27T03:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 3531,
+            "row": {
+              "timestamp": "2024-05-27 03:00:00",
+              "wave_height_m": 6.240722634866037,
+              "wind_speed_ms": 21.02913422911999,
+              "barometric_pressure_hpa": 993.3666163575488,
+              "sea_surface_temp_c": 19.769018445511357,
+              "humidity_pct": 68.92395777753994
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 3,
+        "when": "row 3542",
+        "column": "wave_height_m",
+        "description": "wave_height_m=high z=+4.1, wind_speed_ms=high z=+3.7",
+        "z": 4.05083825348819,
+        "score": 6.641311527537825,
+        "p_value": null,
+        "severity": "crit",
+        "drivers": [
+          {
+            "feature": "wave_height_m",
+            "robust_z": 4.05083825348819,
+            "direction": "high"
+          },
+          {
+            "feature": "wind_speed_ms",
+            "robust_z": 3.715782853986609,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0002",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 2
+        },
+        "referent": {
+          "primary_label": "2024-05-27 14:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-05-27T14:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 3542,
+            "row": {
+              "timestamp": "2024-05-27 14:00:00",
+              "wave_height_m": 5.560964567609457,
+              "wind_speed_ms": 21.61050959542612,
+              "barometric_pressure_hpa": 997.4712200326156,
+              "sea_surface_temp_c": 20.342805309135866,
+              "humidity_pct": 58.5044882217813
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 4,
+        "when": "row 6207",
+        "column": "wave_height_m",
+        "description": "wave_height_m=high z=+5.3, wind_speed_ms=high z=+4.1",
+        "z": 5.272820822527561,
+        "score": 6.047143778530101,
+        "p_value": null,
+        "severity": "crit",
+        "drivers": [
+          {
+            "feature": "wave_height_m",
+            "robust_z": 5.272820822527561,
+            "direction": "high"
+          },
+          {
+            "feature": "wind_speed_ms",
+            "robust_z": 4.128711962152654,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0003",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 3
+        },
+        "referent": {
+          "primary_label": "2024-09-15 15:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-09-15T15:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 6207,
+            "row": {
+              "timestamp": "2024-09-15 15:00:00",
+              "wave_height_m": 5.153680141506836,
+              "wind_speed_ms": 14.279446793657948,
+              "barometric_pressure_hpa": 994.7391231718268,
+              "sea_surface_temp_c": 17.477940307959393,
+              "humidity_pct": 69.73513359786905
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 5,
+        "when": "row 6221",
+        "column": "wave_height_m",
+        "description": "wave_height_m=high z=+5.8, wind_speed_ms=high z=+4.0",
+        "z": 5.815132947852186,
+        "score": 6.7628560367470545,
+        "p_value": null,
+        "severity": "crit",
+        "drivers": [
+          {
+            "feature": "wave_height_m",
+            "robust_z": 5.815132947852186,
+            "direction": "high"
+          },
+          {
+            "feature": "wind_speed_ms",
+            "robust_z": 3.99858445829775,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0004",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 4
+        },
+        "referent": {
+          "primary_label": "2024-09-16 05:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-09-16T05:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 6221,
+            "row": {
+              "timestamp": "2024-09-16 05:00:00",
+              "wave_height_m": 6.369219841357738,
+              "wind_speed_ms": 21.09453085282757,
+              "barometric_pressure_hpa": 998.717555874169,
+              "sea_surface_temp_c": 17.036995566180114,
+              "humidity_pct": 68.152246482607
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 6,
+        "when": "row 6248",
+        "column": "wave_height_m",
+        "description": "wave_height_m=high z=+5.5, wind_speed_ms=high z=+4.0",
+        "z": 5.511102277086097,
+        "score": 6.615574384553445,
+        "p_value": null,
+        "severity": "crit",
+        "drivers": [
+          {
+            "feature": "wave_height_m",
+            "robust_z": 5.511102277086097,
+            "direction": "high"
+          },
+          {
+            "feature": "wind_speed_ms",
+            "robust_z": 3.957596330983245,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0005",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 5
+        },
+        "referent": {
+          "primary_label": "2024-09-17 08:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-09-17T08:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 6248,
+            "row": {
+              "timestamp": "2024-09-17 08:00:00",
+              "wave_height_m": 6.257588308989638,
+              "wind_speed_ms": 19.3722730708769,
+              "barometric_pressure_hpa": 1001.6577348805718,
+              "sea_surface_temp_c": 16.582271550435788,
+              "humidity_pct": 69.67991613980844
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 7,
+        "when": "row 6259",
+        "column": "wave_height_m",
+        "description": "wave_height_m=high z=+4.6, wind_speed_ms=high z=+3.8",
+        "z": 4.579502905827536,
+        "score": 6.115469864743189,
+        "p_value": null,
+        "severity": "crit",
+        "drivers": [
+          {
+            "feature": "wave_height_m",
+            "robust_z": 4.579502905827536,
+            "direction": "high"
+          },
+          {
+            "feature": "wind_speed_ms",
+            "robust_z": 3.822442574508009,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0006",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 6
+        },
+        "referent": {
+          "primary_label": "2024-09-17 19:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-09-17T19:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 6259,
+            "row": {
+              "timestamp": "2024-09-17 19:00:00",
+              "wave_height_m": 3.8951616126962896,
+              "wind_speed_ms": 17.070803403625803,
+              "barometric_pressure_hpa": 1002.6071234434196,
+              "sea_surface_temp_c": 17.38039656790859,
+              "humidity_pct": 59.26516454496225
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 8,
+        "when": "row 6205",
+        "column": "barometric_pressure_hpa",
+        "description": "barometric_pressure_hpa=low z=-2.9",
+        "z": -2.943450528756571,
+        "score": 4.124354048133793,
+        "p_value": null,
+        "severity": "warn",
+        "drivers": [
+          {
+            "feature": "barometric_pressure_hpa",
+            "robust_z": -2.943450528756571,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0007",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 7
+        },
+        "referent": {
+          "primary_label": "2024-09-15 13:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-09-15T13:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 6205,
+            "row": {
+              "timestamp": "2024-09-15 13:00:00",
+              "wave_height_m": 4.924782125837037,
+              "wind_speed_ms": 23.176438860686325,
+              "barometric_pressure_hpa": 1002.2217242957946,
+              "sea_surface_temp_c": 16.058342385542765,
+              "humidity_pct": 76.66938070026336
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 9,
+        "when": "row 7813",
+        "column": "barometric_pressure_hpa",
+        "description": "barometric_pressure_hpa=low z=-2.8",
+        "z": -2.8276606558252504,
+        "score": 3.9565345704829102,
+        "p_value": null,
+        "severity": "warn",
+        "drivers": [
+          {
+            "feature": "barometric_pressure_hpa",
+            "robust_z": -2.8276606558252504,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0008",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 8
+        },
+        "referent": {
+          "primary_label": "2024-11-21 13:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-11-21T13:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 7813,
+            "row": {
+              "timestamp": "2024-11-21 13:00:00",
+              "wave_height_m": 4.376102270734231,
+              "wind_speed_ms": 14.05888005506841,
+              "barometric_pressure_hpa": 1005.1660920121282,
+              "sea_surface_temp_c": 18.912528353519317,
+              "humidity_pct": 77.7443509605423
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 10,
+        "when": "row 6223",
+        "column": "barometric_pressure_hpa",
+        "description": "barometric_pressure_hpa=low z=-3.3",
+        "z": -3.3090133628734764,
+        "score": 4.392558998489978,
+        "p_value": null,
+        "severity": "warn",
+        "drivers": [
+          {
+            "feature": "barometric_pressure_hpa",
+            "robust_z": -3.3090133628734764,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0009",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 9
+        },
+        "referent": {
+          "primary_label": "2024-09-16 07:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-09-16T07:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 6223,
+            "row": {
+              "timestamp": "2024-09-16 07:00:00",
+              "wave_height_m": 6.762316724258016,
+              "wind_speed_ms": 17.56379444790288,
+              "barometric_pressure_hpa": 990.685954896452,
+              "sea_surface_temp_c": 18.76824843846226,
+              "humidity_pct": 75.05439034745518
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 11,
+        "when": "row 6231",
+        "column": "barometric_pressure_hpa",
+        "description": "barometric_pressure_hpa=low z=-3.9",
+        "z": -3.860242662318631,
+        "score": 3.856297838076975,
+        "p_value": null,
+        "severity": "warn",
+        "drivers": [
+          {
+            "feature": "barometric_pressure_hpa",
+            "robust_z": -3.860242662318631,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0010",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 10
+        },
+        "referent": {
+          "primary_label": "2024-09-16 15:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-09-16T15:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 6231,
+            "row": {
+              "timestamp": "2024-09-16 15:00:00",
+              "wave_height_m": 3.675074102144774,
+              "wind_speed_ms": 14.62810759098296,
+              "barometric_pressure_hpa": 1001.6464032336328,
+              "sea_surface_temp_c": 16.482707035364555,
+              "humidity_pct": 68.50030847498547
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 12,
+        "when": "row 7808",
+        "column": "barometric_pressure_hpa",
+        "description": "barometric_pressure_hpa=low z=-3.1",
+        "z": -3.1406616829393847,
+        "score": 3.7279351625419417,
+        "p_value": null,
+        "severity": "warn",
+        "drivers": [
+          {
+            "feature": "barometric_pressure_hpa",
+            "robust_z": -3.1406616829393847,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0011",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 11
+        },
+        "referent": {
+          "primary_label": "2024-11-21 08:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-11-21T08:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 7808,
+            "row": {
+              "timestamp": "2024-11-21 08:00:00",
+              "wave_height_m": 7.187368684880903,
+              "wind_speed_ms": 24.27841809296254,
+              "barometric_pressure_hpa": 1002.068781636744,
+              "sea_surface_temp_c": 17.10047122291422,
+              "humidity_pct": 78.95852818163051
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 13,
+        "when": "row 6255",
+        "column": "barometric_pressure_hpa",
+        "description": "barometric_pressure_hpa=low z=-3.0",
+        "z": -2.9571718872370436,
+        "score": 3.852568856334169,
+        "p_value": null,
+        "severity": "warn",
+        "drivers": [
+          {
+            "feature": "barometric_pressure_hpa",
+            "robust_z": -2.9571718872370436,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0012",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 12
+        },
+        "referent": {
+          "primary_label": "2024-09-17 15:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-09-17T15:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 6255,
+            "row": {
+              "timestamp": "2024-09-17 15:00:00",
+              "wave_height_m": 4.047944017290394,
+              "wind_speed_ms": 17.162799593134814,
+              "barometric_pressure_hpa": 995.176991564686,
+              "sea_surface_temp_c": 17.23007233053535,
+              "humidity_pct": 67.43004767268087
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 14,
+        "when": "row 7816",
+        "column": "barometric_pressure_hpa",
+        "description": "barometric_pressure_hpa=low z=-3.5",
+        "z": -3.5386540493354053,
+        "score": 3.984829971358983,
+        "p_value": null,
+        "severity": "warn",
+        "drivers": [
+          {
+            "feature": "barometric_pressure_hpa",
+            "robust_z": -3.5386540493354053,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0013",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 13
+        },
+        "referent": {
+          "primary_label": "2024-11-21 16:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-11-21T16:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 7816,
+            "row": {
+              "timestamp": "2024-11-21 16:00:00",
+              "wave_height_m": 5.38987559873293,
+              "wind_speed_ms": 15.80447225963471,
+              "barometric_pressure_hpa": 993.364309874202,
+              "sea_surface_temp_c": 18.593443656515927,
+              "humidity_pct": 75.83814309318937
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 15,
+        "when": "row 3558",
+        "column": "barometric_pressure_hpa",
+        "description": "barometric_pressure_hpa=low z=-3.3",
+        "z": -3.278185932615049,
+        "score": 3.823202932020755,
+        "p_value": null,
+        "severity": "warn",
+        "drivers": [
+          {
+            "feature": "barometric_pressure_hpa",
+            "robust_z": -3.278185932615049,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0014",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 14
+        },
+        "referent": {
+          "primary_label": "2024-05-28 06:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-05-28T06:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 3558,
+            "row": {
+              "timestamp": "2024-05-28 06:00:00",
+              "wave_height_m": 4.70404392099203,
+              "wind_speed_ms": 24.452696398929977,
+              "barometric_pressure_hpa": 994.2385409090032,
+              "sea_surface_temp_c": 18.98366742992621,
+              "humidity_pct": 65.65112349597143
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 16,
+        "when": "row 6252",
+        "column": "barometric_pressure_hpa",
+        "description": "barometric_pressure_hpa=low z=-2.9",
+        "z": -2.880873120901517,
+        "score": 3.5648922471089817,
+        "p_value": null,
+        "severity": "warn",
+        "drivers": [
+          {
+            "feature": "barometric_pressure_hpa",
+            "robust_z": -2.880873120901517,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0015",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 15
+        },
+        "referent": {
+          "primary_label": "2024-09-17 12:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-09-17T12:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 6252,
+            "row": {
+              "timestamp": "2024-09-17 12:00:00",
+              "wave_height_m": 6.102663348701538,
+              "wind_speed_ms": 17.23013832686979,
+              "barometric_pressure_hpa": 995.3261592058956,
+              "sea_surface_temp_c": 16.107652290435308,
+              "humidity_pct": 61.93902168557407
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 17,
+        "when": "row 3511",
+        "column": "barometric_pressure_hpa",
+        "description": "barometric_pressure_hpa=low z=-3.2",
+        "z": -3.245872758838578,
+        "score": 3.751782295825364,
+        "p_value": null,
+        "severity": "warn",
+        "drivers": [
+          {
+            "feature": "barometric_pressure_hpa",
+            "robust_z": -3.245872758838578,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0016",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 16
+        },
+        "referent": {
+          "primary_label": "2024-05-26 07:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-05-26T07:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 3511,
+            "row": {
+              "timestamp": "2024-05-26 07:00:00",
+              "wave_height_m": 6.930840209212139,
+              "wind_speed_ms": 16.380680552896727,
+              "barometric_pressure_hpa": 1006.5663155300064,
+              "sea_surface_temp_c": 21.087851349006343,
+              "humidity_pct": 74.05584983493071
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 18,
+        "when": "row 6252",
+        "column": "barometric_pressure_hpa",
+        "description": "barometric_pressure_hpa=low z=-4.0",
+        "z": -3.9966107275734126,
+        "score": 3.6480869299534,
+        "p_value": null,
+        "severity": "warn",
+        "drivers": [
+          {
+            "feature": "barometric_pressure_hpa",
+            "robust_z": -3.9966107275734126,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0017",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 17
+        },
+        "referent": {
+          "primary_label": "2024-09-17 12:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-09-17T12:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 6252,
+            "row": {
+              "timestamp": "2024-09-17 12:00:00",
+              "wave_height_m": 6.102663348701538,
+              "wind_speed_ms": 17.23013832686979,
+              "barometric_pressure_hpa": 995.3261592058956,
+              "sea_surface_temp_c": 16.107652290435308,
+              "humidity_pct": 61.93902168557407
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 19,
+        "when": "row 6252",
+        "column": "barometric_pressure_hpa",
+        "description": "barometric_pressure_hpa=low z=-3.1",
+        "z": -3.116555519977347,
+        "score": 4.476614955832653,
+        "p_value": null,
+        "severity": "warn",
+        "drivers": [
+          {
+            "feature": "barometric_pressure_hpa",
+            "robust_z": -3.116555519977347,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0018",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 18
+        },
+        "referent": {
+          "primary_label": "2024-09-17 12:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-09-17T12:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 6252,
+            "row": {
+              "timestamp": "2024-09-17 12:00:00",
+              "wave_height_m": 6.102663348701538,
+              "wind_speed_ms": 17.23013832686979,
+              "barometric_pressure_hpa": 995.3261592058956,
+              "sea_surface_temp_c": 16.107652290435308,
+              "humidity_pct": 61.93902168557407
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 20,
+        "when": "row 854",
+        "column": "humidity_pct",
+        "description": "humidity_pct=low z=+1.6",
+        "z": 1.6330635438666148,
+        "score": 1.890105049931256,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": 1.6330635438666148,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0019",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 19
+        },
+        "referent": {
+          "primary_label": "2024-02-05 14:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-02-05T14:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 854,
+            "row": {
+              "timestamp": "2024-02-05 14:00:00",
+              "wave_height_m": 0.9078326159457932,
+              "wind_speed_ms": 5.3214163535254455,
+              "barometric_pressure_hpa": 1014.0091232155024,
+              "sea_surface_temp_c": 23.571975905364702,
+              "humidity_pct": 63.682826073001394
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 21,
+        "when": "row 5249",
+        "column": "humidity_pct",
+        "description": "humidity_pct=high z=-0.2",
+        "z": -0.20886734170763344,
+        "score": 2.243308416643991,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": -0.20886734170763344,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0020",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 20
+        },
+        "referent": {
+          "primary_label": "2024-08-06 17:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-08-06T17:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 5249,
+            "row": {
+              "timestamp": "2024-08-06 17:00:00",
+              "wave_height_m": 0.5131075871330532,
+              "wind_speed_ms": 4.659804100081369,
+              "barometric_pressure_hpa": 1013.8986049433096,
+              "sea_surface_temp_c": 21.063979124195782,
+              "humidity_pct": 56.50192682774592
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 22,
+        "when": "row 4931",
+        "column": "humidity_pct",
+        "description": "humidity_pct=low z=-0.5",
+        "z": -0.5213821757543822,
+        "score": 1.6131946568658013,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": -0.5213821757543822,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0021",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 21
+        },
+        "referent": {
+          "primary_label": "2024-07-24 11:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-07-24T11:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 4931,
+            "row": {
+              "timestamp": "2024-07-24 11:00:00",
+              "wave_height_m": 1.370449004970425,
+              "wind_speed_ms": 6.743248746901234,
+              "barometric_pressure_hpa": 1013.2321024318657,
+              "sea_surface_temp_c": 21.654282392845804,
+              "humidity_pct": 70.43629088452288
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 23,
+        "when": "row 4389",
+        "column": "humidity_pct",
+        "description": "humidity_pct=high z=+0.5",
+        "z": 0.5292233223743179,
+        "score": 2.0148963858069546,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": 0.5292233223743179,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0022",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 22
+        },
+        "referent": {
+          "primary_label": "2024-07-01 21:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-07-01T21:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 4389,
+            "row": {
+              "timestamp": "2024-07-01 21:00:00",
+              "wave_height_m": 0.5450483839368386,
+              "wind_speed_ms": 4.851444411093389,
+              "barometric_pressure_hpa": 1014.4585926473974,
+              "sea_surface_temp_c": 22.51906485345831,
+              "humidity_pct": 72.14639050923013
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 24,
+        "when": "row 1930",
+        "column": "humidity_pct",
+        "description": "humidity_pct=low z=+1.2",
+        "z": 1.1933804999382045,
+        "score": 2.6430046225071377,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": 1.1933804999382045,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0023",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 23
+        },
+        "referent": {
+          "primary_label": "2024-03-21 10:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-03-21T10:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 1930,
+            "row": {
+              "timestamp": "2024-03-21 10:00:00",
+              "wave_height_m": 1.367559262537218,
+              "wind_speed_ms": 7.33521675617983,
+              "barometric_pressure_hpa": 1015.3461026085084,
+              "sea_surface_temp_c": 23.009623274695468,
+              "humidity_pct": 62.00777982861754
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 25,
+        "when": "row 4282",
+        "column": "humidity_pct",
+        "description": "humidity_pct=high z=-1.8",
+        "z": -1.8368994337809443,
+        "score": 1.761125914559796,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": -1.8368994337809443,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0024",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 24
+        },
+        "referent": {
+          "primary_label": "2024-06-27 10:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-06-27T10:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 4282,
+            "row": {
+              "timestamp": "2024-06-27 10:00:00",
+              "wave_height_m": 1.1742403070576248,
+              "wind_speed_ms": 6.952916255349431,
+              "barometric_pressure_hpa": 1012.9812512403366,
+              "sea_surface_temp_c": 21.980661272082447,
+              "humidity_pct": 56.25799164753104
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 26,
+        "when": "row 7098",
+        "column": "humidity_pct",
+        "description": "humidity_pct=high z=+0.8",
+        "z": 0.8445981297520713,
+        "score": 1.8083374665917675,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": 0.8445981297520713,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0025",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 25
+        },
+        "referent": {
+          "primary_label": "2024-10-22 18:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-10-22T18:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 7098,
+            "row": {
+              "timestamp": "2024-10-22 18:00:00",
+              "wave_height_m": 1.1110375481185495,
+              "wind_speed_ms": 3.6772066493430207,
+              "barometric_pressure_hpa": 1016.3881240776016,
+              "sea_surface_temp_c": 20.770549532676245,
+              "humidity_pct": 72.77507002682343
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 27,
+        "when": "row 2911",
+        "column": "humidity_pct",
+        "description": "humidity_pct=low z=+1.8",
+        "z": 1.762093057958416,
+        "score": 1.634647171527989,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": 1.762093057958416,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0026",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 26
+        },
+        "referent": {
+          "primary_label": "2024-05-01 07:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-05-01T07:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 2911,
+            "row": {
+              "timestamp": "2024-05-01 07:00:00",
+              "wave_height_m": 2.0416152016227005,
+              "wind_speed_ms": 8.420657399904531,
+              "barometric_pressure_hpa": 1014.3029833642738,
+              "sea_surface_temp_c": 22.742885424374588,
+              "humidity_pct": 60.61781666773465
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 28,
+        "when": "row 6694",
+        "column": "humidity_pct",
+        "description": "humidity_pct=low z=-1.4",
+        "z": -1.449916223416027,
+        "score": 2.811421984231428,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": -1.449916223416027,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0027",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 27
+        },
+        "referent": {
+          "primary_label": "2024-10-05 22:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-10-05T22:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 6694,
+            "row": {
+              "timestamp": "2024-10-05 22:00:00",
+              "wave_height_m": 1.5431004365098535,
+              "wind_speed_ms": 4.943035415434943,
+              "barometric_pressure_hpa": 1012.767986604692,
+              "sea_surface_temp_c": 20.330706645639115,
+              "humidity_pct": 69.02555077605813
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 29,
+        "when": "row 6616",
+        "column": "humidity_pct",
+        "description": "humidity_pct=high z=+0.2",
+        "z": 0.16579189531026328,
+        "score": 1.792700269032799,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": 0.16579189531026328,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0028",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 28
+        },
+        "referent": {
+          "primary_label": "2024-10-02 16:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-10-02T16:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 6616,
+            "row": {
+              "timestamp": "2024-10-02 16:00:00",
+              "wave_height_m": 1.065180137170561,
+              "wind_speed_ms": 4.6595613430186,
+              "barometric_pressure_hpa": 1013.2681335350684,
+              "sea_surface_temp_c": 21.078798299311792,
+              "humidity_pct": 62.25243475183568
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 30,
+        "when": "row 262",
+        "column": "humidity_pct",
+        "description": "humidity_pct=high z=+1.3",
+        "z": 1.2688888008048633,
+        "score": 2.4239776644478503,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": 1.2688888008048633,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0029",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 29
+        },
+        "referent": {
+          "primary_label": "2024-01-11 22:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-01-11T22:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 262,
+            "row": {
+              "timestamp": "2024-01-11 22:00:00",
+              "wave_height_m": 0.6282281976835118,
+              "wind_speed_ms": 4.645580611732477,
+              "barometric_pressure_hpa": 1009.749439423682,
+              "sea_surface_temp_c": 23.06570151549921,
+              "humidity_pct": 66.31153461991077
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 31,
+        "when": "row 2049",
+        "column": "humidity_pct",
+        "description": "humidity_pct=high z=+1.9",
+        "z": 1.8616774051551745,
+        "score": 2.894755179661094,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": 1.8616774051551745,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0030",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 30
+        },
+        "referent": {
+          "primary_label": "2024-03-26 09:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-03-26T09:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 2049,
+            "row": {
+              "timestamp": "2024-03-26 09:00:00",
+              "wave_height_m": 1.8939045725449517,
+              "wind_speed_ms": 7.601800732260025,
+              "barometric_pressure_hpa": 1010.9956558642876,
+              "sea_surface_temp_c": 24.7465836189049,
+              "humidity_pct": 80.2995813717078
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 32,
+        "when": "row 7158",
+        "column": "humidity_pct",
+        "description": "humidity_pct=high z=-0.6",
+        "z": -0.6031617015493564,
+        "score": 1.974641707468181,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": -0.6031617015493564,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0031",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 31
+        },
+        "referent": {
+          "primary_label": "2024-10-25 06:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-10-25T06:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 7158,
+            "row": {
+              "timestamp": "2024-10-25 06:00:00",
+              "wave_height_m": 2.558089251097963,
+              "wind_speed_ms": 7.919442821883265,
+              "barometric_pressure_hpa": 1013.7262809046548,
+              "sea_surface_temp_c": 20.842242464930465,
+              "humidity_pct": 81.04904134790925
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 33,
+        "when": "row 1154",
+        "column": "humidity_pct",
+        "description": "humidity_pct=high z=-0.4",
+        "z": -0.38196749151123965,
+        "score": 2.698854008629329,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": -0.38196749151123965,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0032",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 32
+        },
+        "referent": {
+          "primary_label": "2024-02-18 02:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-02-18T02:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 1154,
+            "row": {
+              "timestamp": "2024-02-18 02:00:00",
+              "wave_height_m": 1.236336521567394,
+              "wind_speed_ms": 7.967963684140241,
+              "barometric_pressure_hpa": 1013.7769527384364,
+              "sea_surface_temp_c": 23.354826033075383,
+              "humidity_pct": 70.57445492135996
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 34,
+        "when": "row 1648",
+        "column": "humidity_pct",
+        "description": "humidity_pct=high z=+1.6",
+        "z": 1.594216754108317,
+        "score": 1.7262801997324593,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": 1.594216754108317,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0033",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 33
+        },
+        "referent": {
+          "primary_label": "2024-03-09 16:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-03-09T16:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 1648,
+            "row": {
+              "timestamp": "2024-03-09 16:00:00",
+              "wave_height_m": 0.9862068487040924,
+              "wind_speed_ms": 4.016652628275588,
+              "barometric_pressure_hpa": 1015.5677904328202,
+              "sea_surface_temp_c": 24.795625218062128,
+              "humidity_pct": 72.56714587512703
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 35,
+        "when": "row 2557",
+        "column": "humidity_pct",
+        "description": "humidity_pct=low z=+1.9",
+        "z": 1.8946553470212693,
+        "score": 2.8161868194408894,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": 1.8946553470212693,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0034",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 34
+        },
+        "referent": {
+          "primary_label": "2024-04-16 13:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-04-16T13:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 2557,
+            "row": {
+              "timestamp": "2024-04-16 13:00:00",
+              "wave_height_m": 1.054478307306239,
+              "wind_speed_ms": 4.981111193268458,
+              "barometric_pressure_hpa": 1011.5070995172994,
+              "sea_surface_temp_c": 24.248743418768168,
+              "humidity_pct": 63.45767819262928
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 36,
+        "when": "row 4973",
+        "column": "humidity_pct",
+        "description": "humidity_pct=high z=+0.8",
+        "z": 0.767580790770773,
+        "score": 2.2682273051132205,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": 0.767580790770773,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0035",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 35
+        },
+        "referent": {
+          "primary_label": "2024-07-26 05:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-07-26T05:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 4973,
+            "row": {
+              "timestamp": "2024-07-26 05:00:00",
+              "wave_height_m": 2.100955675785106,
+              "wind_speed_ms": 7.443460799536091,
+              "barometric_pressure_hpa": 1012.4626698234216,
+              "sea_surface_temp_c": 20.61115699717821,
+              "humidity_pct": 63.45868154559718
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 37,
+        "when": "row 8352",
+        "column": "humidity_pct",
+        "description": "humidity_pct=low z=-0.0",
+        "z": -0.024425139266261553,
+        "score": 1.5253055090617291,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": -0.024425139266261553,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0036",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 36
+        },
+        "referent": {
+          "primary_label": "2024-12-14",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-12-14T00:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 8352,
+            "row": {
+              "timestamp": "2024-12-14 00:00:00",
+              "wave_height_m": 2.0973133658203658,
+              "wind_speed_ms": 6.130986800206049,
+              "barometric_pressure_hpa": 1014.5074624281242,
+              "sea_surface_temp_c": 21.630038197885103,
+              "humidity_pct": 66.86963184841723
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 38,
+        "when": "row 6015",
+        "column": "humidity_pct",
+        "description": "humidity_pct=low z=+0.9",
+        "z": 0.8837596970085171,
+        "score": 2.541838732279187,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": 0.8837596970085171,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0037",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 37
+        },
+        "referent": {
+          "primary_label": "2024-09-07 15:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-09-07T15:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 6015,
+            "row": {
+              "timestamp": "2024-09-07 15:00:00",
+              "wave_height_m": 1.5156927233660582,
+              "wind_speed_ms": 3.952455638824511,
+              "barometric_pressure_hpa": 1012.4268388913564,
+              "sea_surface_temp_c": 21.609189643658517,
+              "humidity_pct": 59.29952799643313
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 39,
+        "when": "row 4555",
+        "column": "humidity_pct",
+        "description": "humidity_pct=low z=+0.5",
+        "z": 0.5453304727435815,
+        "score": 2.212339707574264,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": 0.5453304727435815,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0038",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 38
+        },
+        "referent": {
+          "primary_label": "2024-07-08 19:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-07-08T19:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 4555,
+            "row": {
+              "timestamp": "2024-07-08 19:00:00",
+              "wave_height_m": 0.6225282365658695,
+              "wind_speed_ms": 4.697093724900629,
+              "barometric_pressure_hpa": 1014.9655417854342,
+              "sea_surface_temp_c": 21.83529494458257,
+              "humidity_pct": 68.10715696409737
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 40,
+        "when": "row 1693",
+        "column": "humidity_pct",
+        "description": "humidity_pct=high z=-0.4",
+        "z": -0.4276091013329584,
+        "score": 2.862214776653424,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": -0.4276091013329584,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0039",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 39
+        },
+        "referent": {
+          "primary_label": "2024-03-11 13:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-03-11T13:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 1693,
+            "row": {
+              "timestamp": "2024-03-11 13:00:00",
+              "wave_height_m": 1.0810398696199086,
+              "wind_speed_ms": 5.556132433769848,
+              "barometric_pressure_hpa": 1014.3529061323472,
+              "sea_surface_temp_c": 24.221946185111936,
+              "humidity_pct": 75.14504235883095
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 41,
+        "when": "row 3354",
+        "column": "humidity_pct",
+        "description": "humidity_pct=high z=-0.6",
+        "z": -0.5996863692212973,
+        "score": 2.1081521117146,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": -0.5996863692212973,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0040",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 40
+        },
+        "referent": {
+          "primary_label": "2024-05-19 18:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-05-19T18:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 3354,
+            "row": {
+              "timestamp": "2024-05-19 18:00:00",
+              "wave_height_m": 0.3979445868599418,
+              "wind_speed_ms": 3.298193256781268,
+              "barometric_pressure_hpa": 1014.4661059599864,
+              "sea_surface_temp_c": 23.58648882528565,
+              "humidity_pct": 74.4759714292695
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 42,
+        "when": "row 7022",
+        "column": "humidity_pct",
+        "description": "humidity_pct=high z=-1.2",
+        "z": -1.219028048807822,
+        "score": 2.1895247713464094,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": -1.219028048807822,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0041",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 41
+        },
+        "referent": {
+          "primary_label": "2024-10-19 14:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-10-19T14:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 7022,
+            "row": {
+              "timestamp": "2024-10-19 14:00:00",
+              "wave_height_m": 1.679300747931586,
+              "wind_speed_ms": 4.622676628544335,
+              "barometric_pressure_hpa": 1014.342707080944,
+              "sea_surface_temp_c": 20.997183032271817,
+              "humidity_pct": 58.112513588274055
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 43,
+        "when": "row 7683",
+        "column": "humidity_pct",
+        "description": "humidity_pct=low z=+0.6",
+        "z": 0.5818891836286713,
+        "score": 1.5340423530040355,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": 0.5818891836286713,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0042",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 42
+        },
+        "referent": {
+          "primary_label": "2024-11-16 03:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-11-16T03:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 7683,
+            "row": {
+              "timestamp": "2024-11-16 03:00:00",
+              "wave_height_m": 2.226002059804528,
+              "wind_speed_ms": 7.4826950770405265,
+              "barometric_pressure_hpa": 1015.008910254488,
+              "sea_surface_temp_c": 20.685425168428264,
+              "humidity_pct": 67.6294732811013
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 44,
+        "when": "row 2205",
+        "column": "humidity_pct",
+        "description": "humidity_pct=low z=+1.7",
+        "z": 1.659457560881794,
+        "score": 2.8355000078036223,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": 1.659457560881794,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0043",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 43
+        },
+        "referent": {
+          "primary_label": "2024-04-01 21:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-04-01T21:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 2205,
+            "row": {
+              "timestamp": "2024-04-01 21:00:00",
+              "wave_height_m": 0.477019515041268,
+              "wind_speed_ms": 4.399148729104428,
+              "barometric_pressure_hpa": 1011.4228220873824,
+              "sea_surface_temp_c": 24.3978184363072,
+              "humidity_pct": 69.59662215172771
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 45,
+        "when": "row 1060",
+        "column": "humidity_pct",
+        "description": "humidity_pct=high z=-0.3",
+        "z": -0.2872634067307427,
+        "score": 2.7996459876228155,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": -0.2872634067307427,
+            "direction": "high"
+          }
+        ],
+        "provenance_ref": "anom-0044",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 44
+        },
+        "referent": {
+          "primary_label": "2024-02-14 04:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-02-14T04:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 1060,
+            "row": {
+              "timestamp": "2024-02-14 04:00:00",
+              "wave_height_m": 2.1237339703598384,
+              "wind_speed_ms": 7.528047428132779,
+              "barometric_pressure_hpa": 1013.2820340219862,
+              "sea_surface_temp_c": 23.67939640307204,
+              "humidity_pct": 72.88444162902371
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 46,
+        "when": "row 3170",
+        "column": "humidity_pct",
+        "description": "humidity_pct=low z=-1.7",
+        "z": -1.6986149759754872,
+        "score": 2.872464217202464,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": -1.6986149759754872,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0045",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 45
+        },
+        "referent": {
+          "primary_label": "2024-05-12 02:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-05-12T02:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 3170,
+            "row": {
+              "timestamp": "2024-05-12 02:00:00",
+              "wave_height_m": 1.638657112341158,
+              "wind_speed_ms": 7.350049208798904,
+              "barometric_pressure_hpa": 1011.2796635175216,
+              "sea_surface_temp_c": 23.05265615279863,
+              "humidity_pct": 84.0508450209361
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "rank": 47,
+        "when": "row 2975",
+        "column": "humidity_pct",
+        "description": "humidity_pct=low z=-0.7",
+        "z": -0.7323119793748893,
+        "score": 2.6915913401235994,
+        "p_value": null,
+        "severity": "info",
+        "drivers": [
+          {
+            "feature": "humidity_pct",
+            "robust_z": -0.7323119793748893,
+            "direction": "low"
+          }
+        ],
+        "provenance_ref": "anom-0046",
+        "explainer_ref": {
+          "type": "anomaly",
+          "index": 46
+        },
+        "referent": {
+          "primary_label": "2024-05-03 23:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-05-03T23:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 2975,
+            "row": {
+              "timestamp": "2024-05-03 23:00:00",
+              "wave_height_m": 1.130295928031113,
+              "wind_speed_ms": 6.106860620913584,
+              "barometric_pressure_hpa": 1011.3895917911184,
+              "sea_surface_temp_c": 25.33541900380427,
+              "humidity_pct": 67.2827931147832
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      }
+    ],
+    "forecast": {
+      "available": true,
+      "target": "wave_height_m",
+      "horizon": 24,
+      "method": "AR(1)",
+      "headline_value": 2.55,
+      "headline_ci_low": 2.35,
+      "headline_ci_high": 2.75,
+      "points": [
+        {
+          "step": 1,
+          "value": 1.4,
+          "ci_low": 1.2,
+          "ci_high": 1.6
+        },
+        {
+          "step": 2,
+          "value": 1.45,
+          "ci_low": 1.25,
+          "ci_high": 1.6500000000000001
+        },
+        {
+          "step": 3,
+          "value": 1.5,
+          "ci_low": 1.3,
+          "ci_high": 1.7000000000000002
+        },
+        {
+          "step": 4,
+          "value": 1.5499999999999998,
+          "ci_low": 1.35,
+          "ci_high": 1.75
+        },
+        {
+          "step": 5,
+          "value": 1.5999999999999999,
+          "ci_low": 1.4,
+          "ci_high": 1.8
+        },
+        {
+          "step": 6,
+          "value": 1.65,
+          "ci_low": 1.45,
+          "ci_high": 1.85
+        },
+        {
+          "step": 7,
+          "value": 1.7,
+          "ci_low": 1.5,
+          "ci_high": 1.9000000000000001
+        },
+        {
+          "step": 8,
+          "value": 1.75,
+          "ci_low": 1.55,
+          "ci_high": 1.9500000000000002
+        },
+        {
+          "step": 9,
+          "value": 1.7999999999999998,
+          "ci_low": 1.6,
+          "ci_high": 2.0
+        },
+        {
+          "step": 10,
+          "value": 1.8499999999999999,
+          "ci_low": 1.65,
+          "ci_high": 2.0500000000000003
+        },
+        {
+          "step": 11,
+          "value": 1.9,
+          "ci_low": 1.7,
+          "ci_high": 2.1
+        },
+        {
+          "step": 12,
+          "value": 1.95,
+          "ci_low": 1.75,
+          "ci_high": 2.1500000000000004
+        },
+        {
+          "step": 13,
+          "value": 2.0,
+          "ci_low": 1.8,
+          "ci_high": 2.2
+        },
+        {
+          "step": 14,
+          "value": 2.05,
+          "ci_low": 1.85,
+          "ci_high": 2.25
+        },
+        {
+          "step": 15,
+          "value": 2.1,
+          "ci_low": 1.9,
+          "ci_high": 2.3000000000000003
+        },
+        {
+          "step": 16,
+          "value": 2.15,
+          "ci_low": 1.95,
+          "ci_high": 2.35
+        },
+        {
+          "step": 17,
+          "value": 2.2,
+          "ci_low": 2.0,
+          "ci_high": 2.4000000000000004
+        },
+        {
+          "step": 18,
+          "value": 2.25,
+          "ci_low": 2.05,
+          "ci_high": 2.45
+        },
+        {
+          "step": 19,
+          "value": 2.3,
+          "ci_low": 2.1,
+          "ci_high": 2.5
+        },
+        {
+          "step": 20,
+          "value": 2.35,
+          "ci_low": 2.15,
+          "ci_high": 2.5500000000000003
+        },
+        {
+          "step": 21,
+          "value": 2.4,
+          "ci_low": 2.2,
+          "ci_high": 2.6
+        },
+        {
+          "step": 22,
+          "value": 2.45,
+          "ci_low": 2.25,
+          "ci_high": 2.6500000000000004
+        },
+        {
+          "step": 23,
+          "value": 2.5,
+          "ci_low": 2.3,
+          "ci_high": 2.7
+        },
+        {
+          "step": 24,
+          "value": 2.55,
+          "ci_low": 2.35,
+          "ci_high": 2.75
+        }
+      ],
+      "score": 0.78,
+      "phi": 0.78,
+      "sigma": 0.34,
+      "warning": {},
+      "provenance_ref": "forecast-0001",
+      "alternate_methods": {
+        "results": {
+          "knn_window": {
+            "method": "knn_window",
+            "horizon": 24,
+            "forecast": [
+              1.9156213308882055,
+              1.9657442235086708,
+              2.1598519924836865,
+              2.2702521490505942,
+              2.553089767189773,
+              2.571639209163427,
+              2.639904810923411,
+              2.4263120705670116,
+              2.559960047595328,
+              2.4613074014816805,
+              2.1066631832425395,
+              1.9969508914759855,
+              1.8042436349255229,
+              1.5806399566772034,
+              1.4903088672285032,
+              1.3062538986032024,
+              1.2390326910324576,
+              1.1533593834903941,
+              1.2812458897867578,
+              1.3384649961845343,
+              1.2660176604512134,
+              1.2614758665949592,
+              1.5227149940862406,
+              1.677709636425009
+            ],
+            "ci_low": [
+              1.6573970723486473,
+              1.7798163896764299,
+              1.9744795568908526,
+              2.1313685189846776,
+              2.22002246483741,
+              2.3477386532347397,
+              2.2510823575620242,
+              2.1054353149242155,
+              2.3377699097457563,
+              2.0081465110722547,
+              1.7563943454710338,
+              1.551677116628383,
+              1.512715909021164,
+              1.3095593286228564,
+              1.2559559202096877,
+              0.8761904358619468,
+              0.8731131446923711,
+              0.7583213508712916,
+              1.1506147381446565,
+              1.115847225657136,
+              1.0510910776058018,
+              0.9711545890036812,
+              1.2187545999492886,
+              1.0791297315320403
+            ],
+            "ci_high": [
+              2.173845589427764,
+              2.151672057340912,
+              2.3452244280765204,
+              2.4091357791165104,
+              2.8861570695421364,
+              2.795539765092114,
+              3.028727264284798,
+              2.747188826209808,
+              2.7821501854448996,
+              2.9144682918911062,
+              2.456932021014045,
+              2.4422246663235883,
+              2.095771360829882,
+              1.8517205847315503,
+              1.7246618142473185,
+              1.7363173613444582,
+              1.604952237372544,
+              1.5483974161094964,
+              1.4118770414288588,
+              1.561082766711933,
+              1.4809442432966253,
+              1.5517971441862368,
+              1.8266753882231923,
+              2.2762895413179782
+            ],
+            "math": {
+              "k": 5,
+              "window": 30,
+              "neighbours": [
+                {
+                  "start_index": 4242,
+                  "distance": 2.074212744093263,
+                  "neighbour_mu": 1.1307801306509881,
+                  "neighbour_sigma": 0.5444883807951497
+                },
+                {
+                  "start_index": 3666,
+                  "distance": 2.07507321974267,
+                  "neighbour_mu": 1.1750756649321759,
+                  "neighbour_sigma": 0.5500427639280923
+                },
+                {
+                  "start_index": 6066,
+                  "distance": 2.0866625325780728,
+                  "neighbour_mu": 1.7342084914584843,
+                  "neighbour_sigma": 0.556285551440953
+                },
+                {
+                  "start_index": 2034,
+                  "distance": 2.090216679805842,
+                  "neighbour_mu": 1.153692093499742,
+                  "neighbour_sigma": 0.5342320525478476
+                },
+                {
+                  "start_index": 4074,
+                  "distance": 2.09244943195863,
+                  "neighbour_mu": 1.1892686498879057,
+                  "neighbour_sigma": 0.5164476013939429
+                }
+              ],
+              "query": {
+                "start_index": 8706,
+                "mu": 1.7702552216007763,
+                "sigma": 0.4826527941612674
+              },
+              "explanation": "predicted future = (z-normalised mean of 5 most-similar past windows) \u00d7 \u03c3_query + \u03bc_query.",
+              "holdout_rmse": 0.21483944446447203
+            },
+            "error": null,
+            "ok": true
+          },
+          "ar2": {
+            "method": "ar2",
+            "horizon": 24,
+            "forecast": [
+              1.6679374922545072,
+              1.6507861161983903,
+              1.651306802182083,
+              1.6479904872253255,
+              1.6456794594053084,
+              1.643275980386515,
+              1.6410216248047236,
+              1.6388563080121532,
+              1.6367881943793978,
+              1.6348102991097138,
+              1.632919278097906,
+              1.6311111822881839,
+              1.629382405292557,
+              1.6277294607227006,
+              1.6261490237330753,
+              1.6246379133832087,
+              1.6231930887038304,
+              1.6218116420207584,
+              1.6204907932287145,
+              1.6192278841681982,
+              1.6180203732824123,
+              1.6168658305010408,
+              1.6157619323501455,
+              1.6147064572761902
+            ],
+            "ci_low": [
+              1.006352721873398,
+              0.7151639612659358,
+              0.5054083663682125,
+              0.3248209464631071,
+              0.16633093995455872,
+              0.02273087135642382,
+              -0.10936714881146226,
+              -0.23238800185275577,
+              -0.34796611676392963,
+              -0.4573044405740947,
+              -0.5613091722696659,
+              -0.660685689339557,
+              -0.7559954073826018,
+              -0.8476940823509185,
+              -0.9361577740574187,
+              -1.021701168141228,
+              -1.1045907998774893,
+              -1.1850548227766051,
+              -1.263290363448101,
+              -1.3394691547333006,
+              -1.413741915618998,
+              -1.4862418029536777,
+              -1.5570871647871845,
+              -1.6263837607839915
+            ],
+            "ci_high": [
+              2.3295222626356162,
+              2.586408271130845,
+              2.7972052379959536,
+              2.971160027987544,
+              3.1250279788560578,
+              3.2638210894166058,
+              3.391410398420909,
+              3.510100617877062,
+              3.6215425055227253,
+              3.726925038793522,
+              3.8271477284654782,
+              3.9229080539159247,
+              4.014760217967716,
+              4.1031530037963195,
+              4.188455821523569,
+              4.270976994907645,
+              4.35097697728515,
+              4.428678106818122,
+              4.5042719499055295,
+              4.577924923069697,
+              4.6497826621838225,
+              4.71997346395576,
+              4.788611029487475,
+              4.8557966753363715
+            ],
+            "math": {
+              "coefficients": {
+                "c": 0.08556027354123229,
+                "phi1": 0.7307073644799545,
+                "phi2": 0.2155386266109358
+              },
+              "residual_sigma": 0.3375432501944435,
+              "rmse_in_sample": 0.3375432501944435,
+              "explanation": "y_t = c + \u03c6\u2081\u00b7y_{t-1} + \u03c6\u2082\u00b7y_{t-2} + \u03b5. c=0.08556, \u03c6\u2081=0.7307, \u03c6\u2082=0.2155, \u03c3=0.3375. CIs widen by 1.96\u00b7\u03c3\u00b7\u221ah at horizon h.",
+              "holdout_rmse": 0.6585777394242346
+            },
+            "error": null,
+            "ok": true
+          }
+        },
+        "winner": "knn_window",
+        "winner_rmse_holdout": 0.21483944446447203,
+        "explanation": "Compared on a held-out fold of 24 samples; winner = knn_window with RMSE 0.2148. Both methods report their internal coefficients in `math`."
+      }
+    },
+    "causal": {
+      "available": true,
+      "items": [
+        {
+          "if_clause": "wind_speed_ms increases by 1.0",
+          "then_clause": "target wave_height_m changes by ~+0.42",
+          "effect_value": 0.42,
+          "ci_low": null,
+          "ci_high": null
+        }
+      ],
+      "method": "linear OLS",
+      "n": 8760,
+      "provenance_ref": "causal-0001",
+      "explainer_ref": {
+        "type": "causal",
+        "index": 0
+      }
+    },
+    "physics": {
+      "available": true,
+      "discovered_law": {
+        "name": "wave_height_wind_fetch_law",
+        "equation": "wave_height ~ wind^1.8",
+        "params": {
+          "a": 1.2,
+          "b": 1.8
+        },
+        "rmse": 0.22,
+        "aic": -1240.0,
+        "k": 2,
+        "r2": null
+      },
+      "checks": [
+        {
+          "name": "PHYSICS CONSISTENCY SCORE",
+          "value": 0.74
+        }
+      ],
+      "invariants": [
+        {
+          "text": "growth pattern: stationary",
+          "status": "ok"
+        }
+      ],
+      "discovered_invariants": [],
+      "symbolic_relations": [],
+      "consistency_score": 0.74,
+      "runner_ups": [],
+      "all_candidates": [
+        {
+          "name": "wave_height_wind_fetch_law",
+          "model": null,
+          "rmse_test": 0.22,
+          "aic": -1240.0,
+          "k": 2,
+          "ok": true,
+          "error": null
+        }
+      ],
+      "prior_matches": [],
+      "dimensional_check": {
+        "balances": true,
+        "expected": null,
+        "actual": null,
+        "confidence": 0.0,
+        "note": "no dimensional check defined for runner form 'wave_height_wind_fetch_law'",
+        "warnings": []
+      },
+      "calculus": {
+        "dy_dt_mean": 0.0,
+        "dy_dt_std": 6e-05,
+        "dy_dt_max_abs": 0.000704,
+        "dy_dt_sign_changes": 2636,
+        "monotonic_stretches": 14,
+        "d2y_dt2_mean": -0.0,
+        "d2y_dt2_std": 0.0,
+        "inflection_points": 3808,
+        "integral_total": 50202486.774171,
+        "integral_mean": 1.592092,
+        "monotonic": false,
+        "dominant_frequency": 1.2e-05,
+        "likely_shape": "oscillatory",
+        "confidence": 0.8,
+        "available": true,
+        "target_col": "wave_height_m",
+        "time_col": "timestamp",
+        "n_points": 8760
+      },
+      "coupled_systems": null,
+      "pde_detection": null,
+      "provenance_ref": "physics-best",
+      "explainer_ref": {
+        "type": "physics",
+        "index": 0
+      },
+      "meta_suggestions": [
+        {
+          "prior_id": "newton_cooling",
+          "display_name": "Newton's law of cooling",
+          "domain": "thermal",
+          "support_n": 23,
+          "mean_confidence": 1.0,
+          "weighted_similarity": 18.400000000000006,
+          "example_run_dirs": [
+            "C:\\Users\\bgrut\\Desktop\\Aurora_QIE\\outputs\\aurora_dataset_runs\\20260503_185632__patient_cohort_demo.csv",
+            "C:\\Users\\bgrut\\Desktop\\Aurora_QIE\\outputs\\aurora_dataset_runs\\20260503_185632__patient_cohort_demo.csv",
+            "C:\\Users\\bgrut\\Desktop\\Aurora_QIE\\outputs\\aurora_dataset_runs\\20260503_185632__patient_cohort_demo.csv"
+          ],
+          "rationale": "Matched on 23 similar past run(s), weighted similarity 18.40, mean confidence 100%."
+        },
+        {
+          "prior_id": "exponential",
+          "display_name": "Exponential growth/decay",
+          "domain": "research",
+          "support_n": 15,
+          "mean_confidence": 1.0,
+          "weighted_similarity": 12.000000000000002,
+          "example_run_dirs": [
+            "C:\\Users\\bgrut\\Desktop\\Aurora_QIE\\outputs\\aurora_dataset_runs\\20260504_102003__format_geojson_limit_200_starttime_2026-04-04__dd5dc878.csv",
+            "C:\\Users\\bgrut\\Desktop\\Aurora_QIE\\outputs\\aurora_dataset_runs\\20260504_102003__format_geojson_limit_200_starttime_2026-04-04__dd5dc878.csv",
+            "C:\\Users\\bgrut\\Desktop\\Aurora_QIE\\outputs\\aurora_dataset_runs\\20260504_102003__format_geojson_limit_200_starttime_2026-04-04__dd5dc878.csv"
+          ],
+          "rationale": "Matched on 15 similar past run(s), weighted similarity 12.00, mean confidence 100%."
+        }
+      ]
+    },
+    "regimes": [
+      {
+        "label": "LOW",
+        "start": "2024-01-01",
+        "end": "2024-08-15",
+        "mean": 1.18,
+        "std": 0.31,
+        "min": 0.4,
+        "max": 6.2,
+        "weight": 5500.0,
+        "provenance_ref": "regime-001",
+        "explainer_ref": {
+          "type": "regime",
+          "index": 0
+        },
+        "referent": {
+          "primary_label": "2024-01-01",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-01-01T00:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "timestamp": "2024-01-01"
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      },
+      {
+        "label": "HIGH",
+        "start": "2024-08-16",
+        "end": "2024-12-31",
+        "mean": 1.78,
+        "std": 0.36,
+        "min": 0.6,
+        "max": 7.4,
+        "weight": 3260.0,
+        "provenance_ref": "regime-002",
+        "explainer_ref": {
+          "type": "regime",
+          "index": 1
+        },
+        "referent": {
+          "primary_label": "2024-08-16",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-08-16T00:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "timestamp": "2024-08-16"
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        }
+      }
+    ],
+    "motifs": [
+      {
+        "id": 0,
+        "name": "High variability: wave_height_m",
+        "kind": "high_volatility",
+        "count": 3,
+        "score": 4.2,
+        "description": "std = 1.18",
+        "details": {
+          "col": "wave_height_m",
+          "std": 1.18,
+          "count": 3
+        },
+        "provenance_ref": "motif-001",
+        "referent": {
+          "primary_label": "an unspecified row",
+          "level_used": "row_index",
+          "referent_confidence": 0.3,
+          "inspect_only": true,
+          "named_event": null,
+          "timestamp": null,
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {},
+          "fallback_chain": [
+            "named_event",
+            "timestamp",
+            "entity",
+            "group",
+            "position"
+          ]
+        },
+        "referent_inspect_only": true
+      },
+      {
+        "id": 1,
+        "name": "wind_speed_ms \u2194 wave_height_m",
+        "kind": "high_correlation",
+        "count": null,
+        "score": 0.86,
+        "description": "\u03c1 = 0.860",
+        "details": {
+          "col_a": "wind_speed_ms",
+          "col_b": "wave_height_m",
+          "corr": 0.86
+        },
+        "provenance_ref": "motif-002",
+        "referent": {
+          "primary_label": "an unspecified row",
+          "level_used": "row_index",
+          "referent_confidence": 0.3,
+          "inspect_only": true,
+          "named_event": null,
+          "timestamp": null,
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {},
+          "fallback_chain": [
+            "named_event",
+            "timestamp",
+            "entity",
+            "group",
+            "position"
+          ]
+        },
+        "referent_inspect_only": true
+      },
+      {
+        "id": 2,
+        "name": "Matrix-profile motif #1 (wave_height_m)",
+        "kind": "matrix_profile_motif",
+        "count": 2,
+        "score": 4.571517437200957,
+        "description": "Window of 200 samples recurs at rows 4452\u20134652 and 3548; z-distance = 4.57.",
+        "details": {
+          "rank": 1,
+          "start_a": 4452,
+          "start_b": 3548,
+          "distance": 4.571517437200957,
+          "window": 200,
+          "col": "wave_height_m",
+          "method": "matrix_profile"
+        },
+        "provenance_ref": "motif-mp-001",
+        "referent": {
+          "primary_label": "rows 4452\u20134652",
+          "level_used": "position",
+          "referent_confidence": 0.55,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": null,
+          "entity": null,
+          "group": null,
+          "position": {
+            "phrase": "rows 4452\u20134652",
+            "kind": "window",
+            "start": 4452,
+            "end": 4652
+          },
+          "raw_coordinates": {
+            "window_start": 4452,
+            "window_end": 4652
+          },
+          "fallback_chain": [
+            "named_event",
+            "timestamp",
+            "entity",
+            "group"
+          ]
+        },
+        "_legacy_description": "Window of 200 samples recurs at rows 4452 and 3548; z-distance = 4.57."
+      },
+      {
+        "id": 3,
+        "name": "Matrix-profile motif #2 (wave_height_m)",
+        "kind": "matrix_profile_motif",
+        "count": 2,
+        "score": 5.512799138084566,
+        "description": "Window of 200 samples recurs at rows 674\u2013874 and 2797; z-distance = 5.51.",
+        "details": {
+          "rank": 2,
+          "start_a": 674,
+          "start_b": 2797,
+          "distance": 5.512799138084566,
+          "window": 200,
+          "col": "wave_height_m",
+          "method": "matrix_profile"
+        },
+        "provenance_ref": "motif-mp-002",
+        "referent": {
+          "primary_label": "rows 674\u2013874",
+          "level_used": "position",
+          "referent_confidence": 0.55,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": null,
+          "entity": null,
+          "group": null,
+          "position": {
+            "phrase": "rows 674\u2013874",
+            "kind": "window",
+            "start": 674,
+            "end": 874
+          },
+          "raw_coordinates": {
+            "window_start": 674,
+            "window_end": 874
+          },
+          "fallback_chain": [
+            "named_event",
+            "timestamp",
+            "entity",
+            "group"
+          ]
+        },
+        "_legacy_description": "Window of 200 samples recurs at rows 674 and 2797; z-distance = 5.51."
+      },
+      {
+        "id": 4,
+        "name": "Matrix-profile motif #3 (wave_height_m)",
+        "kind": "matrix_profile_motif",
+        "count": 2,
+        "score": 5.535830525859387,
+        "description": "Window of 200 samples recurs at rows 442\u2013642 and 305; z-distance = 5.54.",
+        "details": {
+          "rank": 3,
+          "start_a": 442,
+          "start_b": 305,
+          "distance": 5.535830525859387,
+          "window": 200,
+          "col": "wave_height_m",
+          "method": "matrix_profile"
+        },
+        "provenance_ref": "motif-mp-003",
+        "referent": {
+          "primary_label": "rows 442\u2013642",
+          "level_used": "position",
+          "referent_confidence": 0.55,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": null,
+          "entity": null,
+          "group": null,
+          "position": {
+            "phrase": "rows 442\u2013642",
+            "kind": "window",
+            "start": 442,
+            "end": 642
+          },
+          "raw_coordinates": {
+            "window_start": 442,
+            "window_end": 642
+          },
+          "fallback_chain": [
+            "named_event",
+            "timestamp",
+            "entity",
+            "group"
+          ]
+        },
+        "_legacy_description": "Window of 200 samples recurs at rows 442 and 305; z-distance = 5.54."
+      },
+      {
+        "id": 5,
+        "name": "Discord (anomalous window) at rows 1932\u20132132",
+        "kind": "matrix_profile_discord",
+        "count": 1,
+        "score": 10.90348959516662,
+        "description": "Window of 200 samples is uniquely shaped (z-distance to nearest neighbour 10.9).",
+        "details": {
+          "rank": 1,
+          "start": 1932,
+          "distance": 10.90348959516662,
+          "window": 200,
+          "col": "wave_height_m",
+          "method": "matrix_profile"
+        },
+        "provenance_ref": "discord-mp-001",
+        "referent": {
+          "primary_label": "rows 1932\u20132132",
+          "level_used": "position",
+          "referent_confidence": 0.55,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": null,
+          "entity": null,
+          "group": null,
+          "position": {
+            "phrase": "rows 1932\u20132132",
+            "kind": "window",
+            "start": 1932,
+            "end": 2132
+          },
+          "raw_coordinates": {
+            "window_start": 1932,
+            "window_end": 2132
+          },
+          "fallback_chain": [
+            "named_event",
+            "timestamp",
+            "entity",
+            "group"
+          ]
+        },
+        "_legacy_name": "Discord (anomalous window) at row 1932"
+      },
+      {
+        "id": 6,
+        "name": "Discord (anomalous window) at rows 3343\u20133543",
+        "kind": "matrix_profile_discord",
+        "count": 1,
+        "score": 10.399809660365186,
+        "description": "Window of 200 samples is uniquely shaped (z-distance to nearest neighbour 10.4).",
+        "details": {
+          "rank": 2,
+          "start": 3343,
+          "distance": 10.399809660365186,
+          "window": 200,
+          "col": "wave_height_m",
+          "method": "matrix_profile"
+        },
+        "provenance_ref": "discord-mp-002",
+        "referent": {
+          "primary_label": "rows 3343\u20133543",
+          "level_used": "position",
+          "referent_confidence": 0.55,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": null,
+          "entity": null,
+          "group": null,
+          "position": {
+            "phrase": "rows 3343\u20133543",
+            "kind": "window",
+            "start": 3343,
+            "end": 3543
+          },
+          "raw_coordinates": {
+            "window_start": 3343,
+            "window_end": 3543
+          },
+          "fallback_chain": [
+            "named_event",
+            "timestamp",
+            "entity",
+            "group"
+          ]
+        },
+        "_legacy_name": "Discord (anomalous window) at row 3343"
+      },
+      {
+        "id": 7,
+        "name": "Discord (anomalous window) at rows 1800\u20132000",
+        "kind": "matrix_profile_discord",
+        "count": 1,
+        "score": 9.791348389836822,
+        "description": "Window of 200 samples is uniquely shaped (z-distance to nearest neighbour 9.79).",
+        "details": {
+          "rank": 3,
+          "start": 1800,
+          "distance": 9.791348389836822,
+          "window": 200,
+          "col": "wave_height_m",
+          "method": "matrix_profile"
+        },
+        "provenance_ref": "discord-mp-003",
+        "referent": {
+          "primary_label": "rows 1800\u20132000",
+          "level_used": "position",
+          "referent_confidence": 0.55,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": null,
+          "entity": null,
+          "group": null,
+          "position": {
+            "phrase": "rows 1800\u20132000",
+            "kind": "window",
+            "start": 1800,
+            "end": 2000
+          },
+          "raw_coordinates": {
+            "window_start": 1800,
+            "window_end": 2000
+          },
+          "fallback_chain": [
+            "named_event",
+            "timestamp",
+            "entity",
+            "group"
+          ]
+        },
+        "_legacy_name": "Discord (anomalous window) at row 1800"
+      }
+    ],
+    "findings": [
+      {
+        "severity": "crit",
+        "confidence": 0.8945563462414802,
+        "title": "Anomaly in wave_height_m at 2024-05-27 03:00 UTC",
+        "description": "wave_height_m=high z=+5.0, wind_speed_ms=high z=+4.5",
+        "method": "iso-forest + robust-Z",
+        "z": 4.9875911927287815,
+        "actions": [
+          "VIEW EVIDENCE",
+          "PIN \u2605",
+          "EXPLAIN"
+        ],
+        "n_total_at_this_severity": 19,
+        "n_total_anomalies": 47,
+        "kb_citation": {
+          "title": "A proposed spectral form for fully developed wind seas",
+          "authors": "W.J. Pierson Jr., L. Moskowitz",
+          "year": 1964,
+          "venue": "J. Geophys. Res.",
+          "domain": "enviro",
+          "url": "https://doi.org/10.1029/JZ069i024p05181",
+          "summary": "The Pierson-Moskowitz spectrum \u2014 wave-height law for fully-developed seas.",
+          "source": "local_kb",
+          "relevance": 0.8
+        },
+        "referent": {
+          "primary_label": "2024-05-27 03:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-05-27T03:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 3531,
+            "row": {
+              "timestamp": "2024-05-27 03:00:00",
+              "wave_height_m": 6.240722634866037,
+              "wind_speed_ms": 21.02913422911999,
+              "barometric_pressure_hpa": 993.3666163575488,
+              "sea_surface_temp_c": 19.769018445511357,
+              "humidity_pct": 68.92395777753994
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        },
+        "_legacy_title": "Anomaly in wave_height_m at row 3531",
+        "recommendation": {
+          "kind": "do_x",
+          "headline": "DO: Investigate anomaly with operations team",
+          "description": "Pull the timeline \u00b11 hour around the flagged row, request confirmation from anyone monitoring the asset at that time, and rule out instrument failure before treating as a real signal.",
+          "confidence": 0.8945563462414802,
+          "confidence_band": "high",
+          "action_id": "investigate_anomaly",
+          "predicted_outcome": {
+            "summary": "\u224840% of high-z anomalies are real events; \u224830% are sensor faults; \u224830% are explainable by missed context.",
+            "success_probability": 0.4,
+            "ci_low": null,
+            "ci_high": null,
+            "n_observed": 0,
+            "rate_source": "prior"
+          },
+          "predicted_no_action": {
+            "summary": "Critical anomaly remains active; impact compounds.",
+            "ci_low": null,
+            "ci_high": null
+          },
+          "alternatives": [
+            {
+              "id": "collect_more_data_to_resolve",
+              "label": "Collect more data before deciding",
+              "description": "Findings flagged as low-confidence shouldn't drive irreversible actions. Instead, identify the specific measurement that would raise confidence and collect it.",
+              "domain": "general",
+              "suggested_when": [
+                "confidence < 0.4 OR n_samples below identifiability threshold"
+              ],
+              "expected_outcome_summary": "Adding the right additional measurement raises confidence above the actionable threshold in \u224860% of cases.",
+              "base_rate_success": 0.6,
+              "relevant_finding_kinds": [
+                "anomaly",
+                "physics_match",
+                "forecast_breach",
+                "regime_shift"
+              ],
+              "assumptions": [
+                "the bottleneck is data, not model"
+              ]
+            }
+          ],
+          "base_rate": {
+            "action_id": "investigate_anomaly",
+            "n": 0,
+            "rate": 0.4,
+            "source": "prior"
+          },
+          "conditions_under_which_changes": [
+            "anomaly score \u2265 3.0 AND involves a measured (not derived) variable"
+          ],
+          "assumptions": [
+            "sensor data has a known monitoring point of contact"
+          ],
+          "finding_ref": {
+            "title": "Anomaly in wave_height_m at 2024-05-27 03:00 UTC",
+            "method": "iso-forest + robust-Z",
+            "severity": "crit",
+            "referent": "2024-05-27 03:00 UTC",
+            "referent_level": "timestamp"
+          }
+        },
+        "narrative": {
+          "title": "Anomaly in wave_height_m at 2024-05-27 03:00 UTC",
+          "body": "wave_height_m=high z=+5.0, wind_speed_ms=high z=+4.5 \u2014 surfaced for review.",
+          "vocabulary_used": [
+            "anomaly",
+            "operational threshold breach",
+            "regime",
+            "advisory"
+          ],
+          "active_patterns": [
+            "Diurnal cycle"
+          ],
+          "model_confidence": 0.6983333333333333,
+          "referent_label": "2024-05-27 03:00 UTC",
+          "referent_level": "timestamp",
+          "template_id": "*:anomaly:explore:*",
+          "trace": {
+            "domain": "enviro",
+            "kind": "anomaly",
+            "contract_id": "enviro:explore",
+            "contract_class": "explore",
+            "cost_asymmetry": "symmetric",
+            "confidence": 0.8945563462414802,
+            "confidence_band": "high",
+            "treatment": "render",
+            "template_id": "*:anomaly:explore:*",
+            "vocab_used": [
+              "anomaly_term",
+              "regime_term",
+              "breach_term",
+              "advisory_term"
+            ],
+            "amplified": false
+          }
+        },
+        "surface_treatment": "render"
+      },
+      {
+        "severity": "crit",
+        "confidence": 0.8837333976043116,
+        "title": "Anomaly in wave_height_m at 2024-05-26 08:00 UTC",
+        "description": "wave_height_m=high z=+5.5, wind_speed_ms=high z=+4.6",
+        "method": "iso-forest + robust-Z",
+        "z": 5.521570097233795,
+        "actions": [
+          "VIEW EVIDENCE",
+          "PIN \u2605",
+          "EXPLAIN"
+        ],
+        "n_total_at_this_severity": 19,
+        "n_total_anomalies": 47,
+        "kb_citation": {
+          "title": "A proposed spectral form for fully developed wind seas",
+          "authors": "W.J. Pierson Jr., L. Moskowitz",
+          "year": 1964,
+          "venue": "J. Geophys. Res.",
+          "domain": "enviro",
+          "url": "https://doi.org/10.1029/JZ069i024p05181",
+          "summary": "The Pierson-Moskowitz spectrum \u2014 wave-height law for fully-developed seas.",
+          "source": "local_kb",
+          "relevance": 0.8
+        },
+        "referent": {
+          "primary_label": "2024-05-26 08:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-05-26T08:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 3512,
+            "row": {
+              "timestamp": "2024-05-26 08:00:00",
+              "wave_height_m": 6.085752622416501,
+              "wind_speed_ms": 23.88088301361622,
+              "barometric_pressure_hpa": 1000.7631051498756,
+              "sea_surface_temp_c": 19.96059216997384,
+              "humidity_pct": 73.22642128260391
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        },
+        "_legacy_title": "Anomaly in wave_height_m at row 3512",
+        "recommendation": {
+          "kind": "do_x",
+          "headline": "DO: Investigate anomaly with operations team",
+          "description": "Pull the timeline \u00b11 hour around the flagged row, request confirmation from anyone monitoring the asset at that time, and rule out instrument failure before treating as a real signal.",
+          "confidence": 0.8837333976043116,
+          "confidence_band": "high",
+          "action_id": "investigate_anomaly",
+          "predicted_outcome": {
+            "summary": "\u224840% of high-z anomalies are real events; \u224830% are sensor faults; \u224830% are explainable by missed context.",
+            "success_probability": 0.4,
+            "ci_low": null,
+            "ci_high": null,
+            "n_observed": 0,
+            "rate_source": "prior"
+          },
+          "predicted_no_action": {
+            "summary": "Critical anomaly remains active; impact compounds.",
+            "ci_low": null,
+            "ci_high": null
+          },
+          "alternatives": [
+            {
+              "id": "collect_more_data_to_resolve",
+              "label": "Collect more data before deciding",
+              "description": "Findings flagged as low-confidence shouldn't drive irreversible actions. Instead, identify the specific measurement that would raise confidence and collect it.",
+              "domain": "general",
+              "suggested_when": [
+                "confidence < 0.4 OR n_samples below identifiability threshold"
+              ],
+              "expected_outcome_summary": "Adding the right additional measurement raises confidence above the actionable threshold in \u224860% of cases.",
+              "base_rate_success": 0.6,
+              "relevant_finding_kinds": [
+                "anomaly",
+                "physics_match",
+                "forecast_breach",
+                "regime_shift"
+              ],
+              "assumptions": [
+                "the bottleneck is data, not model"
+              ]
+            }
+          ],
+          "base_rate": {
+            "action_id": "investigate_anomaly",
+            "n": 0,
+            "rate": 0.4,
+            "source": "prior"
+          },
+          "conditions_under_which_changes": [
+            "anomaly score \u2265 3.0 AND involves a measured (not derived) variable"
+          ],
+          "assumptions": [
+            "sensor data has a known monitoring point of contact"
+          ],
+          "finding_ref": {
+            "title": "Anomaly in wave_height_m at 2024-05-26 08:00 UTC",
+            "method": "iso-forest + robust-Z",
+            "severity": "crit",
+            "referent": "2024-05-26 08:00 UTC",
+            "referent_level": "timestamp"
+          }
+        },
+        "narrative": {
+          "title": "Anomaly in wave_height_m at 2024-05-26 08:00 UTC",
+          "body": "wave_height_m=high z=+5.5, wind_speed_ms=high z=+4.6 \u2014 surfaced for review.",
+          "vocabulary_used": [
+            "anomaly",
+            "operational threshold breach",
+            "regime",
+            "advisory"
+          ],
+          "active_patterns": [
+            "Diurnal cycle"
+          ],
+          "model_confidence": 0.6983333333333333,
+          "referent_label": "2024-05-26 08:00 UTC",
+          "referent_level": "timestamp",
+          "template_id": "*:anomaly:explore:*",
+          "trace": {
+            "domain": "enviro",
+            "kind": "anomaly",
+            "contract_id": "enviro:explore",
+            "contract_class": "explore",
+            "cost_asymmetry": "symmetric",
+            "confidence": 0.8837333976043116,
+            "confidence_band": "high",
+            "treatment": "render",
+            "template_id": "*:anomaly:explore:*",
+            "vocab_used": [
+              "anomaly_term",
+              "regime_term",
+              "breach_term",
+              "advisory_term"
+            ],
+            "amplified": false
+          }
+        },
+        "surface_treatment": "render"
+      },
+      {
+        "severity": "crit",
+        "confidence": 0.8453570045933818,
+        "title": "Anomaly in wave_height_m at 2024-09-16 05:00 UTC",
+        "description": "wave_height_m=high z=+5.8, wind_speed_ms=high z=+4.0",
+        "method": "iso-forest + robust-Z",
+        "z": 5.815132947852186,
+        "actions": [
+          "VIEW EVIDENCE",
+          "PIN \u2605",
+          "EXPLAIN"
+        ],
+        "n_total_at_this_severity": 19,
+        "n_total_anomalies": 47,
+        "kb_citation": {
+          "title": "A proposed spectral form for fully developed wind seas",
+          "authors": "W.J. Pierson Jr., L. Moskowitz",
+          "year": 1964,
+          "venue": "J. Geophys. Res.",
+          "domain": "enviro",
+          "url": "https://doi.org/10.1029/JZ069i024p05181",
+          "summary": "The Pierson-Moskowitz spectrum \u2014 wave-height law for fully-developed seas.",
+          "source": "local_kb",
+          "relevance": 0.8
+        },
+        "referent": {
+          "primary_label": "2024-09-16 05:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-09-16T05:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 6221,
+            "row": {
+              "timestamp": "2024-09-16 05:00:00",
+              "wave_height_m": 6.369219841357738,
+              "wind_speed_ms": 21.09453085282757,
+              "barometric_pressure_hpa": 998.717555874169,
+              "sea_surface_temp_c": 17.036995566180114,
+              "humidity_pct": 68.152246482607
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        },
+        "_legacy_title": "Anomaly in wave_height_m at row 6221",
+        "recommendation": {
+          "kind": "do_x",
+          "headline": "DO: Investigate anomaly with operations team",
+          "description": "Pull the timeline \u00b11 hour around the flagged row, request confirmation from anyone monitoring the asset at that time, and rule out instrument failure before treating as a real signal.",
+          "confidence": 0.8453570045933818,
+          "confidence_band": "high",
+          "action_id": "investigate_anomaly",
+          "predicted_outcome": {
+            "summary": "\u224840% of high-z anomalies are real events; \u224830% are sensor faults; \u224830% are explainable by missed context.",
+            "success_probability": 0.4,
+            "ci_low": null,
+            "ci_high": null,
+            "n_observed": 0,
+            "rate_source": "prior"
+          },
+          "predicted_no_action": {
+            "summary": "Critical anomaly remains active; impact compounds.",
+            "ci_low": null,
+            "ci_high": null
+          },
+          "alternatives": [
+            {
+              "id": "collect_more_data_to_resolve",
+              "label": "Collect more data before deciding",
+              "description": "Findings flagged as low-confidence shouldn't drive irreversible actions. Instead, identify the specific measurement that would raise confidence and collect it.",
+              "domain": "general",
+              "suggested_when": [
+                "confidence < 0.4 OR n_samples below identifiability threshold"
+              ],
+              "expected_outcome_summary": "Adding the right additional measurement raises confidence above the actionable threshold in \u224860% of cases.",
+              "base_rate_success": 0.6,
+              "relevant_finding_kinds": [
+                "anomaly",
+                "physics_match",
+                "forecast_breach",
+                "regime_shift"
+              ],
+              "assumptions": [
+                "the bottleneck is data, not model"
+              ]
+            }
+          ],
+          "base_rate": {
+            "action_id": "investigate_anomaly",
+            "n": 0,
+            "rate": 0.4,
+            "source": "prior"
+          },
+          "conditions_under_which_changes": [
+            "anomaly score \u2265 3.0 AND involves a measured (not derived) variable"
+          ],
+          "assumptions": [
+            "sensor data has a known monitoring point of contact"
+          ],
+          "finding_ref": {
+            "title": "Anomaly in wave_height_m at 2024-09-16 05:00 UTC",
+            "method": "iso-forest + robust-Z",
+            "severity": "crit",
+            "referent": "2024-09-16 05:00 UTC",
+            "referent_level": "timestamp"
+          }
+        },
+        "narrative": {
+          "title": "Anomaly in wave_height_m at 2024-09-16 05:00 UTC",
+          "body": "wave_height_m=high z=+5.8, wind_speed_ms=high z=+4.0 \u2014 surfaced for review.",
+          "vocabulary_used": [
+            "anomaly",
+            "operational threshold breach",
+            "regime",
+            "advisory"
+          ],
+          "active_patterns": [
+            "Diurnal cycle"
+          ],
+          "model_confidence": 0.6983333333333333,
+          "referent_label": "2024-09-16 05:00 UTC",
+          "referent_level": "timestamp",
+          "template_id": "*:anomaly:explore:*",
+          "trace": {
+            "domain": "enviro",
+            "kind": "anomaly",
+            "contract_id": "enviro:explore",
+            "contract_class": "explore",
+            "cost_asymmetry": "symmetric",
+            "confidence": 0.8453570045933818,
+            "confidence_band": "high",
+            "treatment": "render",
+            "template_id": "*:anomaly:explore:*",
+            "vocab_used": [
+              "anomaly_term",
+              "regime_term",
+              "breach_term",
+              "advisory_term"
+            ],
+            "amplified": false
+          }
+        },
+        "surface_treatment": "render"
+      },
+      {
+        "severity": "crit",
+        "confidence": 0.8301639409422281,
+        "title": "Anomaly in wave_height_m at 2024-05-27 14:00 UTC",
+        "description": "wave_height_m=high z=+4.1, wind_speed_ms=high z=+3.7",
+        "method": "iso-forest + robust-Z",
+        "z": 4.05083825348819,
+        "actions": [
+          "VIEW EVIDENCE",
+          "PIN \u2605",
+          "EXPLAIN"
+        ],
+        "n_total_at_this_severity": 19,
+        "n_total_anomalies": 47,
+        "kb_citation": {
+          "title": "A proposed spectral form for fully developed wind seas",
+          "authors": "W.J. Pierson Jr., L. Moskowitz",
+          "year": 1964,
+          "venue": "J. Geophys. Res.",
+          "domain": "enviro",
+          "url": "https://doi.org/10.1029/JZ069i024p05181",
+          "summary": "The Pierson-Moskowitz spectrum \u2014 wave-height law for fully-developed seas.",
+          "source": "local_kb",
+          "relevance": 0.8
+        },
+        "referent": {
+          "primary_label": "2024-05-27 14:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-05-27T14:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 3542,
+            "row": {
+              "timestamp": "2024-05-27 14:00:00",
+              "wave_height_m": 5.560964567609457,
+              "wind_speed_ms": 21.61050959542612,
+              "barometric_pressure_hpa": 997.4712200326156,
+              "sea_surface_temp_c": 20.342805309135866,
+              "humidity_pct": 58.5044882217813
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        },
+        "_legacy_title": "Anomaly in wave_height_m at row 3542",
+        "recommendation": {
+          "kind": "do_x",
+          "headline": "DO: Investigate anomaly with operations team",
+          "description": "Pull the timeline \u00b11 hour around the flagged row, request confirmation from anyone monitoring the asset at that time, and rule out instrument failure before treating as a real signal.",
+          "confidence": 0.8301639409422281,
+          "confidence_band": "high",
+          "action_id": "investigate_anomaly",
+          "predicted_outcome": {
+            "summary": "\u224840% of high-z anomalies are real events; \u224830% are sensor faults; \u224830% are explainable by missed context.",
+            "success_probability": 0.4,
+            "ci_low": null,
+            "ci_high": null,
+            "n_observed": 0,
+            "rate_source": "prior"
+          },
+          "predicted_no_action": {
+            "summary": "Critical anomaly remains active; impact compounds.",
+            "ci_low": null,
+            "ci_high": null
+          },
+          "alternatives": [
+            {
+              "id": "collect_more_data_to_resolve",
+              "label": "Collect more data before deciding",
+              "description": "Findings flagged as low-confidence shouldn't drive irreversible actions. Instead, identify the specific measurement that would raise confidence and collect it.",
+              "domain": "general",
+              "suggested_when": [
+                "confidence < 0.4 OR n_samples below identifiability threshold"
+              ],
+              "expected_outcome_summary": "Adding the right additional measurement raises confidence above the actionable threshold in \u224860% of cases.",
+              "base_rate_success": 0.6,
+              "relevant_finding_kinds": [
+                "anomaly",
+                "physics_match",
+                "forecast_breach",
+                "regime_shift"
+              ],
+              "assumptions": [
+                "the bottleneck is data, not model"
+              ]
+            }
+          ],
+          "base_rate": {
+            "action_id": "investigate_anomaly",
+            "n": 0,
+            "rate": 0.4,
+            "source": "prior"
+          },
+          "conditions_under_which_changes": [
+            "anomaly score \u2265 3.0 AND involves a measured (not derived) variable"
+          ],
+          "assumptions": [
+            "sensor data has a known monitoring point of contact"
+          ],
+          "finding_ref": {
+            "title": "Anomaly in wave_height_m at 2024-05-27 14:00 UTC",
+            "method": "iso-forest + robust-Z",
+            "severity": "crit",
+            "referent": "2024-05-27 14:00 UTC",
+            "referent_level": "timestamp"
+          }
+        },
+        "narrative": {
+          "title": "Anomaly in wave_height_m at 2024-05-27 14:00 UTC",
+          "body": "wave_height_m=high z=+4.1, wind_speed_ms=high z=+3.7 \u2014 surfaced for review.",
+          "vocabulary_used": [
+            "anomaly",
+            "operational threshold breach",
+            "regime",
+            "advisory"
+          ],
+          "active_patterns": [
+            "Diurnal cycle"
+          ],
+          "model_confidence": 0.6983333333333333,
+          "referent_label": "2024-05-27 14:00 UTC",
+          "referent_level": "timestamp",
+          "template_id": "*:anomaly:explore:*",
+          "trace": {
+            "domain": "enviro",
+            "kind": "anomaly",
+            "contract_id": "enviro:explore",
+            "contract_class": "explore",
+            "cost_asymmetry": "symmetric",
+            "confidence": 0.8301639409422281,
+            "confidence_band": "high",
+            "treatment": "render",
+            "template_id": "*:anomaly:explore:*",
+            "vocab_used": [
+              "anomaly_term",
+              "regime_term",
+              "breach_term",
+              "advisory_term"
+            ],
+            "amplified": false
+          }
+        },
+        "surface_treatment": "render"
+      },
+      {
+        "severity": "crit",
+        "confidence": 0.8269467980691806,
+        "title": "Anomaly in wave_height_m at 2024-09-17 08:00 UTC",
+        "description": "wave_height_m=high z=+5.5, wind_speed_ms=high z=+4.0",
+        "method": "iso-forest + robust-Z",
+        "z": 5.511102277086097,
+        "actions": [
+          "VIEW EVIDENCE",
+          "PIN \u2605",
+          "EXPLAIN"
+        ],
+        "n_total_at_this_severity": 19,
+        "n_total_anomalies": 47,
+        "kb_citation": {
+          "title": "A proposed spectral form for fully developed wind seas",
+          "authors": "W.J. Pierson Jr., L. Moskowitz",
+          "year": 1964,
+          "venue": "J. Geophys. Res.",
+          "domain": "enviro",
+          "url": "https://doi.org/10.1029/JZ069i024p05181",
+          "summary": "The Pierson-Moskowitz spectrum \u2014 wave-height law for fully-developed seas.",
+          "source": "local_kb",
+          "relevance": 0.8
+        },
+        "referent": {
+          "primary_label": "2024-09-17 08:00 UTC",
+          "level_used": "timestamp",
+          "referent_confidence": 0.9,
+          "inspect_only": false,
+          "named_event": null,
+          "timestamp": "2024-09-17T08:00:00+00:00",
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {
+            "row_id": 6248,
+            "row": {
+              "timestamp": "2024-09-17 08:00:00",
+              "wave_height_m": 6.257588308989638,
+              "wind_speed_ms": 19.3722730708769,
+              "barometric_pressure_hpa": 1001.6577348805718,
+              "sea_surface_temp_c": 16.582271550435788,
+              "humidity_pct": 69.67991613980844
+            }
+          },
+          "fallback_chain": [
+            "named_event"
+          ]
+        },
+        "_legacy_title": "Anomaly in wave_height_m at row 6248",
+        "recommendation": {
+          "kind": "do_x",
+          "headline": "DO: Investigate anomaly with operations team",
+          "description": "Pull the timeline \u00b11 hour around the flagged row, request confirmation from anyone monitoring the asset at that time, and rule out instrument failure before treating as a real signal.",
+          "confidence": 0.8269467980691806,
+          "confidence_band": "high",
+          "action_id": "investigate_anomaly",
+          "predicted_outcome": {
+            "summary": "\u224840% of high-z anomalies are real events; \u224830% are sensor faults; \u224830% are explainable by missed context.",
+            "success_probability": 0.4,
+            "ci_low": null,
+            "ci_high": null,
+            "n_observed": 0,
+            "rate_source": "prior"
+          },
+          "predicted_no_action": {
+            "summary": "Critical anomaly remains active; impact compounds.",
+            "ci_low": null,
+            "ci_high": null
+          },
+          "alternatives": [
+            {
+              "id": "collect_more_data_to_resolve",
+              "label": "Collect more data before deciding",
+              "description": "Findings flagged as low-confidence shouldn't drive irreversible actions. Instead, identify the specific measurement that would raise confidence and collect it.",
+              "domain": "general",
+              "suggested_when": [
+                "confidence < 0.4 OR n_samples below identifiability threshold"
+              ],
+              "expected_outcome_summary": "Adding the right additional measurement raises confidence above the actionable threshold in \u224860% of cases.",
+              "base_rate_success": 0.6,
+              "relevant_finding_kinds": [
+                "anomaly",
+                "physics_match",
+                "forecast_breach",
+                "regime_shift"
+              ],
+              "assumptions": [
+                "the bottleneck is data, not model"
+              ]
+            }
+          ],
+          "base_rate": {
+            "action_id": "investigate_anomaly",
+            "n": 0,
+            "rate": 0.4,
+            "source": "prior"
+          },
+          "conditions_under_which_changes": [
+            "anomaly score \u2265 3.0 AND involves a measured (not derived) variable"
+          ],
+          "assumptions": [
+            "sensor data has a known monitoring point of contact"
+          ],
+          "finding_ref": {
+            "title": "Anomaly in wave_height_m at 2024-09-17 08:00 UTC",
+            "method": "iso-forest + robust-Z",
+            "severity": "crit",
+            "referent": "2024-09-17 08:00 UTC",
+            "referent_level": "timestamp"
+          }
+        },
+        "narrative": {
+          "title": "Anomaly in wave_height_m at 2024-09-17 08:00 UTC",
+          "body": "wave_height_m=high z=+5.5, wind_speed_ms=high z=+4.0 \u2014 surfaced for review.",
+          "vocabulary_used": [
+            "anomaly",
+            "operational threshold breach",
+            "regime",
+            "advisory"
+          ],
+          "active_patterns": [
+            "Diurnal cycle"
+          ],
+          "model_confidence": 0.6983333333333333,
+          "referent_label": "2024-09-17 08:00 UTC",
+          "referent_level": "timestamp",
+          "template_id": "*:anomaly:explore:*",
+          "trace": {
+            "domain": "enviro",
+            "kind": "anomaly",
+            "contract_id": "enviro:explore",
+            "contract_class": "explore",
+            "cost_asymmetry": "symmetric",
+            "confidence": 0.8269467980691806,
+            "confidence_band": "high",
+            "treatment": "render",
+            "template_id": "*:anomaly:explore:*",
+            "vocab_used": [
+              "anomaly_term",
+              "regime_term",
+              "breach_term",
+              "advisory_term"
+            ],
+            "amplified": false
+          }
+        },
+        "surface_treatment": "render"
+      },
+      {
+        "severity": "info",
+        "confidence": 0.78,
+        "title": "Forecast peak: 2.55 (95% CI 2.4\u20132.8)",
+        "description": "Method: AR(1), horizon 24",
+        "method": "AR(1)",
+        "actions": [
+          "SEE FORECAST",
+          "SET ALERT"
+        ],
+        "kb_citation": {
+          "title": "Forecasting: Principles and Practice (3rd ed.)",
+          "authors": "R.J. Hyndman, G. Athanasopoulos",
+          "year": 2021,
+          "venue": "OTexts",
+          "domain": "research",
+          "url": "https://otexts.com/fpp3/",
+          "summary": "Free comprehensive online textbook on forecasting methods.",
+          "source": "local_kb",
+          "relevance": 0.65
+        },
+        "referent": {
+          "primary_label": "an unspecified row",
+          "level_used": "row_index",
+          "referent_confidence": 0.3,
+          "inspect_only": true,
+          "named_event": null,
+          "timestamp": null,
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {},
+          "fallback_chain": [
+            "named_event",
+            "timestamp",
+            "entity",
+            "group",
+            "position"
+          ]
+        },
+        "referent_inspect_only": true,
+        "recommendation": {
+          "kind": "do_x",
+          "headline": "DO: Collect more data before deciding",
+          "description": "Findings flagged as low-confidence shouldn't drive irreversible actions. Instead, identify the specific measurement that would raise confidence and collect it.",
+          "confidence": 0.78,
+          "confidence_band": "high",
+          "action_id": "collect_more_data_to_resolve",
+          "predicted_outcome": {
+            "summary": "Adding the right additional measurement raises confidence above the actionable threshold in \u224860% of cases.",
+            "success_probability": 0.6,
+            "ci_low": null,
+            "ci_high": null,
+            "n_observed": 0,
+            "rate_source": "prior"
+          },
+          "predicted_no_action": {
+            "summary": "Status quo persists; no immediate downside but miss opportunity for confirmation.",
+            "ci_low": null,
+            "ci_high": null
+          },
+          "alternatives": [
+            {
+              "id": "lower_operational_threshold",
+              "label": "Lower operational threshold proactively",
+              "description": "When a forecast peak crosses the operational ceiling at high confidence, derate the system or schedule maintenance before the predicted breach. Cost of the action is cheap; cost of the breach is expensive.",
+              "domain": "industrial",
+              "suggested_when": [
+                "forecast peak > operational ceiling AND CRPS / phi confidence high"
+              ],
+              "expected_outcome_summary": "Pre-emptive action reduces breach probability by \u224870% in similar industrial cases (measured via outcome ledger when available).",
+              "base_rate_success": 0.7,
+              "relevant_finding_kinds": [
+                "forecast_breach"
+              ],
+              "assumptions": [
+                "operational ceiling is well-defined for the asset",
+                "derating is cheaper than breach + repair"
+              ]
+            }
+          ],
+          "base_rate": {
+            "action_id": "collect_more_data_to_resolve",
+            "n": 0,
+            "rate": 0.6,
+            "source": "prior"
+          },
+          "conditions_under_which_changes": [
+            "confidence < 0.4 OR n_samples below identifiability threshold"
+          ],
+          "assumptions": [
+            "the bottleneck is data, not model"
+          ],
+          "finding_ref": {
+            "title": "Forecast peak: 2.55 (95% CI 2.4\u20132.8)",
+            "method": "AR(1)",
+            "severity": "info",
+            "referent": "an unspecified row",
+            "referent_level": "row_index"
+          }
+        },
+        "narrative": {
+          "title": "Forecast peak:  (AR(1), horizon )",
+          "body": "Method: AR(1), horizon 24",
+          "vocabulary_used": [
+            "anomaly",
+            "operational threshold breach",
+            "regime",
+            "advisory"
+          ],
+          "active_patterns": [
+            "Diurnal cycle"
+          ],
+          "model_confidence": 0.6983333333333333,
+          "referent_label": "an unspecified row",
+          "referent_level": "row_index",
+          "template_id": "*:forecast:*:*",
+          "trace": {
+            "domain": "enviro",
+            "kind": "forecast",
+            "contract_id": "enviro:explore",
+            "contract_class": "explore",
+            "cost_asymmetry": "symmetric",
+            "confidence": 0.78,
+            "confidence_band": "high",
+            "treatment": "render",
+            "template_id": "*:forecast:*:*",
+            "vocab_used": [
+              "anomaly_term",
+              "regime_term",
+              "breach_term",
+              "advisory_term"
+            ],
+            "amplified": false
+          }
+        },
+        "surface_treatment": "render"
+      },
+      {
+        "severity": "info",
+        "confidence": 0.7,
+        "title": "2 regimes detected; latest = HIGH",
+        "description": "mean shifted to 1.78",
+        "method": "ruptures PELT",
+        "actions": [
+          "VIEW REGIMES"
+        ],
+        "kb_citation": {
+          "title": "ruptures: change point detection in Python",
+          "authors": "C. Truong, L. Oudre, N. Vayatis",
+          "year": 2020,
+          "venue": "Signal Processing",
+          "domain": "research",
+          "url": "https://doi.org/10.1016/j.sigpro.2019.107299",
+          "summary": "The Python library implementing PELT, BinSeg, and the kernel methods Aurora uses.",
+          "source": "local_kb",
+          "relevance": 0.85
+        },
+        "referent": {
+          "primary_label": "an unspecified row",
+          "level_used": "row_index",
+          "referent_confidence": 0.3,
+          "inspect_only": true,
+          "named_event": null,
+          "timestamp": null,
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {},
+          "fallback_chain": [
+            "named_event",
+            "timestamp",
+            "entity",
+            "group",
+            "position"
+          ]
+        },
+        "referent_inspect_only": true,
+        "recommendation": {
+          "kind": "do_x",
+          "headline": "DO: Collect more data before deciding",
+          "description": "Findings flagged as low-confidence shouldn't drive irreversible actions. Instead, identify the specific measurement that would raise confidence and collect it.",
+          "confidence": 0.7,
+          "confidence_band": "high",
+          "action_id": "collect_more_data_to_resolve",
+          "predicted_outcome": {
+            "summary": "Adding the right additional measurement raises confidence above the actionable threshold in \u224860% of cases.",
+            "success_probability": 0.6,
+            "ci_low": null,
+            "ci_high": null,
+            "n_observed": 0,
+            "rate_source": "prior"
+          },
+          "predicted_no_action": {
+            "summary": "Status quo persists; no immediate downside but miss opportunity for confirmation.",
+            "ci_low": null,
+            "ci_high": null
+          },
+          "alternatives": [],
+          "base_rate": {
+            "action_id": "collect_more_data_to_resolve",
+            "n": 0,
+            "rate": 0.6,
+            "source": "prior"
+          },
+          "conditions_under_which_changes": [
+            "confidence < 0.4 OR n_samples below identifiability threshold"
+          ],
+          "assumptions": [
+            "the bottleneck is data, not model"
+          ],
+          "finding_ref": {
+            "title": "2 regimes detected; latest = HIGH",
+            "method": "ruptures PELT",
+            "severity": "info",
+            "referent": "an unspecified row",
+            "referent_level": "row_index"
+          }
+        },
+        "narrative": {
+          "title": "regime change at an unspecified row",
+          "body": "mean shifted to 1.78.",
+          "vocabulary_used": [
+            "anomaly",
+            "operational threshold breach",
+            "regime",
+            "advisory"
+          ],
+          "active_patterns": [
+            "Diurnal cycle"
+          ],
+          "model_confidence": 0.6983333333333333,
+          "referent_label": "an unspecified row",
+          "referent_level": "row_index",
+          "template_id": "*:regime:*:*",
+          "trace": {
+            "domain": "enviro",
+            "kind": "regime",
+            "contract_id": "enviro:explore",
+            "contract_class": "explore",
+            "cost_asymmetry": "symmetric",
+            "confidence": 0.7,
+            "confidence_band": "high",
+            "treatment": "render",
+            "template_id": "*:regime:*:*",
+            "vocab_used": [
+              "anomaly_term",
+              "regime_term",
+              "breach_term",
+              "advisory_term"
+            ],
+            "amplified": false
+          }
+        },
+        "surface_treatment": "render"
+      },
+      {
+        "severity": "info",
+        "confidence": 0.6,
+        "title": "Causal effect: wind_speed_ms increases by 1.0",
+        "description": "target wave_height_m changes by ~+0.42",
+        "method": "linear OLS",
+        "actions": [
+          "RUN COUNTERFACTUAL"
+        ],
+        "kb_citation": {
+          "title": "The Book of Why: The New Science of Cause and Effect",
+          "authors": "J. Pearl, D. Mackenzie",
+          "year": 2018,
+          "venue": "Basic Books",
+          "domain": "research",
+          "url": null,
+          "summary": "Accessible introduction to causal reasoning \u2014 pairs with Aurora's identifiability checks.",
+          "source": "local_kb",
+          "relevance": 0.7
+        },
+        "referent": {
+          "primary_label": "an unspecified row",
+          "level_used": "row_index",
+          "referent_confidence": 0.3,
+          "inspect_only": true,
+          "named_event": null,
+          "timestamp": null,
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {},
+          "fallback_chain": [
+            "named_event",
+            "timestamp",
+            "entity",
+            "group",
+            "position"
+          ]
+        },
+        "referent_inspect_only": true,
+        "recommendation": {
+          "kind": "do_x_if_y",
+          "headline": "CONSIDER: Collect more data before deciding \u2014 verify Y first",
+          "description": "Findings flagged as low-confidence shouldn't drive irreversible actions. Instead, identify the specific measurement that would raise confidence and collect it.\n\nVerify this first: confidence < 0.4 OR n_samples below identifiability threshold",
+          "confidence": 0.6,
+          "confidence_band": "medium",
+          "action_id": "collect_more_data_to_resolve",
+          "predicted_outcome": {
+            "summary": "Adding the right additional measurement raises confidence above the actionable threshold in \u224860% of cases.",
+            "success_probability": 0.6,
+            "ci_low": null,
+            "ci_high": null,
+            "n_observed": 0,
+            "rate_source": "prior"
+          },
+          "predicted_no_action": {
+            "summary": "Status quo persists; no immediate downside but miss opportunity for confirmation.",
+            "ci_low": null,
+            "ci_high": null
+          },
+          "alternatives": [],
+          "base_rate": {
+            "action_id": "collect_more_data_to_resolve",
+            "n": 0,
+            "rate": 0.6,
+            "source": "prior"
+          },
+          "conditions_under_which_changes": [
+            "confidence < 0.4 OR n_samples below identifiability threshold"
+          ],
+          "assumptions": [
+            "the bottleneck is data, not model"
+          ],
+          "finding_ref": {
+            "title": "Causal effect: wind_speed_ms increases by 1.0",
+            "method": "linear OLS",
+            "severity": "info",
+            "referent": "an unspecified row",
+            "referent_level": "row_index"
+          }
+        },
+        "narrative": {
+          "title": "Tentative causal signal: ",
+          "body": ". Treat as exploratory \u2014 observational causal claims require replication.",
+          "vocabulary_used": [
+            "anomaly",
+            "operational threshold breach",
+            "regime",
+            "advisory"
+          ],
+          "active_patterns": [
+            "Diurnal cycle"
+          ],
+          "model_confidence": 0.6983333333333333,
+          "referent_label": "an unspecified row",
+          "referent_level": "row_index",
+          "template_id": "*:causal:explore:*",
+          "trace": {
+            "domain": "enviro",
+            "kind": "causal",
+            "contract_id": "enviro:explore",
+            "contract_class": "explore",
+            "cost_asymmetry": "symmetric",
+            "confidence": 0.6,
+            "confidence_band": "medium",
+            "treatment": "render",
+            "template_id": "*:causal:explore:*",
+            "vocab_used": [
+              "anomaly_term",
+              "regime_term",
+              "breach_term",
+              "advisory_term"
+            ],
+            "amplified": false
+          }
+        },
+        "surface_treatment": "render"
+      },
+      {
+        "severity": "ok",
+        "confidence": 0.7,
+        "title": "Physical model fit: wave_height_wind_fetch_law",
+        "description": "wave_height ~ wind^1.8 (RMSE 0.22)",
+        "method": "physics_discovery",
+        "actions": [
+          "VIEW PHYSICS",
+          "EXPLAIN"
+        ],
+        "kb_citation": {
+          "title": "A proposed spectral form for fully developed wind seas",
+          "authors": "W.J. Pierson Jr., L. Moskowitz",
+          "year": 1964,
+          "venue": "J. Geophys. Res.",
+          "domain": "enviro",
+          "url": "https://doi.org/10.1029/JZ069i024p05181",
+          "summary": "The Pierson-Moskowitz spectrum \u2014 wave-height law for fully-developed seas.",
+          "source": "local_kb",
+          "relevance": 0.8
+        },
+        "referent": {
+          "primary_label": "an unspecified row",
+          "level_used": "row_index",
+          "referent_confidence": 0.3,
+          "inspect_only": true,
+          "named_event": null,
+          "timestamp": null,
+          "entity": null,
+          "group": null,
+          "position": null,
+          "raw_coordinates": {},
+          "fallback_chain": [
+            "named_event",
+            "timestamp",
+            "entity",
+            "group",
+            "position"
+          ]
+        },
+        "referent_inspect_only": true,
+        "recommendation": {
+          "kind": "do_x",
+          "headline": "DO: Collect more data before deciding",
+          "description": "Findings flagged as low-confidence shouldn't drive irreversible actions. Instead, identify the specific measurement that would raise confidence and collect it.",
+          "confidence": 0.7,
+          "confidence_band": "high",
+          "action_id": "collect_more_data_to_resolve",
+          "predicted_outcome": {
+            "summary": "Adding the right additional measurement raises confidence above the actionable threshold in \u224860% of cases.",
+            "success_probability": 0.6,
+            "ci_low": null,
+            "ci_high": null,
+            "n_observed": 0,
+            "rate_source": "prior"
+          },
+          "predicted_no_action": {
+            "summary": "Status quo persists; no immediate downside but miss opportunity for confirmation.",
+            "ci_low": null,
+            "ci_high": null
+          },
+          "alternatives": [],
+          "base_rate": {
+            "action_id": "collect_more_data_to_resolve",
+            "n": 0,
+            "rate": 0.6,
+            "source": "prior"
+          },
+          "conditions_under_which_changes": [
+            "confidence < 0.4 OR n_samples below identifiability threshold"
+          ],
+          "assumptions": [
+            "the bottleneck is data, not model"
+          ],
+          "finding_ref": {
+            "title": "Physical model fit: wave_height_wind_fetch_law",
+            "method": "physics_discovery",
+            "severity": "ok",
+            "referent": "an unspecified row",
+            "referent_level": "row_index"
+          }
+        },
+        "narrative": {
+          "title": "Possible match: wave_height_wind_fetch_law",
+          "body": "wave_height ~ wind^1.8 (RMSE 0.22). 70% match \u2014 see EXPLAIN for caveats.",
+          "vocabulary_used": [
+            "anomaly",
+            "operational threshold breach",
+            "regime",
+            "advisory"
+          ],
+          "active_patterns": [
+            "Diurnal cycle"
+          ],
+          "model_confidence": 0.6983333333333333,
+          "referent_label": "an unspecified row",
+          "referent_level": "row_index",
+          "template_id": "*:physics_match:*:*",
+          "trace": {
+            "domain": "enviro",
+            "kind": "physics_match",
+            "contract_id": "enviro:explore",
+            "contract_class": "explore",
+            "cost_asymmetry": "symmetric",
+            "confidence": 0.7,
+            "confidence_band": "high",
+            "treatment": "render",
+            "template_id": "*:physics_match:*:*",
+            "vocab_used": [
+              "anomaly_term",
+              "regime_term",
+              "breach_term",
+              "advisory_term"
+            ],
+            "amplified": false
+          }
+        },
+        "surface_treatment": "render"
+      }
+    ],
+    "copilot": {
+      "available": true,
+      "messages": [
+        {
+          "who": "AURORA",
+          "body": "I found 47 anomalies \u2014 7 critical, 12 warn. The most significant are surfaced in the findings panel. Top: wave_height_m=high z=+5.5, wind_speed_ms=high z=+4.6. Detected 2 regime segments. Forecast peaks at 2.55 (method AR(1)). Best physics fit: wave_height_wind_fetch_law \u2014 wave_height ~ wind^1.8 (RMSE 0.22).",
+          "citations": [
+            "deep_math.json",
+            "report.json"
+          ]
+        }
+      ],
+      "suggestions": [
+        "What's the most surprising finding?",
+        "Run a what-if on the top driver",
+        "Compare the two largest regimes",
+        "Show the forecast uncertainty bands"
+      ],
+      "model": "deterministic-fallback"
+    },
+    "plots": [],
+    "provenance_available": true,
+    "run_meta": {
+      "run_id": "run",
+      "run_dir": "C:\\Users\\bgrut\\Desktop\\Aurora_QIE\\.claude\\worktrees\\peaceful-easley-8514ec\\docs\\captures\\2026-05-05\\after\\run",
+      "dataset_name": "noaa_buoy_2024.csv",
+      "dataset_path": "C:\\Users\\bgrut\\Desktop\\Aurora_QIE\\.claude\\worktrees\\peaceful-easley-8514ec\\docs\\captures\\2026-05-05\\after\\data\\noaa_buoy_2024.csv",
+      "dataset_size_mb": 0.95,
+      "started_at": "2026-05-05T18:49:11Z",
+      "completed_at": null,
+      "elapsed_seconds": null,
+      "current_tier": null,
+      "highest_complete_tier": null,
+      "tiered": false,
+      "state": "complete",
+      "sampling_method": null,
+      "rows_total": 8760,
+      "rows_analyzed": null,
+      "seed": null,
+      "cached": false,
+      "is_active": false,
+      "seed_text": null,
+      "seed_source": null,
+      "seed_at": null
+    },
+    "seed_ranker": {
+      "active": false
+    },
+    "learning_summary": {
+      "n_runs": 743,
+      "n_auto_up": 95,
+      "n_auto_down": 50,
+      "n_human_up": 0,
+      "n_human_down": 0,
+      "n_signals_total": 145
+    },
+    "morning_diary": {
+      "ts": "2026-05-05T13:49:12",
+      "status": "ok",
+      "summary": "diary: 1 entries from 541 runs + 137 validations in last 24h",
+      "entries": [
+        {
+          "rank": 1,
+          "headline": "541 runs in the last 24h, no anomalies",
+          "detail": "All recent runs validated existing priors with no contradictions and no novel signatures.",
+          "kind": "confirmation",
+          "salience": 0.3,
+          "run_dir": null,
+          "prior_id": null,
+          "citations": [
+            "learning_store.jsonl"
+          ]
+        }
+      ]
+    },
+    "system_model": {
+      "schema_version": "system_model_v1",
+      "template_id": "enviro",
+      "template_version": "v1",
+      "topology": {
+        "entities": [
+          {
+            "id": "wind",
+            "label": "Wind",
+            "role": "forcing",
+            "data_column": "wind_speed_ms",
+            "unit": "m/s",
+            "dimension": null,
+            "typical_range": null,
+            "current_value": null,
+            "current_drift": null,
+            "presence": "present",
+            "notes": []
+          },
+          {
+            "id": "pressure",
+            "label": "Atmospheric pressure",
+            "role": "forcing",
+            "data_column": "barometric_pressure_hpa",
+            "unit": "hPa",
+            "dimension": null,
+            "typical_range": null,
+            "current_value": null,
+            "current_drift": null,
+            "presence": "present",
+            "notes": []
+          },
+          {
+            "id": "solar",
+            "label": "Solar input",
+            "role": "forcing",
+            "data_column": null,
+            "unit": null,
+            "dimension": null,
+            "typical_range": null,
+            "current_value": null,
+            "current_drift": null,
+            "presence": "missing",
+            "notes": []
+          },
+          {
+            "id": "humidity",
+            "label": "Humidity",
+            "role": "state",
+            "data_column": "humidity_pct",
+            "unit": "%",
+            "dimension": null,
+            "typical_range": null,
+            "current_value": null,
+            "current_drift": null,
+            "presence": "present",
+            "notes": []
+          },
+          {
+            "id": "air_temp",
+            "label": "Air temperature",
+            "role": "state",
+            "data_column": "sea_surface_temp_c",
+            "unit": "K",
+            "dimension": null,
+            "typical_range": null,
+            "current_value": null,
+            "current_drift": null,
+            "presence": "present",
+            "notes": []
+          },
+          {
+            "id": "sst",
+            "label": "Sea-surface temp",
+            "role": "state",
+            "data_column": "sea_surface_temp_c",
+            "unit": "K",
+            "dimension": null,
+            "typical_range": null,
+            "current_value": null,
+            "current_drift": null,
+            "presence": "present",
+            "notes": []
+          },
+          {
+            "id": "wave_height",
+            "label": "Wave height",
+            "role": "response",
+            "data_column": "wave_height_m",
+            "unit": "m",
+            "dimension": null,
+            "typical_range": null,
+            "current_value": null,
+            "current_drift": null,
+            "presence": "present",
+            "notes": []
+          },
+          {
+            "id": "precip",
+            "label": "Precipitation",
+            "role": "response",
+            "data_column": null,
+            "unit": "mm",
+            "dimension": null,
+            "typical_range": null,
+            "current_value": null,
+            "current_drift": null,
+            "presence": "missing",
+            "notes": []
+          },
+          {
+            "id": "fetch",
+            "label": "Fetch",
+            "role": "indicator",
+            "data_column": null,
+            "unit": "km",
+            "dimension": null,
+            "typical_range": null,
+            "current_value": null,
+            "current_drift": null,
+            "presence": "missing",
+            "notes": []
+          }
+        ],
+        "relationships": [
+          {
+            "id": "rel_wind_wave",
+            "source": "wind",
+            "target": "wave_height",
+            "kind": "physical",
+            "direction": "unidirectional",
+            "strength": null,
+            "confidence": 0.6,
+            "lag": null,
+            "source_origin": "data",
+            "prior_id": null,
+            "rationale": "wind-wave coupling (Pierson-Moskowitz)",
+            "falsification": []
+          },
+          {
+            "id": "rel_press_storm",
+            "source": "pressure",
+            "target": "wind",
+            "kind": "causal",
+            "direction": "unidirectional",
+            "strength": null,
+            "confidence": null,
+            "lag": null,
+            "source_origin": "template_expected",
+            "prior_id": null,
+            "rationale": "pressure drop \u2192 frontal wind",
+            "falsification": []
+          },
+          {
+            "id": "rel_solar_temp",
+            "source": "solar",
+            "target": "air_temp",
+            "kind": "causal",
+            "direction": "unidirectional",
+            "strength": null,
+            "confidence": null,
+            "lag": null,
+            "source_origin": "template_expected",
+            "prior_id": null,
+            "rationale": "diurnal heating",
+            "falsification": []
+          },
+          {
+            "id": "rel_temp_humid",
+            "source": "air_temp",
+            "target": "humidity",
+            "kind": "correlational",
+            "direction": "unidirectional",
+            "strength": null,
+            "confidence": null,
+            "lag": null,
+            "source_origin": "template_expected",
+            "prior_id": null,
+            "rationale": "",
+            "falsification": []
+          },
+          {
+            "id": "rel_fetch_wave",
+            "source": "fetch",
+            "target": "wave_height",
+            "kind": "physical",
+            "direction": "unidirectional",
+            "strength": null,
+            "confidence": null,
+            "lag": null,
+            "source_origin": "template_expected",
+            "prior_id": null,
+            "rationale": "fetch-limited growth",
+            "falsification": []
+          },
+          {
+            "id": "discovered_corr_wind_wave_height",
+            "source": "wind",
+            "target": "wave_height",
+            "kind": "correlational",
+            "direction": "unidirectional",
+            "strength": 0.86,
+            "confidence": 0.86,
+            "lag": null,
+            "source_origin": "discovered",
+            "prior_id": null,
+            "rationale": "data shows |\u03c1| = 0.86 (no template-expected edge here)",
+            "falsification": []
+          }
+        ]
+      },
+      "state": {
+        "active_regime": "HIGH",
+        "regime_confidence": 0.7,
+        "active_patterns": [
+          {
+            "pattern_id": "diurnal_cycle",
+            "name": "Diurnal cycle",
+            "confidence": 0.6,
+            "rationale": "calculus signature is oscillatory"
+          }
+        ],
+        "key_readings": {
+          "anomalies_count": {
+            "value": 47,
+            "interpretation": "number of flagged anomalies"
+          },
+          "regimes_count": {
+            "value": 2,
+            "interpretation": "regime segments identified"
+          }
+        },
+        "stability_score": 0.88,
+        "drift_indicators": [
+          "derivative flips sign 2636\u00d7"
+        ]
+      },
+      "constraints": [
+        {
+          "id": "humidity_bound",
+          "description": "Relative humidity \u2208 [0, 100]%",
+          "kind": "bound",
+          "hardness": "hard",
+          "on_entity": "humidity",
+          "expression": "0 \u2264 humidity \u2264 100",
+          "currently_satisfied": null,
+          "deviation_metric": null
+        },
+        {
+          "id": "pressure_plausible",
+          "description": "Sea-level pressure typically \u2208 [870, 1085] hPa",
+          "kind": "bound",
+          "hardness": "soft",
+          "on_entity": "pressure",
+          "expression": "870 \u2264 pressure \u2264 1085",
+          "currently_satisfied": null,
+          "deviation_metric": null
+        },
+        {
+          "id": "wave_nonneg",
+          "description": "Wave height non-negative",
+          "kind": "bound",
+          "hardness": "hard",
+          "on_entity": "wave_height",
+          "expression": "wave_height \u2265 0",
+          "currently_satisfied": null,
+          "deviation_metric": null
+        }
+      ],
+      "characteristic_patterns": [
+        {
+          "id": "diurnal_cycle",
+          "name": "Diurnal cycle",
+          "signature": "\u224824h sinusoid in temperature/solar; pressure semi-diurnal",
+          "typical_duration_seconds": 86400,
+          "typical_successors": [
+            "frontal_passage"
+          ],
+          "detection_rule": "FFT dominant frequency near 1/86400 Hz on temp or solar",
+          "domain_specific_notes": []
+        },
+        {
+          "id": "frontal_passage",
+          "name": "Frontal passage",
+          "signature": "rapid pressure drop + wind direction shift + temperature jump",
+          "typical_duration_seconds": 14400,
+          "typical_successors": [
+            "calm_after_front",
+            "storm_precursor"
+          ],
+          "detection_rule": "pressure dy/dt < -1.5 hPa/h sustained \u2265 90 min",
+          "domain_specific_notes": []
+        },
+        {
+          "id": "storm_precursor",
+          "name": "Storm precursor",
+          "signature": "pressure < seasonal mean \u2212 2\u03c3 AND wind rising AND humidity rising",
+          "typical_duration_seconds": 21600,
+          "typical_successors": [
+            "storm_active"
+          ],
+          "detection_rule": "joint anomaly on pressure/wind/humidity",
+          "domain_specific_notes": []
+        },
+        {
+          "id": "fetch_limited_wave_growth",
+          "name": "Fetch-limited wave growth",
+          "signature": "wave height plateaus at \u221afetch \u00b7 wind\u00b2 scaling",
+          "typical_duration_seconds": null,
+          "typical_successors": [
+            "fully_developed_sea"
+          ],
+          "detection_rule": "discovered allometric H \u221d wind\u00b2 \u00b7 \u221afetch",
+          "domain_specific_notes": []
+        }
+      ],
+      "vocabulary": {
+        "anomaly_term": "anomaly",
+        "regime_term": "regime",
+        "pattern_term": "signature",
+        "action_term": "advisory action",
+        "breach_term": "operational threshold breach",
+        "advisory_term": "advisory",
+        "extra": {
+          "high_state": "storm",
+          "low_state": "calm",
+          "transition": "frontal passage",
+          "growth_term": "intensification",
+          "decay_term": "decay"
+        }
+      },
+      "action_library": [
+        {
+          "id": "issue_advisory",
+          "label": "Issue operational advisory",
+          "description": "When a forecast peak crosses the operational ceiling at high confidence, issue an advisory to downstream operators with predicted timing, expected magnitude, and falsification window.",
+          "triggered_when": [
+            "forecast peak > operational ceiling",
+            "confidence \u2265 0.7"
+          ],
+          "predicted_outcome_summary": "Pre-emptive advisories reduce uncoordinated breach response by \u224870%.",
+          "base_rate_success": 0.75,
+          "confidence_band_required": "high",
+          "falsification": [
+            "wind dies before predicted peak",
+            "pressure rebounds"
+          ],
+          "assumptions": [
+            "downstream operators read advisories",
+            "fetch geometry stable"
+          ],
+          "relevant_states": [
+            "frontal_passage",
+            "storm_precursor"
+          ]
+        },
+        {
+          "id": "raise_monitoring_cadence",
+          "label": "Raise monitoring cadence",
+          "description": "Switch buoys / stations from default sampling to high-frequency mode while a precursor pattern is active, then revert when the regime ends.",
+          "triggered_when": [
+            "pattern in {storm_precursor, frontal_passage}"
+          ],
+          "predicted_outcome_summary": "Higher cadence catches transitions \u22483\u00d7 faster.",
+          "base_rate_success": 0.65,
+          "confidence_band_required": "medium",
+          "falsification": [
+            "pattern dies before transition observed"
+          ],
+          "assumptions": [
+            "sensor budget allows higher cadence"
+          ],
+          "relevant_states": [
+            "storm_precursor",
+            "frontal_passage"
+          ]
+        },
+        {
+          "id": "scenario_forecast_intervention",
+          "label": "Run scenario forecast under intervention",
+          "description": "Use the what-if engine to test how shifting fetch / wind speed perturbs predicted wave height; supports operational planning.",
+          "triggered_when": [
+            "operational decision pending"
+          ],
+          "predicted_outcome_summary": "Scenario forecasting clarifies trade-offs but doesn't reduce uncertainty.",
+          "base_rate_success": 0.6,
+          "confidence_band_required": "medium",
+          "falsification": [
+            "model lacks the perturbation variable"
+          ],
+          "assumptions": [
+            "counterfactual is physically plausible"
+          ],
+          "relevant_states": []
+        }
+      ],
+      "provenance": {
+        "template_id": "enviro",
+        "template_version": "v1",
+        "instantiated_from": "C:\\Users\\bgrut\\Desktop\\Aurora_QIE\\.claude\\worktrees\\peaceful-easley-8514ec\\docs\\captures\\2026-05-05\\after\\run",
+        "instantiated_at": "2026-05-05T13:49:12",
+        "data_columns_used": [
+          "timestamp",
+          "wave_height_m",
+          "wind_speed_ms",
+          "barometric_pressure_hpa",
+          "sea_surface_temp_c",
+          "humidity_pct"
+        ],
+        "priors_used": [],
+        "confirmed_relationships": [
+          "rel_wind_wave"
+        ],
+        "discovered_relationships": [
+          "discovered_corr_wind_wave_height"
+        ],
+        "deviation_relationships": [],
+        "open_assumptions": [
+          "missing template slots: solar, precip, fetch",
+          "domain identified by template scores: enviro=0.12; industrial=0.03; medical=0.02"
+        ]
+      },
+      "confidence": 0.6983333333333333
+    },
+    "inspected_findings": [],
+    "narrative_engine": {
+      "active_contract": {
+        "id": "enviro:explore",
+        "template_id": "enviro",
+        "contract_class": "explore",
+        "objective": "Characterise the environmental dynamics",
+        "constraints": [
+          "non-invasive analysis only"
+        ],
+        "available_actions": [
+          "map regimes",
+          "compare to baseline",
+          "request more data"
+        ],
+        "cost_asymmetry": "symmetric",
+        "confidence_floor": 0.3,
+        "notes": "Research / monitoring mode.",
+        "source": "default"
+      },
+      "domain": "enviro",
+      "n_rendered": 9,
+      "n_inspected": 0
+    }
+  },
+  "reason": null
+}

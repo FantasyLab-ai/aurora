@@ -1,0 +1,23 @@
+{
+  "id": "hill_function",
+  "match": {
+    "title_substrings": ["hill function", "michaelis-menten",
+                          "saturation kinetics"],
+    "equation_substrings": ["x^n / (k^n + x^n)", "v_max"],
+    "desc_substrings":  ["hill", "michaelis", "cooperativity"]
+  },
+  "summary": "Hill / Michaelis-Menten saturation kinetics. The Hill coefficient n controls cooperativity — n>1 indicates positive cooperativity (sharper switch), n<1 indicates negative.",
+  "param_to_intuition": [
+    {
+      "param": "n",
+      "ranges": [
+        {"min": 0.0,  "max": 1.0,
+         "phrase": "Sub-cooperative kinetics (n<1) — the response saturates gradually."},
+        {"min": 1.0,  "max": 1.001,
+         "phrase": "Classical Michaelis-Menten (n=1) — non-cooperative binding."},
+        {"min": 1.001,"max": 9999.0,
+         "phrase": "Cooperative kinetics (n>1) — sharp switch-like response between low and high regimes."}
+      ]
+    }
+  ]
+}

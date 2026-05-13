@@ -1,0 +1,172 @@
+[
+  {
+    "id": "discovered_motif_with_anomalies_and_regime",
+    "domain": "generic",
+    "specificity": 9,
+    "match_condition": {
+      "requires": [
+        {"kind": "discovered_motif", "min_count": 1},
+        {"kind": "anomaly",          "min_count": 1},
+        {"kind": "regime_change",    "min_count": 1}
+      ],
+      "optional": [
+        {"kind": "forecast_peak"},
+        {"kind": "variable_motif"}
+      ]
+    },
+    "skeleton": "Aurora identified an underlying {motif_label} as the system's dominant dynamics. The data exhibits {anomaly_count} anomalous events relative to this model and {regime_count} structural regime change{regime_plural} {regime_locations_clause}, suggesting the system's parameters shifted partway through. {forecast_clause} The fitted dynamics give a defensible base for projection, but extrapolation past the observed regime should carry visible uncertainty.",
+    "slot_extractors": {
+      "motif_label":            "first(findings[kind=discovered_motif].title)",
+      "anomaly_count":          "count(findings[kind=anomaly])",
+      "regime_count":           "count(findings[kind=regime_change])",
+      "regime_plural":          "if regime_count > 1: 's'",
+      "regime_locations_clause":"if has(findings[kind=regime_change]): 'across the observed window'",
+      "forecast_clause":        "if forecast.available: 'Despite these perturbations, the model can be projected forward — the runner reports a forecast peak with an explicit confidence interval, recorded in the findings panel.'"
+    }
+  },
+
+  {
+    "id": "discovered_motif_only",
+    "domain": "generic",
+    "specificity": 7,
+    "match_condition": {
+      "requires": [
+        {"kind": "discovered_motif", "min_count": 1}
+      ],
+      "optional": [
+        {"kind": "forecast_peak"},
+        {"kind": "physics_match"}
+      ]
+    },
+    "skeleton": "The dominant dynamic in this dataset is {motif_label}. Aurora's discovery pass fitted this form across the time window with no major regime breaks detected. {forecast_clause} {physics_clause}",
+    "slot_extractors": {
+      "motif_label":      "first(findings[kind=discovered_motif].title)",
+      "forecast_clause":  "if forecast.available: 'A forward projection is available with the runner's confidence interval and method shown on the forecast card.'",
+      "physics_clause":   "if has(findings[kind=physics_match]): 'The fitted form additionally matches a known physical law in the prior library — see the law-match card for citation.'"
+    }
+  },
+
+  {
+    "id": "regime_shift_with_anomalies",
+    "domain": "generic",
+    "specificity": 7,
+    "match_condition": {
+      "requires": [
+        {"kind": "regime_change", "min_count": 1},
+        {"kind": "anomaly",       "min_count": 2}
+      ],
+      "optional": [
+        {"kind": "forecast_peak"}
+      ]
+    },
+    "skeleton": "Aurora detected {regime_count} regime shift{regime_plural} alongside {anomaly_count} anomalous events. {multi_comparison_clause} The pattern is consistent with the system transitioning between operating modes — the regime changes mark the boundaries, the anomalies are the visible adjustments inside each mode. {forecast_clause}",
+    "slot_extractors": {
+      "regime_count":     "count(findings[kind=regime_change])",
+      "anomaly_count":    "count(findings[kind=anomaly])",
+      "regime_plural":    "if regime_count > 1: 's'",
+      "forecast_clause":  "if forecast.available: 'A forecast is offered for the post-shift regime; treat the projection conservatively until the new regime stabilises.'",
+      "multi_comparison_clause": "if credibility.multiple_comparisons.applied: '{n_sig_bh} of the {anomaly_count} anomalies remain significant after Benjamini-Hochberg correction (FDR controlled at 5%).'",
+      "n_sig_bh": "credibility.multiple_comparisons.summary.n_significant_bh"
+    }
+  },
+
+  {
+    "id": "anomaly_dominated",
+    "domain": "generic",
+    "specificity": 5,
+    "match_condition": {
+      "requires": [
+        {"kind": "anomaly", "min_count": 3}
+      ],
+      "optional": [
+        {"kind": "physics_match"}
+      ]
+    },
+    "skeleton": "Aurora flagged {anomaly_count} anomalies in the dataset {critical_clause}. {multi_comparison_clause} No single dominant dynamic explains the variability, so the surface read is best understood as a pattern of localized exceptions rather than a system-level shift. {anomaly_score_clause} Inspect the top-ranked anomalies first for ground-truth interpretation.",
+    "slot_extractors": {
+      "anomaly_count":   "count(findings[kind=anomaly])",
+      "critical_clause": "if overview.critical_anomalies > 0: '— including {overview_critical} flagged as critical'",
+      "overview_critical":"overview.critical_anomalies",
+      "multi_comparison_clause": "if credibility.multiple_comparisons.applied: 'After Benjamini-Hochberg correction at α=0.05, {n_sig_bh} of these survive multiple-testing scrutiny ({n_sig_raw} were nominally significant before correction).'",
+      "n_sig_bh":  "credibility.multiple_comparisons.summary.n_significant_bh",
+      "n_sig_raw": "credibility.multiple_comparisons.summary.n_significant_raw",
+      "anomaly_score_clause": "if anomaly_score_summary.median: 'The typical detected anomaly carries a robust-Z magnitude near {anom_median} (95% bootstrap CI [{anom_ci_low}, {anom_ci_high}]).'",
+      "anom_median":  "anomaly_score_summary.median",
+      "anom_ci_low":  "anomaly_score_summary.ci_low",
+      "anom_ci_high": "anomaly_score_summary.ci_high"
+    }
+  },
+
+  {
+    "id": "physics_match_headline",
+    "domain": "generic",
+    "specificity": 8,
+    "match_condition": {
+      "requires": [
+        {"kind": "physics_match", "min_count": 1}
+      ],
+      "optional": [
+        {"kind": "anomaly"},
+        {"kind": "forecast_peak"}
+      ]
+    },
+    "skeleton": "Aurora's pass against the canonical-laws library produced a match: {law_label}. The fitted parameters fall inside the prior's documented operating range, which means the system is behaving consistent with a known mechanism rather than something idiosyncratic. {fit_quality_clause} {forecast_clause} {anomaly_clause}",
+    "slot_extractors": {
+      "law_label":      "first(findings[kind=physics_match].title)",
+      "forecast_clause":"if forecast.available: 'The forecast can lean on the law’s known operating range, narrowing the credible CI.'",
+      "anomaly_clause": "if has(findings[kind=anomaly]): 'A small number of anomalies sit outside this match — those are the rows worth inspecting for true exceptions.'",
+      "fit_quality_clause": "if physics.effect_size.value: 'Model fit is {fit_quality_label} (R² = {fit_r2}).'",
+      "fit_quality_label": "physics.effect_size.interpretation",
+      "fit_r2":            "physics.effect_size.value"
+    }
+  },
+
+  {
+    "id": "forecast_only",
+    "domain": "generic",
+    "specificity": 4,
+    "match_condition": {
+      "requires": [
+        {"kind": "forecast_peak", "min_count": 1}
+      ]
+    },
+    "skeleton": "The principal output for this run is a forecast: the runner projected the target variable forward to {forecast_value}{forecast_ci_clause}. Inspect the forecast card for the trajectory and the alternate-method comparison.",
+    "slot_extractors": {
+      "forecast_value": "forecast.headline_value",
+      "forecast_ci_clause": "if forecast.confidence_interval.ci_low: ' (95% CI [{forecast_ci_low}, {forecast_ci_high}])'",
+      "forecast_ci_low":  "forecast.confidence_interval.ci_low",
+      "forecast_ci_high": "forecast.confidence_interval.ci_high"
+    }
+  },
+
+  {
+    "id": "multivariate_outliers_consensus",
+    "domain": "generic",
+    "specificity": 9,
+    "match_condition": {
+      "requires": [
+        {"kind": "multivariate_outlier", "min_count": 1}
+      ],
+      "optional": [
+        {"kind": "anomaly"}
+      ]
+    },
+    "skeleton": "Aurora's three multivariate outlier detectors — robust Mahalanobis, isolation forest, and local outlier factor — agreed on {n_consensus} consensus points as outliers (out of {n_any} flagged by any single method). {sensitivity_clause} These consensus points are higher-confidence than single-method flags because the methods rely on different assumptions: Mahalanobis sees ellipsoidal deviation, isolation forest sees data-sparsity, LOF sees local-density mismatch.",
+    "slot_extractors": {
+      "n_consensus": "multivariate_outliers.n_consensus_2of3",
+      "n_any":       "multivariate_outliers.n_any_method",
+      "sensitivity_clause": "if sensitivity_z_threshold.robustness: 'The univariate z-threshold sensitivity sweep classified the headline finding as robust across the standard parameter range.'"
+    }
+  },
+
+  {
+    "id": "low_signal_fallback",
+    "domain": "generic",
+    "specificity": 1,
+    "match_condition": {
+      "requires": []
+    },
+    "skeleton": "Aurora completed the run without surfacing a dominant pattern. This usually means the dataset is either too short to fit a model, lacks a usable time axis, or carries variance that's well below the significance threshold. The structure tile and the per-column profiles are the place to start investigating.",
+    "slot_extractors": {}
+  }
+]

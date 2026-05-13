@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    name: Tests (Python ${{ matrix.python }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Aurora is local-first; verify on the three platforms users actually run.
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install runtime + dev deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Generate demo fixtures (deterministic)
+        run: python tools/gen_demo_data.py
+
+      - name: Verify scientific stack imports cleanly
+        run: |
+          python -c "import numpy, pandas, scipy, sklearn, statsmodels, ruptures, matplotlib, flask, flask_cors; print('ALL IMPORTS OK')"
+
+      - name: Run pytest
+        run: pytest -ra --tb=short
+
+      - name: Smoke-test runner module loads
+        # Verifies scripts.run_aurora_with_steps_1_4 boots — catches ImportErrors.
+        # Skipped on PR builds in forks where the runner repo isn't fully present.
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        run: python -c "import importlib; importlib.import_module('scripts.run_aurora_with_steps_1_4'); print('runner module imports OK')"
+
+  lint:
+    name: Quick syntax check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile-check all Python files
+        # Catches syntax errors fast without needing the full dep tree.
+        run: |
+          python -m compileall -q fantasyai studio_api.py tests tools

@@ -1,0 +1,105 @@
+{
+  "id": "finance",
+  "version": "v1",
+  "display_name": "Finance / markets / portfolios",
+  "domain_tag": "finance",
+  "description": "Markets, instruments, returns, volatilities, correlations, factor exposures. Volatility clustering, regime shifts, drawdowns.",
+  "identification": {
+    "column_keywords": [
+      "price", "close", "open", "high", "low", "volume",
+      "return", "log_return", "vol", "volatility", "vix",
+      "spread", "yield", "factor", "beta", "correlation",
+      "drawdown", "ticker", "symbol", "portfolio", "p_l", "pnl"
+    ],
+    "value_range_hints": {
+      "vol":         [0.0, 5.0],
+      "return":      [-1.0, 1.0]
+    },
+    "cadence_hints": ["second", "subhourly", "hourly", "daily", "weekly", "monthly"],
+    "domain_tags": ["finance", "markets"],
+    "min_keyword_hits": 2
+  },
+  "topology_skeleton": {
+    "entities": [
+      {"id": "price",         "label": "Price",            "role": "state"},
+      {"id": "return",        "label": "Return",           "role": "response"},
+      {"id": "volatility",    "label": "Volatility",       "role": "indicator"},
+      {"id": "volume",        "label": "Volume",           "role": "indicator"},
+      {"id": "factor_market", "label": "Market factor",    "role": "forcing"},
+      {"id": "drawdown",      "label": "Drawdown",         "role": "response"},
+      {"id": "correlation",   "label": "Cross-asset corr.","role": "indicator"}
+    ],
+    "expected_relationships": [
+      {"id": "rel_market_ret", "source": "factor_market", "target": "return",     "kind": "causal",         "rationale": "CAPM β"},
+      {"id": "rel_vol_vol",    "source": "volatility",    "target": "volatility", "kind": "lagged",         "rationale": "GARCH-style clustering"},
+      {"id": "rel_vol_dd",     "source": "volatility",    "target": "drawdown",   "kind": "correlational",  "rationale": "high-vol regimes drive drawdowns"},
+      {"id": "rel_vol_corr",   "source": "volatility",    "target": "correlation","kind": "regime_conditional"}
+    ]
+  },
+  "characteristic_patterns": [
+    {"id": "vol_cluster", "name": "Volatility clustering",
+     "signature": "GARCH-type autocorrelation in squared returns",
+     "detection_rule": "lag-1 autocorr of |return| > 0.2"},
+    {"id": "regime_shift", "name": "Regime shift",
+     "signature": "step change in mean / vol; ruptures change-point",
+     "detection_rule": "regime change-point detected"},
+    {"id": "correlation_breakdown", "name": "Correlation breakdown",
+     "signature": "diversification fails — pairwise corr → 1 in stress",
+     "detection_rule": "rolling pairwise corr → 1 during high-vol regime"},
+    {"id": "momentum_reversal", "name": "Momentum / reversal",
+     "signature": "trend persistence followed by mean reversion",
+     "detection_rule": "lagged autocorr sign flip on returns at horizon h"},
+    {"id": "drawdown_progression", "name": "Drawdown progression",
+     "signature": "running max − price grows monotonically",
+     "detection_rule": "drawdown depth crosses risk thresholds"}
+  ],
+  "vocabulary": {
+    "anomaly_term": "outlier print",
+    "regime_term":  "regime",
+    "pattern_term": "regime signature",
+    "action_term":  "trade / hedge",
+    "breach_term":  "risk breach",
+    "advisory_term": "risk note",
+    "extra": {
+      "high_state": "high-vol",
+      "low_state":  "calm",
+      "transition": "regime shift",
+      "growth_term": "rally",
+      "decay_term":  "drawdown"
+    }
+  },
+  "action_library": [
+    {"id": "size_position", "label": "Size position by vol target",
+     "description": "Inverse-vol scale position size so realised σ matches target σ.",
+     "triggered_when": ["volatility regime identified"],
+     "predicted_outcome_summary": "Vol-targeting reduces tail variance ≈30% vs constant size.",
+     "base_rate_success": 0.7, "confidence_band_required": "medium",
+     "falsification": ["vol regime estimate decoupled from realised"],
+     "assumptions": ["leverage available", "transaction cost ≪ vol gap"],
+     "relevant_states": ["vol_cluster", "regime_shift"]},
+    {"id": "build_hedge", "label": "Build defensive hedge",
+     "description": "When a regime shift toward high-vol is detected, deploy a tail-hedge (puts, vol exposure, low-correlation overlay) sized to current factor exposure.",
+     "triggered_when": ["regime_shift to high-vol", "drawdown_progression early stage"],
+     "predicted_outcome_summary": "Hedges cap tail; cost is option premium and lower upside.",
+     "base_rate_success": 0.6, "confidence_band_required": "medium",
+     "falsification": ["regime shift doesn't materialise"],
+     "assumptions": ["hedge instruments liquid"],
+     "relevant_states": ["regime_shift", "drawdown_progression"]},
+    {"id": "enforce_risk_budget", "label": "Enforce risk budget",
+     "description": "Reduce gross exposure when realised σ × position > budget.",
+     "triggered_when": ["risk-budget breach predicted"],
+     "predicted_outcome_summary": "Discipline avoids ≈80% of avoidable blow-ups.",
+     "base_rate_success": 0.8, "confidence_band_required": "high",
+     "falsification": [], "assumptions": [], "relevant_states": ["regime_shift", "drawdown_progression"]},
+    {"id": "stress_test", "label": "Trigger stress test",
+     "description": "Run portfolio through historical stress scenarios when correlation breakdown suspected.",
+     "triggered_when": ["correlation_breakdown"],
+     "predicted_outcome_summary": "Stress tests surface concentration that pairwise corr hides.",
+     "base_rate_success": 0.65, "confidence_band_required": "medium",
+     "falsification": [], "assumptions": [], "relevant_states": ["correlation_breakdown"]}
+  ],
+  "constraints": [
+    {"id": "price_pos", "description": "price > 0 for cash equities", "kind": "bound", "hardness": "soft", "on_entity": "price"},
+    {"id": "vol_nonneg", "description": "volatility ≥ 0", "kind": "bound", "hardness": "hard", "on_entity": "volatility"}
+  ]
+}

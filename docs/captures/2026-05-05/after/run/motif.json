@@ -1,0 +1,1 @@
+{"motifs": [{"kind": "high_volatility", "title": "High volatility in wave_height_m during storms", "score": 4.2, "details": {"col": "wave_height_m", "std": 1.18, "count": 3}}, {"kind": "high_correlation", "title": "wind_speed_ms \u2194 wave_height_m", "score": 0.86, "details": {"col_a": "wind_speed_ms", "col_b": "wave_height_m", "corr": 0.86}}], "summary": {"n_motifs": 2}}

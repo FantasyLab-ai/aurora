@@ -1,13 +1,132 @@
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, List
+from typing import Any, Callable, Dict, Optional, List
 import inspect
 import json
+import logging
 import math
 import re
+import time
+import traceback
+import threading
 
 import numpy as np
 import pandas as pd
+
+
+# ---------------------------------------------------------------------------
+# v1.2 — never-hang guarantee for compute_deep_math_v3
+# ---------------------------------------------------------------------------
+# Each inner method call in ``compute_deep_math_v3`` is wrapped with this
+# helper. The wrapper is a TRUE NO-OP on the success path — it returns the
+# inner function's result verbatim, so the on-disk ``deep_math.json`` for
+# datasets that don't hit the timeout (factory_bearing, NOAA buoy 2024,
+# climate_buoy_demo) is byte-identical to pre-v1.2 output. The byte-identical
+# guarantee is enforced by ``tests/test_deep_math_perf.py``.
+#
+# On timeout the wrapper returns a structured skip dict matching the
+# v1.1 ``apply_advanced_pass`` pattern, so the synthesis disclosure
+# and frontend "methods deferred" row can route deep_math timeouts
+# identically to advanced_pass timeouts.
+
+PER_DM_METHOD_TIMEOUT_SECONDS = 90
+
+_dm_log = logging.getLogger("aurora.deep_math")
+
+
+def _call_dm_with_timeout(
+    fn: Callable[..., Any],
+    *args: Any,
+    label: str,
+    seconds: int = PER_DM_METHOD_TIMEOUT_SECONDS,
+    **kwargs: Any,
+) -> Any:
+    """Run ``fn(*args, **kwargs)`` under a hard wall-clock timeout.
+
+    Behaviour:
+
+    * **Success path**: returns exactly what ``fn`` returned. Identical
+      bytes. The byte-identical regression tests in
+      ``tests/test_deep_math_perf.py`` rely on this.
+    * **Timeout path**: returns::
+
+          {"available": False, "skipped_reason": "method_timeout",
+           "elapsed_seconds": <actual>, "timeout_seconds": <cap>,
+           "method": <label>, "note": "skipped"}
+
+      Includes ``"note": "skipped"`` so downstream
+      ``out["foo"].setdefault("note", "ok")`` calls don't overwrite the
+      timeout marker.
+    * **Other exception**: re-raised. The caller's existing
+      ``try/except Exception as e: out[...] = {"note": "failed", ...}``
+      block handles it with the pre-v1.2 error-dict shape. Critical for
+      preserving byte-identical behaviour on error paths the wrapper
+      doesn't change.
+
+    Implementation: uses ``threading.Thread(daemon=True)`` rather than
+    ``concurrent.futures.ThreadPoolExecutor``. The reason is critical
+    — ``ThreadPoolExecutor`` creates non-daemon worker threads, which
+    means the Python process cannot EXIT until they all complete. On
+    diabetic_data the wrapper correctly returns at 92 s (90 s
+    detect_regimes timeout + 2 s for other blocks), but the orphan
+    ruptures-PELT-RBF thread keeps running in the background for the
+    full ~22 min — and because it's non-daemon, ``sys.exit()`` blocks
+    until it finishes. Result: subprocess wall time matches the
+    pre-fix 22 min, even though the wrapper logic worked correctly.
+
+    Daemon threads ARE terminated abruptly when the interpreter exits,
+    which is fine for our case — the orphan is doing CPU-bound work
+    in a C extension that doesn't need cleanup. ``signal.alarm`` would
+    have been cleaner but is Unix-only; threading is the cross-platform
+    option Python gives us.
+    """
+    result_holder: Dict[str, Any] = {"value": None, "exception": None}
+    done_event = threading.Event()
+
+    def _worker() -> None:
+        try:
+            result_holder["value"] = fn(*args, **kwargs)
+        except BaseException as e:  # noqa: BLE001 — propagate via the holder
+            result_holder["exception"] = e
+        finally:
+            done_event.set()
+
+    t = threading.Thread(
+        target=_worker,
+        name=f"dm-{label}",
+        daemon=True,   # CRITICAL: daemon=True so a timed-out orphan
+                        # does not block the subprocess from exiting.
+    )
+    t0 = time.perf_counter()
+    t.start()
+
+    finished = done_event.wait(timeout=seconds)
+    if not finished:
+        # Timeout fired — the worker thread is still running. We
+        # abandon it (it's daemon, so Python terminates it on exit)
+        # and proceed with the structured skip dict.
+        elapsed = time.perf_counter() - t0
+        _dm_log.error(
+            "compute_deep_math step %s exceeded per-method timeout "
+            "(%.1fs > %ds budget); daemon worker continues in background "
+            "until process exit. Caller proceeds.",
+            label, elapsed, seconds,
+        )
+        return {
+            "available": False,
+            "note": "skipped",
+            "skipped_reason": "method_timeout",
+            "elapsed_seconds": float(elapsed),
+            "timeout_seconds": seconds,
+            "method": label,
+        }
+
+    # Finished within budget. Re-raise any non-timeout exception so
+    # the caller's existing try/except handles the error shape
+    # identically to pre-v1.2 behaviour (byte-identical guarantee).
+    if result_holder["exception"] is not None:
+        raise result_holder["exception"]
+    return result_holder["value"]
 
 # ---------------------------
 # Optional-module guard: deep_math must never fail import
@@ -443,22 +562,40 @@ def compute_deep_math_v3(
     ycol = target_col or _infer_target(df, numeric_cols) or numeric_cols[0]
     out["time_col"] = tcol
     out["target_col"] = ycol
-    # Prepare a stable model frame (aggregate event rows into time buckets if possible)
+    # Block 0 — Prepare a stable model frame.
+    # v1.2: wrapped under the 90s timeout. Pre-fix this had its own try/except;
+    # the wrapper RE-RAISES non-timeout exceptions so the existing except path
+    # below still produces the byte-identical error-dict shape.
     try:
-        df, tcol, ycol, prep_note = _prepare_model_frame(df=df, tcol=tcol, ycol=ycol, numeric_cols=numeric_cols)
-        out["prep_note"] = prep_note
-        out["time_col"] = tcol
-        out["target_col"] = ycol
+        _pf = _call_dm_with_timeout(
+            _prepare_model_frame,
+            label="prepare_model_frame",
+            df=df, tcol=tcol, ycol=ycol, numeric_cols=numeric_cols,
+        )
+        if isinstance(_pf, dict) and _pf.get("skipped_reason") == "method_timeout":
+            # _prepare_model_frame timed out — keep df/tcol/ycol as-is and
+            # record the prep failure note. Downstream blocks still run.
+            out["prep_note"] = f"prep_timed_out_at_{_pf.get('timeout_seconds')}s"
+        else:
+            df, tcol, ycol, prep_note = _pf  # unpack the 4-tuple
+            out["prep_note"] = prep_note
+            out["time_col"] = tcol
+            out["target_col"] = ycol
     except Exception as e:
         out["prep_note"] = f"prep_failed:{type(e).__name__}:{e}"
 
-    # 1) Forecasting
-    out["forecasting"] = _safe_forecast(df=df, ycol=ycol, tcol=tcol, seed=seed)
+    # Block 1 — Forecasting.
+    out["forecasting"] = _call_dm_with_timeout(
+        _safe_forecast, label="forecasting",
+        df=df, ycol=ycol, tcol=tcol, seed=seed,
+    )
 
-    # 2) Regimes
+    # Block 2 — Regimes (the v1.0 bench's #1 hotspot via PELT-RBF).
     if callable(detect_regimes):
         try:
-            out["regimes"] = detect_regimes(df, target_col=ycol)
+            out["regimes"] = _call_dm_with_timeout(
+                detect_regimes, df, label="regimes", target_col=ycol,
+            )
             if isinstance(out["regimes"], dict):
                 out["regimes"].setdefault("note", "ok")
         except Exception as e:
@@ -466,11 +603,11 @@ def compute_deep_math_v3(
     else:
         out["regimes"] = {"note": "skipped", "error": "detect_regimes_unavailable"}
 
-    # 3) Uncertainty (bootstrap corr CI)
-    try:
+    # Block 3 — Uncertainty (bootstrap corr CI loop). The loop itself is the
+    # method here; wrap the whole thing as a single callable.
+    def _uncertainty_block():
         cols = numeric_cols[:10]
         arr = {c: pd.to_numeric(df[c], errors="coerce").values.astype(float) for c in cols}
-
         pairs = []
         for i in range(len(cols)):
             for j in range(i + 1, len(cols)):
@@ -485,33 +622,32 @@ def compute_deep_math_v3(
                 pairs.append((abs(r), cols[i], cols[j], r, int(m.sum())))
         pairs.sort(key=lambda t: t[0], reverse=True)
         pairs = pairs[: min(8, max_corrs)]
-
         boot = []
         if callable(bootstrap_corr_ci):
             for ab, a, b, r, n in pairs:
                 ci = bootstrap_corr_ci(arr[a], arr[b], B=500, alpha=0.05, seed=seed)
-                boot.append(
-                    {
-                        "a": a,
-                        "b": b,
-                        "n": n,
-                        "pearson_r": float(r),
-                        "pearson_ci95": [ci.get("lo"), ci.get("hi")],
-                        "bootstrap": ci,
-                    }
-                )
+                boot.append({"a": a, "b": b, "n": n,
+                              "pearson_r": float(r),
+                              "pearson_ci95": [ci.get("lo"), ci.get("hi")],
+                              "bootstrap": ci})
         else:
             boot = [{"note": "skipped", "error": "bootstrap_corr_ci_unavailable"}]
-
-        out["uncertainty"] = {"top_corr_bootstrap": boot}
+        return {"top_corr_bootstrap": boot}
+    try:
+        out["uncertainty"] = _call_dm_with_timeout(
+            _uncertainty_block, label="uncertainty",
+        )
     except Exception as e:
         out["uncertainty"] = {"note": "failed", "error": f"{type(e).__name__}: {e}"}
 
-    # 4) Risk surface
+    # Block 4 — Risk surface (Monte Carlo).
     try:
         if callable(monte_carlo_risk_surface):
             y = pd.to_numeric(df[ycol], errors="coerce").values.astype(float)
-            out["risk_surface"] = monte_carlo_risk_surface(y, horizon=24, n_sims=2000, seed=seed)
+            out["risk_surface"] = _call_dm_with_timeout(
+                monte_carlo_risk_surface, y, label="risk_surface",
+                horizon=24, n_sims=2000, seed=seed,
+            )
             if isinstance(out["risk_surface"], dict):
                 out["risk_surface"].setdefault("note", "ok")
         else:
@@ -519,14 +655,21 @@ def compute_deep_math_v3(
     except Exception as e:
         out["risk_surface"] = {"note": "failed", "error": f"{type(e).__name__}: {e}"}
 
-    # 5) Causal what-if
-    out["causal_what_if"] = _safe_causal(df=df, ycol=ycol, numeric_cols=numeric_cols)
+    # Block 5 — Causal what-if.
+    out["causal_what_if"] = _call_dm_with_timeout(
+        _safe_causal, label="causal_what_if",
+        df=df, ycol=ycol, numeric_cols=numeric_cols,
+    )
 
-    # 8) Physics-inspired diagnostics (safe, optional)
+    # Block 6 — Physics diagnostics (FIRST call; Block 9 below is a duplicate
+    # that overwrites this — pre-existing duplication, flagged for v1.3).
     try:
         if callable(physics_diagnostics) or callable(globals().get('physics_diagnostics_fallback')):
             fn = physics_diagnostics if callable(physics_diagnostics) else globals().get("physics_diagnostics_fallback")
-            out["physics"] = fn(df=df, target_col=ycol, time_col=tcol, seed=seed)
+            out["physics"] = _call_dm_with_timeout(
+                fn, label="physics_diagnostics_a",
+                df=df, target_col=ycol, time_col=tcol, seed=seed,
+            )
             if isinstance(out["physics"], dict):
                 out["physics"].setdefault("note", "ok")
         else:
@@ -534,29 +677,37 @@ def compute_deep_math_v3(
     except Exception as e:
         out["physics"] = {"note": "failed", "error": f"{type(e).__name__}: {e}"}
 
-    # 6) Optional simulation from regression uncertainty (if wrapper provides what we need)
+    # Block 7 — Optional simulation from regression uncertainty.
     try:
         cw = out.get("causal_what_if", {})
         if isinstance(cw, dict) and callable(simulate_counterfactuals_from_regression):
             if "beta" in cw and "beta_ci95" in cw:
-                out["simulation"] = simulate_counterfactuals_from_regression(
-                    cw["beta"], cw["beta_ci95"], delta_x_grid=[-2, -1, -0.5, 0.5, 1, 2]
+                out["simulation"] = _call_dm_with_timeout(
+                    simulate_counterfactuals_from_regression,
+                    cw["beta"], cw["beta_ci95"],
+                    label="simulation",
+                    delta_x_grid=[-2, -1, -0.5, 0.5, 1, 2],
                 )
     except Exception as e:
         out["simulation"] = {"note": "failed", "error": f"{type(e).__name__}: {e}"}
 
-    # 7) Optimization demo
+    # Block 8 — Optimization demo (LP + nonlinear).
     try:
         demo = {}
         if callable(solve_linear_program):
-            demo["lp_example"] = solve_linear_program(
-                c=[1, 2], A_ub=[[1, 1], [-1, 2]], b_ub=[3, 2], bounds=[(0, None), (0, None)]
+            demo["lp_example"] = _call_dm_with_timeout(
+                solve_linear_program, label="optimization_lp",
+                c=[1, 2], A_ub=[[1, 1], [-1, 2]], b_ub=[3, 2],
+                bounds=[(0, None), (0, None)],
             )
         else:
             demo["lp_example"] = {"note": "skipped", "error": "solve_linear_program_unavailable"}
 
         if callable(minimize_nonlinear):
-            demo["nonlinear_example"] = minimize_nonlinear(fun_name="quadratic_bowl", x0=[0, 0])
+            demo["nonlinear_example"] = _call_dm_with_timeout(
+                minimize_nonlinear, label="optimization_nonlinear",
+                fun_name="quadratic_bowl", x0=[0, 0],
+            )
         else:
             demo["nonlinear_example"] = {"note": "skipped", "error": "minimize_nonlinear_unavailable"}
 
@@ -570,11 +721,15 @@ def compute_deep_math_v3(
     #   Phase 4: Invariants + physics-consistency score
     # ============================================================
 
-    # Baseline diagnostics (kept for continuity)
+    # Block 9 — Physics diagnostics (SECOND call; overwrites Block 6's result
+    # on out["physics"]). Pre-existing duplication, flagged for v1.3.
     try:
         if callable(physics_diagnostics) or callable(globals().get('physics_diagnostics_fallback')):
             fn = physics_diagnostics if callable(physics_diagnostics) else globals().get("physics_diagnostics_fallback")
-            out["physics"] = fn(df=df, target_col=ycol, time_col=tcol, seed=seed)
+            out["physics"] = _call_dm_with_timeout(
+                fn, label="physics_diagnostics_b",
+                df=df, target_col=ycol, time_col=tcol, seed=seed,
+            )
             if isinstance(out["physics"], dict):
                 out["physics"].setdefault("note", "ok")
         else:
@@ -582,10 +737,13 @@ def compute_deep_math_v3(
     except Exception as e:
         out["physics"] = {"note": "failed", "error": f"{type(e).__name__}: {e}"}
 
-    # Phase 2: v2 diagnostics (your physics_v2.py)
+    # Block 10 — Physics diagnostics v2.
     try:
         if callable(physics_diagnostics_v2):
-            out["physics_v2"] = physics_diagnostics_v2(df=df, target_col=ycol, time_col=tcol, seed=seed)
+            out["physics_v2"] = _call_dm_with_timeout(
+                physics_diagnostics_v2, label="physics_v2",
+                df=df, target_col=ycol, time_col=tcol, seed=seed,
+            )
             if isinstance(out["physics_v2"], dict):
                 out["physics_v2"].setdefault("note", "ok")
         else:
@@ -593,11 +751,14 @@ def compute_deep_math_v3(
     except Exception as e:
         out["physics_v2"] = {"note": "failed", "error": f"{type(e).__name__}: {e}"}
 
-    # Phase 3: discovery (multi-model selection)
+    # Block 11 — Physics discovery (calls discover_coupled + discover_pde).
     try:
         if callable(physics_discovery) or callable(globals().get('physics_discovery_fallback')):
             fn = physics_discovery if callable(physics_discovery) else globals().get("physics_discovery_fallback")
-            out["physics_discovery"] = fn(df=df, target_col=ycol, time_col=tcol, seed=seed)
+            out["physics_discovery"] = _call_dm_with_timeout(
+                fn, label="physics_discovery",
+                df=df, target_col=ycol, time_col=tcol, seed=seed,
+            )
             if isinstance(out["physics_discovery"], dict):
                 out["physics_discovery"].setdefault("note", "ok")
         else:
@@ -605,10 +766,13 @@ def compute_deep_math_v3(
     except Exception as e:
         out["physics_discovery"] = {"note": "failed", "error": f"{type(e).__name__}: {e}"}
 
-    # Phase 4: invariants + consistency score
+    # Block 12 — Physics invariants + consistency score.
     try:
         if callable(physics_invariants):
-            inv = physics_invariants(df=df, target_col=ycol, time_col=tcol, seed=seed)
+            inv = _call_dm_with_timeout(
+                physics_invariants, label="physics_invariants",
+                df=df, target_col=ycol, time_col=tcol, seed=seed,
+            )
             out["physics_invariants"] = inv if isinstance(inv, dict) else {"note": "ok", "result": inv}
             if isinstance(out["physics_invariants"], dict):
                 out["physics_invariants"].setdefault("note", "ok")

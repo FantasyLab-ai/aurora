@@ -1,0 +1,26 @@
+{
+  "id": "power_law",
+  "match": {
+    "title_substrings": ["power law", "power-law", "scale-free"],
+    "equation_substrings": ["a*x^b", "x^alpha"],
+    "desc_substrings":  ["power law", "scale-free", "heavy-tailed"]
+  },
+  "summary": "Power law y = a · xᵇ. The exponent b controls the curvature; positive b grows superlinearly, negative b decays in a heavy-tailed way.",
+  "param_to_intuition": [
+    {
+      "param": "b",
+      "ranges": [
+        {"min": -9999, "max": -1.5,
+         "phrase": "Steep heavy-tailed decay — extreme values are exponentially less likely but still drive most of the variance."},
+        {"min": -1.5,  "max": -0.5,
+         "phrase": "Heavy-tailed but moderate — the largest 1% of observations carry significant weight."},
+        {"min": -0.5,  "max": 0.5,
+         "phrase": "Flat dependence — closer to a constant relationship than a true power law."},
+        {"min": 0.5,   "max": 1.5,
+         "phrase": "Near-linear regime — y scales roughly proportional to x."},
+        {"min": 1.5,   "max": 9999,
+         "phrase": "Superlinear growth — y rises sharply with x; check for saturation outside the fitted range."}
+      ]
+    }
+  ]
+}

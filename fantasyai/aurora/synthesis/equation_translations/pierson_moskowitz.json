@@ -1,0 +1,23 @@
+{
+  "id": "pierson_moskowitz",
+  "match": {
+    "title_substrings": ["pierson-moskowitz", "pierson moskowitz",
+                          "wave_height_wind", "pm law"],
+    "equation_substrings": ["wind^2", "wind**2"],
+    "desc_substrings":  ["pierson", "wind-wave", "fully developed sea"]
+  },
+  "summary": "Pierson–Moskowitz law: wave height scales with wind speed squared in a fully-developed sea. The relationship breaks down for short fetches or rapidly changing wind fields.",
+  "param_to_intuition": [
+    {
+      "param": "alpha",
+      "ranges": [
+        {"min": 0.0,  "max": 0.0001,
+         "phrase": "Fitted coefficient is small — the wind-wave coupling is weaker than canonical PM, suggesting limited fetch or transient wind."},
+        {"min": 0.0001, "max": 0.01,
+         "phrase": "Coefficient sits near the canonical PM range; fully-developed-sea assumption holds."},
+        {"min": 0.01, "max": 9999.0,
+         "phrase": "Coefficient is unusually high — possible amplification mechanism or instrument calibration issue."}
+      ]
+    }
+  ]
+}

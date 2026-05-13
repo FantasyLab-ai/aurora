@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "async": true,
+  "run_id": "run",
+  "run_dir": "C:\\Users\\bgrut\\Desktop\\Aurora_QIE\\.claude\\worktrees\\peaceful-easley-8514ec\\docs\\captures\\2026-05-05\\after\\run",
+  "dataset": "C:\\Users\\bgrut\\Desktop\\Aurora_QIE\\.claude\\worktrees\\peaceful-easley-8514ec\\docs\\captures\\2026-05-05\\after\\data\\noaa_buoy_2024.csv",
+  "status_url": "/api/run/status?run_id=run",
+  "started_at": "2026-05-05T14:23:18Z"
+}

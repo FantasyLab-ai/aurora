@@ -1,0 +1,14 @@
+{
+  "_comment": "Sample Aurora MCP configuration for Claude Desktop. Copy the 'mcpServers' block into your real ~/Library/Application Support/Claude/claude_desktop_config.json (macOS) or %APPDATA%\\Claude\\claude_desktop_config.json (Windows). Replace the absolute paths with yours. The 'command' must be the python interpreter inside your Aurora venv (not just 'python').",
+
+  "mcpServers": {
+    "aurora": {
+      "command": "/REPLACE/with/absolute/path/to/aurora/.venv/bin/python",
+      "args": [
+        "-m", "aurora_mcp.server",
+        "--allow-root", "/REPLACE/with/absolute/path/to/your/data",
+        "--allow-root", "/REPLACE/with/absolute/path/to/your/aurora-outputs"
+      ]
+    }
+  }
+}

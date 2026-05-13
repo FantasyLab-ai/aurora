@@ -1,0 +1,136 @@
+[
+  {
+    "id": "discovered_dynamics_sindy",
+    "domain": "generic",
+    "specificity": 12,
+    "match_condition": {
+      "requires": [
+        {"kind": "discovered_dynamics", "min_count": 1}
+      ]
+    },
+    "skeleton": "Aurora's SINDy pass discovered the governing differential equations of this dynamical system directly from the data — {n_active} active terms across the candidate library at sparsity {sparsity_pct}. The fitted equations capture the dominant dynamics with reconstruction RMSE {rmse}. This is a higher-confidence finding than parametric fitting because the equation FORM was discovered, not assumed; departures from the discovered structure flag genuine novelty rather than model misspecification.",
+    "slot_extractors": {
+      "n_active":     "sindy.n_active_terms",
+      "sparsity_pct": "sindy.sparsity",
+      "rmse":         "sindy.rmse_total"
+    }
+  },
+
+  {
+    "id": "latent_regimes_hmm",
+    "domain": "generic",
+    "specificity": 9,
+    "match_condition": {
+      "requires": [
+        {"kind": "latent_regime_structure", "min_count": 1}
+      ]
+    },
+    "skeleton": "An HMM with BIC-selected K={k_states} latent states fits this series. The current state's posterior probability is high, and the inferred transition matrix gives expected dwell times that quantify how stable each regime is. Latent regimes differ from observable change points: the HMM captures structure that the visible series only partially reveals.",
+    "slot_extractors": {
+      "k_states": "hmm.best_K"
+    }
+  },
+
+  {
+    "id": "nonlinear_dependence_mi",
+    "domain": "generic",
+    "specificity": 8,
+    "match_condition": {
+      "requires": [
+        {"kind": "nonlinear_dependence", "min_count": 1}
+      ]
+    },
+    "skeleton": "Mutual information detected nonlinear dependencies that the linear correlation matrix would miss. These are pairs where the variables are clearly related — MI substantially above the Gaussian baseline — but the Pearson correlation is weak, indicating the relationship is curved rather than linear. Standard regression on these pairs would underestimate dependence; transformations or nonparametric methods are appropriate.",
+    "slot_extractors": {}
+  },
+
+  {
+    "id": "causal_direction_granger",
+    "domain": "generic",
+    "specificity": 8,
+    "match_condition": {
+      "requires": [
+        {"kind": "causal_direction", "min_count": 1}
+      ]
+    },
+    "skeleton": "Granger causality testing identified causal direction(s) in the time-series. Granger answers 'do past values of X help predict Y beyond what Y's own past predicts?'. Detected directions are listed in the findings. Granger captures linear predictive causation; transfer entropy (when run) extends this to nonlinear causal information transfer.",
+    "slot_extractors": {}
+  },
+
+  {
+    "id": "nonstationary_oscillation_wavelet",
+    "domain": "generic",
+    "specificity": 8,
+    "match_condition": {
+      "requires": [
+        {"kind": "nonstationary_oscillation", "min_count": 1}
+      ]
+    },
+    "skeleton": "The Morlet wavelet transform reveals a non-stationary oscillation: the dominant period {drift_clause} across the time series. Standard FFT-based spectral analysis assumes stationarity and would miss this — the wavelet ridge tracks the period change explicitly. {ls_clause}",
+    "slot_extractors": {
+      "drift_clause": "if wavelet_period.verdict: 'is {wavelet_verdict}'",
+      "wavelet_verdict": "wavelet_period.verdict",
+      "ls_clause": "if lomb_scargle.dominant_period: 'A complementary Lomb-Scargle estimate (robust to uneven sampling) places the dominant period near {ls_period}.'",
+      "ls_period": "lomb_scargle.dominant_period"
+    }
+  },
+
+  {
+    "id": "uneven_period_lomb_scargle",
+    "domain": "generic",
+    "specificity": 7,
+    "match_condition": {
+      "requires": [
+        {"kind": "uneven_sampling_period", "min_count": 1}
+      ]
+    },
+    "skeleton": "Despite irregular sampling, the Lomb-Scargle periodogram identifies a dominant period of approximately {ls_period} time units with a low false-alarm probability. This is the right tool when an FFT would mislead — Lomb-Scargle weights observations by their actual time stamps rather than assuming regular spacing.",
+    "slot_extractors": {
+      "ls_period": "lomb_scargle.dominant_period"
+    }
+  },
+
+  {
+    "id": "topological_structure_persistence",
+    "domain": "generic",
+    "specificity": 7,
+    "match_condition": {
+      "requires": [
+        {"kind": "topological_structure", "min_count": 1}
+      ]
+    },
+    "skeleton": "Persistent homology of the data reveals topological structure — features that survive across scales rather than appearing as scale-specific artefacts. The verdict ({topo_verdict}) summarises the dominant pattern: connected-component counts capture how the data clusters; H₁ births identify cyclic structure that linear methods cannot reach.",
+    "slot_extractors": {
+      "topo_verdict": "topology.summary.verdict"
+    }
+  },
+
+  {
+    "id": "compositional_correction_clr",
+    "domain": "generic",
+    "specificity": 8,
+    "match_condition": {
+      "requires": [
+        {"kind": "compositional_correction", "min_count": 1}
+      ]
+    },
+    "skeleton": "The data is compositional (rows sum to a constant). Pearson correlations on raw proportions are biased by the closure constraint — pairs appear correlated because shifting one share necessarily shifts another. Aurora re-ran the correlation analysis in centred-log-ratio space; pairs whose correlation changed substantially are flagged so users know which raw correlations were closure-driven artefacts versus genuine relationships.",
+    "slot_extractors": {}
+  },
+
+  {
+    "id": "experimental_design_recommendation",
+    "domain": "generic",
+    "specificity": 5,
+    "match_condition": {
+      "requires": [
+        {"kind": "experimental_design_recommendation", "min_count": 1}
+      ]
+    },
+    "skeleton": "Aurora estimated the sample size needed to confirm a smaller version of the headline causal effect under standard frequentist power assumptions ({pa_n} observations per group at {pa_power_pct}% power). This is a planning aid, not a validation: the headline finding stands on its existing evidence; the recommendation answers 'how much more data would tighten this conclusion?'",
+    "slot_extractors": {
+      "pa_n":          "power_analysis.n_per_group",
+      "pa_power_pct":  "power_analysis.power"
+    }
+  }
+]

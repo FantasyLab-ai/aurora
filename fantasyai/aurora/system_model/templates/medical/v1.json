@@ -1,0 +1,107 @@
+{
+  "id": "medical",
+  "version": "v1",
+  "display_name": "Medical / clinical timeseries",
+  "domain_tag": "medical",
+  "description": "Patient physiology and clinical timeseries: vitals, labs, interventions, outcomes. Decompensation precursors, treatment response, circadian rhythms.",
+  "identification": {
+    "column_keywords": [
+      "patient", "patient_id", "heart_rate", "hr", "bp",
+      "blood_pressure", "systolic", "diastolic", "spo2",
+      "respiratory_rate", "temperature", "temp_c", "glucose",
+      "lab", "lab_value", "intervention", "drug", "dose",
+      "comorbidity", "diagnosis", "icd", "outcome", "death",
+      "discharge", "admission"
+    ],
+    "value_range_hints": {
+      "heart_rate": [20.0, 220.0],
+      "spo2":       [50.0, 100.0],
+      "systolic":   [40.0, 260.0],
+      "diastolic":  [20.0, 180.0]
+    },
+    "cadence_hints": ["second", "subhourly", "hourly", "daily"],
+    "domain_tags": ["medical", "clinical", "ehr", "physiology"],
+    "min_keyword_hits": 2
+  },
+  "topology_skeleton": {
+    "entities": [
+      {"id": "patient",       "label": "Patient",         "role": "actor"},
+      {"id": "heart_rate",    "label": "Heart rate",      "role": "state",     "unit": "bpm"},
+      {"id": "blood_pressure","label": "Blood pressure",  "role": "state",     "unit": "mmHg"},
+      {"id": "spo2",          "label": "SpO₂",            "role": "state",     "unit": "%"},
+      {"id": "resp_rate",     "label": "Respiratory rate","role": "state",     "unit": "/min"},
+      {"id": "temperature",   "label": "Temperature",     "role": "state",     "unit": "°C"},
+      {"id": "lab_value",     "label": "Lab value",       "role": "state"},
+      {"id": "intervention",  "label": "Intervention / drug", "role": "forcing"},
+      {"id": "comorbidity",   "label": "Comorbidity",     "role": "indicator"},
+      {"id": "outcome",       "label": "Outcome",         "role": "response"}
+    ],
+    "expected_relationships": [
+      {"id": "rel_int_state",  "source": "intervention", "target": "heart_rate",     "kind": "causal", "rationale": "drug → vital response"},
+      {"id": "rel_int_lab",    "source": "intervention", "target": "lab_value",      "kind": "causal"},
+      {"id": "rel_state_outcome","source": "heart_rate", "target": "outcome",        "kind": "correlational", "rationale": "early-warning score"},
+      {"id": "rel_comorb_out", "source": "comorbidity",  "target": "outcome",        "kind": "causal"}
+    ]
+  },
+  "characteristic_patterns": [
+    {"id": "circadian", "name": "Circadian rhythm",
+     "signature": "≈24h periodicity in HR / temp / BP",
+     "detection_rule": "FFT dominant period near 86400 s on vital"},
+    {"id": "decompensation_precursor", "name": "Decompensation precursor",
+     "signature": "increasing HR + decreasing SpO₂ over hours, escalating EWS",
+     "detection_rule": "joint trend rising HR + falling SpO₂ over ≥ 4h"},
+    {"id": "treatment_response", "name": "Treatment response",
+     "signature": "vital / lab moves toward target after intervention timestamp",
+     "detection_rule": "ruptures change-point near intervention ts on relevant signal"},
+    {"id": "deterioration_trajectory", "name": "Deterioration trajectory",
+     "signature": "EWS climbing across multiple vital channels",
+     "detection_rule": "≥ 3 vitals breaching their soft constraints over a 6h window"}
+  ],
+  "vocabulary": {
+    "anomaly_term": "abnormal reading",
+    "regime_term":  "clinical state",
+    "pattern_term": "trajectory",
+    "action_term":  "clinical action",
+    "breach_term":  "vital out of range",
+    "advisory_term": "alert",
+    "extra": {
+      "high_state": "decompensating",
+      "low_state":  "stable",
+      "transition": "decompensation",
+      "growth_term": "deterioration",
+      "decay_term":  "recovery"
+    }
+  },
+  "action_library": [
+    {"id": "escalate_surveillance", "label": "Escalate surveillance",
+     "description": "Move patient to higher-acuity monitoring when decompensation precursor confidence is high.",
+     "triggered_when": ["decompensation_precursor active", "EWS rising"],
+     "predicted_outcome_summary": "Earlier ICU transfer reduces mortality on surveyed cases (approx. 20% absolute risk reduction in some EWS literature).",
+     "base_rate_success": 0.7, "confidence_band_required": "high",
+     "falsification": ["EWS reverses spontaneously"],
+     "assumptions": ["bed available", "team capacity"], "relevant_states": ["decompensation_precursor", "deterioration_trajectory"]},
+    {"id": "differential_workup", "label": "Order differential workup",
+     "description": "When abnormal vitals defy the active diagnosis, order targeted labs / imaging to widen differential.",
+     "triggered_when": ["abnormal reading not explained by current dx"],
+     "predicted_outcome_summary": "Workup resolves the question in ≈55% of ambiguous cases.",
+     "base_rate_success": 0.55, "confidence_band_required": "medium",
+     "falsification": [], "assumptions": [], "relevant_states": []},
+    {"id": "review_treatment", "label": "Review current treatment",
+     "description": "When response to active intervention is below baseline expectation, escalate review.",
+     "triggered_when": ["treatment_response signature absent within expected window"],
+     "predicted_outcome_summary": "Reviews uncover causes (under-dose, wrong drug) ≈40% of the time.",
+     "base_rate_success": 0.4, "confidence_band_required": "medium",
+     "falsification": [], "assumptions": [], "relevant_states": ["treatment_response"]},
+    {"id": "tighten_alert_threshold", "label": "Tighten alert threshold",
+     "description": "Adapt the early-warning threshold for this patient based on personal baseline + circadian.",
+     "triggered_when": ["personal baseline available", "current threshold too lax / strict"],
+     "predicted_outcome_summary": "Personalised thresholds reduce alert fatigue and improve catch-rate.",
+     "base_rate_success": 0.65, "confidence_band_required": "medium",
+     "falsification": [], "assumptions": ["sufficient prior history"], "relevant_states": ["circadian"]}
+  ],
+  "constraints": [
+    {"id": "spo2_bound", "description": "SpO₂ ∈ [50,100]%", "kind": "bound", "hardness": "soft", "on_entity": "spo2"},
+    {"id": "hr_bound",   "description": "Heart rate ∈ [20,220] bpm", "kind": "bound", "hardness": "soft", "on_entity": "heart_rate"},
+    {"id": "bp_pos",     "description": "Blood pressure positive", "kind": "bound", "hardness": "hard", "on_entity": "blood_pressure"}
+  ]
+}

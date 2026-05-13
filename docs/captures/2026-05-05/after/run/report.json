@@ -1,0 +1,1 @@
+{"score": {"run_quality": 0.85, "confidence": 0.82, "stability_good": 0.88, "drift_good": 0.81}, "events": [], "results": [], "artifacts_present": ["deep_math.json", "structure_contract.json", "motif.json"], "inputs": {"dataset": "C:\\Users\\bgrut\\Desktop\\Aurora_QIE\\.claude\\worktrees\\peaceful-easley-8514ec\\docs\\captures\\2026-05-05\\after\\data\\noaa_buoy_2024.csv"}}

@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aurora-qie"
+version = "0.9.5"
+description = "Aurora — local-first quantitative intelligence console"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "bgrut" }]
+
+# Runtime deps live in requirements.txt (kept simple for the local-first install).
+# This block is only used by tools that need pyproject metadata (pytest config, etc).
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Only collect ``test_*.py`` — the ``_run_manual*.py`` and ``_smoke_*.py`` files are
+# standalone scripts that run their own assertions and would conflict with pytest's
+# discovery. They're useful when pytest isn't available locally.
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-q",                         # quiet output
+    "--strict-markers",
+    "--strict-config",
+    "-ra",                        # short summary of all skip/xfail/fail
+    "--tb=short",
+]
+markers = [
+    "slow: tests that run a real subprocess (deselect with '-m \"not slow\"')",
+    "integration: end-to-end pipeline tests against real fixture data",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.aurora]
+# Project-specific config consumed by tooling.
+provenance_ledger_filename = "_provenance_ledger.jsonl"
+priors_count_v1 = 9
+fixtures_count_v1 = 3

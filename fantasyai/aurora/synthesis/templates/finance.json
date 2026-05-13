@@ -1,0 +1,57 @@
+[
+  {
+    "id": "finance_volatility_regime",
+    "domain": "finance",
+    "specificity": 9,
+    "match_condition": {
+      "requires": [
+        {"kind": "regime_change", "min_count": 1},
+        {"kind": "anomaly",       "min_count": 1}
+      ],
+      "optional": [
+        {"kind": "forecast_peak"},
+        {"kind": "discovered_motif"}
+      ]
+    },
+    "skeleton": "Aurora detected a volatility regime shift: the series transitioned between calm and active states with {anomaly_count} outlier print{anomaly_plural} marking the boundary. {motif_clause} In a finance context this most often reads as a vol-cluster transition — short-horizon forecasts should be treated as conditional on the regime persisting; correlations across assets often tighten in active regimes and that risk doesn't show in any individual series.",
+    "slot_extractors": {
+      "anomaly_count":  "count(findings[kind=anomaly])",
+      "anomaly_plural": "if anomaly_count > 1: 's'",
+      "motif_clause":   "if has(findings[kind=discovered_motif]): 'The post-shift dynamics fit {motif_label}, a recognisable mean-reverting form.'",
+      "motif_label":    "first(findings[kind=discovered_motif].title)"
+    }
+  },
+  {
+    "id": "finance_mean_reverting",
+    "domain": "finance",
+    "specificity": 7,
+    "match_condition": {
+      "requires": [
+        {"kind": "discovered_motif", "min_count": 1}
+      ]
+    },
+    "skeleton": "The series shows mean-reverting behavior consistent with {motif_label}. Persistence is moderate; short-horizon forecasts beat the climatology with credible CIs, but the half-life of deviations is short enough that long-horizon prediction collapses to the unconditional mean. Treat alpha claims at multi-day horizons cautiously.",
+    "slot_extractors": {
+      "motif_label": "first(findings[kind=discovered_motif].title)"
+    }
+  },
+  {
+    "id": "finance_drawdown_warning",
+    "domain": "finance",
+    "specificity": 8,
+    "match_condition": {
+      "requires": [
+        {"kind": "anomaly", "min_count": 3}
+      ],
+      "optional": [
+        {"kind": "regime_change"}
+      ]
+    },
+    "skeleton": "{anomaly_count} outlier prints in this series — {critical_clause}. In finance language this is a drawdown footprint: the run-of-bad-prints risks compound. Risk-budget rules apply, and the standard hedge — vol-target sizing, defensive overlay — narrows the path-dependent loss without removing market exposure entirely.",
+    "slot_extractors": {
+      "anomaly_count":  "count(findings[kind=anomaly])",
+      "overview_critical":"overview.critical_anomalies",
+      "critical_clause":"if overview.critical_anomalies > 0: '{overview_critical} flagged critical'"
+    }
+  }
+]

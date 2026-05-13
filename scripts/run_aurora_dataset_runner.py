@@ -23,7 +23,7 @@ import os
 import re
 import traceback
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -333,8 +333,142 @@ def _now_stamp() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
+def _sanitize_for_json(obj: Any) -> Any:
+    """Recursively coerce ``obj`` into JSON-native Python types.
+
+    Mirror of ``studio_api._sanitize_for_json`` (kept here too so the
+    runner subprocess does not depend on Flask). Some math methods —
+    notably the coupled-systems fits surfaced via
+    ``physics_discovery.discover_physics_models`` — leave raw numpy
+    ndarrays in their output dicts (``xhat`` / ``yhat`` / ``Rhat``).
+    Plain ``json.dumps`` crashes on those with::
+
+        TypeError: Object of type ndarray is not JSON serializable
+
+    so the runner used to die at the ``deep_math.json`` write step,
+    surfacing as ``subprocess returned nonzero`` in the UI banner with
+    no per-method error context.
+
+    This walker:
+      * converts numpy ndarrays to lists (recursing on contents)
+      * unwraps numpy scalars (``np.int64`` / ``np.float64`` etc.) to
+        Python natives via ``.item()``
+      * coerces NaN / Inf floats to ``None`` (JSON has no spec for them)
+      * normalises pandas Timestamp / NaT / Timedelta / Series / DataFrame
+      * stringifies datetime / date / Path
+      * recurses through dict / list / tuple / set / frozenset
+
+    Never raises. Hostile leaves become ``str(obj)`` or ``None``.
+    """
+    # 1. Fast path for the most common natives.
+    if obj is None or isinstance(obj, (str, bool)):
+        return obj
+
+    # 2. Numpy — scalar BEFORE int/float because numpy.int64 IS-A int on
+    #    most platforms but the stdlib JSON encoder still rejects it.
+    try:
+        import numpy as _np
+    except Exception:  # pragma: no cover — numpy is a hard dep, but be safe
+        _np = None
+    if _np is not None:
+        if isinstance(obj, _np.generic):
+            try:
+                v = obj.item()
+            except Exception:
+                return str(obj)
+            # ``item()`` may itself return a NaN float; recurse to canonicalise.
+            return _sanitize_for_json(v)
+        if isinstance(obj, _np.ndarray):
+            try:
+                return _sanitize_for_json(obj.tolist())
+            except Exception:
+                return None
+
+    # 3. Native int / float (after numpy.generic check above).
+    if isinstance(obj, int):
+        return obj
+    if isinstance(obj, float):
+        # JSON has no representation for NaN or +/-Inf — emit None so
+        # downstream parsers (frontend, jq, anything) don't choke.
+        if obj != obj or obj in (float("inf"), float("-inf")):
+            return None
+        return obj
+
+    # 4. Pandas — Timestamp / NaT / Timedelta / Series / DataFrame.
+    try:
+        import pandas as _pd
+    except Exception:  # pragma: no cover
+        _pd = None
+    if _pd is not None:
+        if isinstance(obj, _pd.Timestamp):
+            try:
+                return None if _pd.isna(obj) else obj.isoformat()
+            except Exception:
+                return str(obj)
+        # NaT comparison via identity-or-isna; pd.NaT is a singleton.
+        try:
+            if obj is _pd.NaT or (hasattr(obj, "__class__") and
+                                  obj.__class__.__name__ == "NaTType"):
+                return None
+        except Exception:
+            pass
+        if isinstance(obj, _pd.Timedelta):
+            try:
+                return obj.total_seconds()
+            except Exception:
+                return str(obj)
+        if isinstance(obj, _pd.Series):
+            try:
+                return _sanitize_for_json(obj.tolist())
+            except Exception:
+                return None
+        if isinstance(obj, _pd.DataFrame):
+            try:
+                return _sanitize_for_json(obj.to_dict(orient="records"))
+            except Exception:
+                return None
+
+    # 5. datetime / date / Path.
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    if isinstance(obj, date):
+        return obj.isoformat()
+    if isinstance(obj, Path):
+        return str(obj)
+
+    # 6. Containers — recurse.
+    if isinstance(obj, dict):
+        out: Dict[str, Any] = {}
+        for k, v in obj.items():
+            try:
+                key = k if isinstance(k, str) else str(k)
+            except Exception:
+                key = "<unhashable>"
+            out[key] = _sanitize_for_json(v)
+        return out
+    if isinstance(obj, (list, tuple, set, frozenset)):
+        return [_sanitize_for_json(v) for v in obj]
+
+    # 7. Last resort — best-effort stringification.
+    try:
+        return str(obj)
+    except Exception:
+        return None
+
+
 def _write_json(p: Path, obj: Any) -> None:
-    p.write_text(json.dumps(obj, indent=2, ensure_ascii=False), encoding="utf-8")
+    """Write ``obj`` to ``p`` as pretty-printed JSON.
+
+    Routes through ``_sanitize_for_json`` so the per-stage artifacts
+    (``deep_math.json``, ``math_results.json``, …) never crash on a
+    numpy ndarray that an analytical method left in its output. Without
+    this the entire run dies at the write step with the unhelpful
+    ``TypeError: Object of type ndarray is not JSON serializable``,
+    surfacing in the UI as ``subprocess returned nonzero`` with no
+    diagnosable per-method error.
+    """
+    safe = _sanitize_for_json(obj)
+    p.write_text(json.dumps(safe, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def _safe_slug(s: str, max_len: int = 80) -> str:

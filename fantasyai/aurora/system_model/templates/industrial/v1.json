@@ -1,0 +1,106 @@
+{
+  "id": "industrial",
+  "version": "v1",
+  "display_name": "Industrial / process / mechanical systems",
+  "domain_tag": "industrial",
+  "description": "Production lines, machines, and process control. Wear progression, calibration drift, batch variation, energy/mass balance.",
+  "identification": {
+    "column_keywords": [
+      "rpm", "torque", "vibration", "voltage", "current", "amperage",
+      "temperature", "pressure", "flow_rate", "process", "batch",
+      "wear", "tolerance", "spec", "yield", "defect", "downtime",
+      "sensor", "calibration"
+    ],
+    "value_range_hints": {
+      "rpm":      [0.0, 1.0e5],
+      "voltage":  [-1000.0, 1000.0],
+      "yield":    [0.0, 1.0]
+    },
+    "cadence_hints": ["second", "subhourly", "hourly"],
+    "domain_tags": ["industrial", "manufacturing", "process_control"],
+    "min_keyword_hits": 2
+  },
+  "topology_skeleton": {
+    "entities": [
+      {"id": "machine",     "label": "Machine",       "role": "actor"},
+      {"id": "input_flow",  "label": "Input flow",    "role": "forcing"},
+      {"id": "process",     "label": "Process",       "role": "state"},
+      {"id": "vibration",   "label": "Vibration",     "role": "indicator", "unit": "g"},
+      {"id": "energy_in",   "label": "Energy input",  "role": "forcing"},
+      {"id": "energy_out",  "label": "Energy output", "role": "response"},
+      {"id": "output_flow", "label": "Output flow",   "role": "response"},
+      {"id": "defect_mode", "label": "Defect mode",   "role": "response"},
+      {"id": "calibration", "label": "Calibration drift", "role": "indicator"}
+    ],
+    "expected_relationships": [
+      {"id": "rel_in_out",   "source": "input_flow", "target": "output_flow", "kind": "physical", "rationale": "mass balance"},
+      {"id": "rel_e_in_out", "source": "energy_in",  "target": "energy_out",  "kind": "physical", "rationale": "energy balance"},
+      {"id": "rel_vib_def",  "source": "vibration",  "target": "defect_mode", "kind": "causal",   "rationale": "wear → defects"},
+      {"id": "rel_cal_def",  "source": "calibration","target": "defect_mode", "kind": "causal",   "rationale": "drift → out-of-spec"}
+    ]
+  },
+  "characteristic_patterns": [
+    {"id": "wear_progression", "name": "Wear progression",
+     "signature": "vibration drift upward over time; rms slowly increasing",
+     "detection_rule": "monotonic rise in vibration RMS over ≥ 1 day"},
+    {"id": "calibration_drift", "name": "Calibration drift",
+     "signature": "sensor mean drifts vs reference; stationary sensor on stationary process",
+     "detection_rule": "ruptures change-point on sensor mean"},
+    {"id": "batch_variation", "name": "Batch-to-batch variation",
+     "signature": "regime structure where each batch has its own mean/std",
+     "detection_rule": "n distinct regimes where batches dominate"},
+    {"id": "downtime_cycle", "name": "Downtime cycle",
+     "signature": "production zero/low for fixed window, then recovery",
+     "detection_rule": "active_low motif at known cadence"},
+    {"id": "balance_violation", "name": "Energy/mass balance violation",
+     "signature": "input − output > tolerance over a sustained window",
+     "detection_rule": "constraint failure on rel_in_out or rel_e_in_out"},
+    {"id": "fatigue_accumulation", "name": "Fatigue accumulation",
+     "signature": "cycle count × load profile crosses S-N curve threshold",
+     "detection_rule": "running cycle integral > spec"}
+  ],
+  "vocabulary": {
+    "anomaly_term": "out-of-spec event",
+    "regime_term":  "operating mode",
+    "pattern_term": "signature",
+    "action_term":  "intervention",
+    "breach_term":  "tolerance exceedance",
+    "advisory_term": "maintenance order",
+    "extra": {
+      "high_state": "high-load",
+      "low_state":  "idle",
+      "transition": "shift change",
+      "growth_term": "ramp-up",
+      "decay_term":  "wear"
+    }
+  },
+  "action_library": [
+    {"id": "schedule_calibration", "label": "Schedule calibration",
+     "description": "When calibration drift is detected at high confidence, queue a calibration window before defects start to flow downstream.",
+     "triggered_when": ["calibration_drift active"], "predicted_outcome_summary": "Calibration restores sensor to spec ≈90% of the time.",
+     "base_rate_success": 0.9, "confidence_band_required": "medium",
+     "falsification": [], "assumptions": ["technician available"], "relevant_states": ["calibration_drift"]},
+    {"id": "preventive_maintenance", "label": "Trigger preventive maintenance",
+     "description": "Schedule a maintenance window when wear progression crosses an early-warning threshold.",
+     "triggered_when": ["wear_progression past warning threshold"],
+     "predicted_outcome_summary": "Pre-emptive maintenance reduces unplanned downtime ≈70%.",
+     "base_rate_success": 0.7, "confidence_band_required": "medium",
+     "falsification": [], "assumptions": [], "relevant_states": ["wear_progression", "fatigue_accumulation"]},
+    {"id": "quarantine_batch", "label": "Quarantine batch",
+     "description": "When a batch shows out-of-spec aggregate, hold it for inspection rather than ship.",
+     "triggered_when": ["batch z-score > 2 vs rolling baseline"],
+     "predicted_outcome_summary": "Quarantine catches ≈60% of bad batches; cost = inspection time.",
+     "base_rate_success": 0.6, "confidence_band_required": "medium",
+     "falsification": [], "assumptions": [], "relevant_states": ["batch_variation"]},
+    {"id": "tune_process", "label": "Tune process parameters",
+     "description": "Adjust setpoint(s) to bring outputs back toward target when drift is gradual.",
+     "triggered_when": ["soft constraint violation but no acute fault"],
+     "predicted_outcome_summary": "Online tuning recovers spec ≈55% without downtime.",
+     "base_rate_success": 0.55, "confidence_band_required": "low",
+     "falsification": [], "assumptions": [], "relevant_states": ["calibration_drift", "wear_progression"]}
+  ],
+  "constraints": [
+    {"id": "yield_bound", "description": "yield ∈ [0,1]", "kind": "bound", "hardness": "hard", "on_entity": "yield"},
+    {"id": "mass_balance", "description": "input ≈ output ± tolerance", "kind": "conservation", "hardness": "soft"}
+  ]
+}

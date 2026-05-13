@@ -1,0 +1,34 @@
+[
+  {
+    "id": "bio_feedback_regulation",
+    "domain": "bio",
+    "specificity": 9,
+    "match_condition": {
+      "requires": [
+        {"kind": "discovered_motif", "min_count": 1}
+      ],
+      "optional": [
+        {"kind": "regime_change"},
+        {"kind": "physics_match"}
+      ]
+    },
+    "skeleton": "The dynamics fit {motif_label}, which in a biological context typically reflects feedback regulation — production balanced against degradation, with the equilibrium set by the ratio of rates. Visible oscillation or overshoot suggests the negative-feedback loop has nontrivial delay; smooth approach to steady state suggests the loop is fast relative to the observation window. Either reading is testable with a perturbation experiment.",
+    "slot_extractors": {
+      "motif_label": "first(findings[kind=discovered_motif].title)"
+    }
+  },
+  {
+    "id": "bio_signal_screening",
+    "domain": "bio",
+    "specificity": 6,
+    "match_condition": {
+      "requires": [
+        {"kind": "anomaly", "min_count": 2}
+      ]
+    },
+    "skeleton": "Aurora flagged {anomaly_count} biological signals worth review. These are statistical excursions — the ground-truth interpretation needs the experimental context: which condition, which timepoint, what was the perturbation. The system catches the signal; the experimenter assigns its meaning.",
+    "slot_extractors": {
+      "anomaly_count": "count(findings[kind=anomaly])"
+    }
+  }
+]

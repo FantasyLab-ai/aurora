@@ -1,0 +1,32 @@
+{
+  "id": "regime-change-detected",
+  "name": "Notify on detected regime change",
+  "description": "Fires when Aurora's findings include a regime-change method (PELT-RBF, HMM, or change-point family). Useful for monitoring shifts in market dynamics, equipment behaviour, or environmental conditions.",
+  "enabled": true,
+  "trigger": {
+    "field": "findings.methods",
+    "op": "contains",
+    "value": "PELT-RBF"
+  },
+  "actions": [
+    {
+      "type": "webhook",
+      "url": "https://hooks.slack.com/services/REPLACE/WITH/YOUR-WEBHOOK",
+      "headers": {
+        "Content-Type": "application/json"
+      }
+    },
+    {
+      "type": "log",
+      "level": "info",
+      "message": "regime change detected"
+    }
+  ],
+  "rate_limit": {
+    "max_per_hour": 4
+  },
+  "metadata": {
+    "owner": "analytics@example.com",
+    "notes": "Replace the Slack webhook URL with yours from https://api.slack.com/messaging/webhooks"
+  }
+}

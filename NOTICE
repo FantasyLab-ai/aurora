@@ -1,0 +1,38 @@
+Aurora
+Copyright 2026 Brandon Grutkowski / FantasyLab.ai
+
+This product includes software developed by Brandon Grutkowski
+and the Aurora contributors as part of FantasyLab.ai.
+
+Aurora's analytical methods build on decades of academic research.
+Specific citations are embedded in Aurora's output (every finding
+carries a `method` tag and a `seed:*` citation) and listed in the
+knowledge bank documentation. The Aurora Research Kit (see
+`fantasyai/aurora/research_kit.py`) generates a `references.bib`
+with full BibTeX entries for every method cited in a given run.
+
+Foundational methods include (non-exhaustive):
+
+  * Frank R. Hampel — robust z-score (1974)
+  * Fei Tony Liu, Kai Ming Ting, Zhi-Hua Zhou — Isolation Forest (2008)
+  * C. W. J. Granger — Granger causality (1969)
+  * L. E. Baum, T. Petrie, G. Soules, N. Weiss — Baum-Welch HMM (1970)
+  * Chin-Chia Michael Yeh et al. — Matrix Profile (2016)
+  * Christopher Torrence, Gilbert P. Compo — wavelet analysis (1998)
+  * Herbert Edelsbrunner, John L. Harer — persistent homology (2010)
+  * Markus M. Breunig et al. — Local Outlier Factor (2000)
+  * Peter J. Rousseeuw, Katrien Van Driessen — robust Mahalanobis (1999)
+  * Carl Edward Rasmussen, Christopher K. I. Williams — GPML (2006)
+  * Alexander Kraskov, Harald Stoegbauer, Peter Grassberger — KSG MI (2004)
+  * Rob J. Hyndman, George Athanasopoulos — Forecasting: principles
+    and practice (2021)
+  * Steven L. Brunton, Joshua L. Proctor, J. Nathan Kutz — SINDy (2016)
+  * Judea Pearl — causal inference and the do-calculus
+
+Aurora redistributes no third-party code. All cited works are referenced
+from Aurora's outputs and the knowledge bank; no copyrighted text is
+embedded in this repository.
+
+This product also includes dependencies licensed under their own terms;
+see `requirements.txt` and each dependency's source repository for
+attribution. Aurora's distribution does not modify those dependencies.

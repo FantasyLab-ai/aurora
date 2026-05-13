@@ -1,0 +1,23 @@
+{
+  "id": "ar2",
+  "match": {
+    "title_substrings": ["ar(2)", "ar2", "second-order autoregressive"],
+    "method_substrings": ["ar2", "ar(2)"],
+    "equation_substrings": ["phi_1", "phi_2", "ϕ_1"],
+    "desc_substrings":  ["second-order autoregressive", "ar(2)"]
+  },
+  "summary": "Two-lag autoregression. Depending on the φ₁, φ₂ pair, the dynamics range from smooth mean-reversion to damped oscillation. The (φ₁, φ₂) plane is the standard map between parameters and qualitative behaviour.",
+  "param_to_intuition": [
+    {
+      "param": "phi_2",
+      "ranges": [
+        {"min": -1.001, "max": -0.5,
+         "phrase": "Strong oscillatory tendency — the second-lag coefficient pulls back hard."},
+        {"min": -0.5,  "max": 0.0,
+         "phrase": "Mild oscillatory tendency — visible cyclic structure, not overwhelming."},
+        {"min": 0.0,   "max": 1.0,
+         "phrase": "Smooth dynamics — second-lag coefficient reinforces the first; no cyclic pattern."}
+      ]
+    }
+  ]
+}

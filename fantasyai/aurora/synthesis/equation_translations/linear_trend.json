@@ -1,0 +1,23 @@
+{
+  "id": "linear_trend",
+  "match": {
+    "title_substrings": ["linear trend", "linear fit", "linear",
+                          "monotonic"],
+    "equation_substrings": ["a*x + b", "a*x+b", "y = ax", "linear"],
+    "desc_substrings":  ["linear", "monotonic"]
+  },
+  "summary": "Straight-line trend y = a·x + b. The slope a quantifies rate of change per unit time; the intercept b is the baseline at x=0.",
+  "param_to_intuition": [
+    {
+      "param": "a",
+      "ranges": [
+        {"min": -1e18, "max": -1e-6,
+         "phrase": "Negative slope — the variable is monotonically decreasing across the window."},
+        {"min": -1e-6, "max": 1e-6,
+         "phrase": "Slope is effectively zero — no detectable linear trend."},
+        {"min": 1e-6,  "max": 1e18,
+         "phrase": "Positive slope — the variable is monotonically increasing across the window."}
+      ]
+    }
+  ]
+}

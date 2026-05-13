@@ -1,0 +1,37 @@
+{
+  "id": "bearing-watch",
+  "name": "Alert on critical bearing anomalies",
+  "description": "Fires when any Aurora run produces 3+ critical-severity findings. Designed for the factory_bearing demo dataset; adapt the threshold for your environment.",
+  "enabled": true,
+  "trigger": {
+    "field": "findings.crit_count",
+    "op": ">=",
+    "value": 3
+  },
+  "actions": [
+    {
+      "type": "webhook",
+      "url": "https://hooks.example.com/aurora/bearing",
+      "headers": {
+        "X-Project": "factory-line-3"
+      }
+    },
+    {
+      "type": "log",
+      "level": "warn",
+      "message": "bearing alert: 3+ critical anomalies"
+    },
+    {
+      "type": "file",
+      "path": "alerts/bearing.jsonl",
+      "include_metadata": true
+    }
+  ],
+  "rate_limit": {
+    "max_per_hour": 12
+  },
+  "metadata": {
+    "owner": "ops@example.com",
+    "runbook": "https://wiki.example.com/aurora-bearing-watch"
+  }
+}

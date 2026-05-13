@@ -1,0 +1,41 @@
+{
+  "id": "damped_harmonic",
+  "match": {
+    "title_substrings": ["damped harmonic", "damped oscillator",
+                          "harmonic oscillator", "damped oscillation"],
+    "method_substrings": ["physics_discovery"],
+    "equation_substrings": ["zeta", "ζ", "damping ratio", "exp(-z*t)",
+                              "e^(-zt)", "ω", "omega"],
+    "desc_substrings":  ["damped", "oscillator", "underdamped",
+                          "overdamped", "critically damped"]
+  },
+  "summary": "A second-order linear oscillator with damping ratio ζ and natural angular frequency ω. The system returns to equilibrium with oscillation magnitude controlled by ζ.",
+  "param_to_intuition": [
+    {
+      "param": "zeta",
+      "ranges": [
+        {"min": 0.0,  "max": 0.05,
+         "phrase": "Effectively undamped — the oscillation decays slowly; a small disturbance rings for many cycles."},
+        {"min": 0.05, "max": 0.5,
+         "phrase": "Underdamped — the system oscillates several times before settling."},
+        {"min": 0.5,  "max": 0.95,
+         "phrase": "Moderately damped — visible overshoot before convergence."},
+        {"min": 0.95, "max": 1.05,
+         "phrase": "Near critical damping — the fastest non-oscillatory return to equilibrium."},
+        {"min": 1.05, "max": 9999.0,
+         "phrase": "Overdamped — no oscillation; smooth exponential decay back to equilibrium."}
+      ]
+    },
+    {
+      "param": "omega",
+      "ranges": [
+        {"min": 0.0,  "max": 0.1,
+         "phrase": "Slow oscillation: natural period of roughly {omega_period} time units."},
+        {"min": 0.1,  "max": 1.0,
+         "phrase": "Moderate oscillation: natural period ≈ {omega_period} time units."},
+        {"min": 1.0,  "max": 9999.0,
+         "phrase": "Fast oscillation: natural period under {omega_period} time units — many cycles per observed window."}
+      ]
+    }
+  ]
+}

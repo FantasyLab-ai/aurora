@@ -1,0 +1,4 @@
+{
+  "error": "deep_math_failed:IndexError:list index out of range",
+  "trace": "<traceback-scrubbed-for-byte-identical>"
+}

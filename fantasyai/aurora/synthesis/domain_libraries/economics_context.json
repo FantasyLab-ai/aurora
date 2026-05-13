@@ -1,0 +1,18 @@
+[
+  {
+    "id": "economics_lead_lag",
+    "title": "Leading-lagging indicator structure",
+    "note": "Macroeconomic indicators come in three classes: leading (consumer sentiment, building permits, term spread), coincident (industrial production, employment), and lagging (unemployment, CPI, prime rate). The temporal sequence in the data — leading → coincident → lagging — is what makes a regime transition a 'real' macro signal rather than noise.",
+    "trigger": {
+      "requires": [{"kind": "regime_change", "min_count": 1}]
+    }
+  },
+  {
+    "id": "economics_term_structure",
+    "title": "Term-structure inversions",
+    "note": "10y-3m and 10y-2y inversions have preceded most US recessions in the post-1970 era with a 6–18 month lead. The signal isn't deterministic — modern policy regime changes (active QT/QE) may have shifted the relationship — but inversions remain a high-information input alongside leading-indicator dispersion.",
+    "trigger": {
+      "requires": [{"kind": "anomaly", "min_count": 1}]
+    }
+  }
+]

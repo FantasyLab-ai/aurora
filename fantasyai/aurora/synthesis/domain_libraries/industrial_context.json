@@ -1,0 +1,18 @@
+[
+  {
+    "id": "industrial_resonance_mode",
+    "title": "Mechanical resonance fingerprint",
+    "note": "When industrial sensor data fits a damped oscillator, the natural frequency reveals the structural mode and the damping ratio reveals how much energy is dissipated per cycle. Both shift over time as components wear: a drift in the fitted parameters is the leading indicator of bearing degradation, mounting drift, or imbalance.",
+    "trigger": {
+      "requires": [{"kind": "discovered_motif", "min_count": 1}]
+    }
+  },
+  {
+    "id": "industrial_predictive_maintenance",
+    "title": "Predictive maintenance window",
+    "note": "Anomaly clustering in equipment data is the predictive-maintenance trigger condition. The window for cheap intervention is short — fault probability is rising, time-to-failure is finite. Schedule the maintenance now, not later.",
+    "trigger": {
+      "requires": [{"kind": "anomaly", "min_count": 2}]
+    }
+  }
+]

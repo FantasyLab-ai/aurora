@@ -1,0 +1,106 @@
+{
+  "id": "seismology",
+  "version": "v1",
+  "display_name": "Seismology / earthquake catalog",
+  "domain_tag": "seismology",
+  "description": "Seismic event catalogs from USGS / IRIS / regional networks. Magnitude, depth, location, time. Captures aftershock sequences, b-value distributions, swarms, foreshock signatures.",
+  "identification": {
+    "column_keywords": [
+      "magnitude", "mag", "depth", "depth_km", "latitude", "lat",
+      "longitude", "lon", "lng", "tsunami", "place", "felt",
+      "epicenter", "hypocenter", "seismic", "quake", "earthquake",
+      "phase", "p_wave", "s_wave"
+    ],
+    "value_range_hints": {
+      "magnitude": [0.0, 10.0],
+      "mag":       [0.0, 10.0],
+      "depth_km":  [0.0, 800.0],
+      "latitude":  [-90.0, 90.0],
+      "longitude": [-180.0, 180.0]
+    },
+    "cadence_hints": ["second", "subhourly", "hourly", "event_based"],
+    "domain_tags": ["seismology", "earthquake", "geology", "research"],
+    "min_keyword_hits": 1
+  },
+  "topology_skeleton": {
+    "entities": [
+      {"id": "magnitude",  "label": "Magnitude",       "role": "response", "unit": "Mw"},
+      {"id": "depth",      "label": "Depth",           "role": "state",    "unit": "km"},
+      {"id": "latitude",   "label": "Latitude",        "role": "indicator","unit": "deg"},
+      {"id": "longitude",  "label": "Longitude",       "role": "indicator","unit": "deg"},
+      {"id": "tsunami",    "label": "Tsunami flag",    "role": "response"},
+      {"id": "event_time", "label": "Event time",      "role": "forcing"},
+      {"id": "felt",       "label": "Felt-reports count", "role": "response"}
+    ],
+    "expected_relationships": [
+      {"id": "rel_mag_depth",    "source": "depth",     "target": "magnitude", "kind": "correlational", "rationale": "shallow events tend to read higher locally"},
+      {"id": "rel_mag_tsunami",  "source": "magnitude", "target": "tsunami",   "kind": "causal",        "rationale": "M ≥ 7 + shallow + offshore raises tsunami risk"},
+      {"id": "rel_mag_felt",     "source": "magnitude", "target": "felt",      "kind": "causal",        "rationale": "larger events generate more felt reports"},
+      {"id": "rel_geo_mag",      "source": "latitude",  "target": "magnitude", "kind": "correlational", "rationale": "subduction-zone clustering"}
+    ]
+  },
+  "characteristic_patterns": [
+    {"id": "aftershock_sequence", "name": "Aftershock sequence",
+     "signature": "Omori decay: rate ∝ 1/(t + c)",
+     "typical_duration_seconds": 2592000,
+     "typical_successors": ["swarm_decay"],
+     "detection_rule": "event-rate post-mainshock fits 1/(t+c)"},
+    {"id": "b_value_distribution", "name": "Gutenberg-Richter",
+     "signature": "log10 N(M) = a − b·M",
+     "detection_rule": "linear regression in log-frequency vs magnitude space"},
+    {"id": "earthquake_swarm", "name": "Earthquake swarm",
+     "signature": "many similar-magnitude events in tight space-time window without a clear mainshock",
+     "detection_rule": "matrix-profile motifs on event-rate"},
+    {"id": "foreshock_signature", "name": "Foreshock signature",
+     "signature": "rising small-magnitude rate hours-to-days before a large event",
+     "detection_rule": "trend in event-rate vs magnitude before the largest event"}
+  ],
+  "vocabulary": {
+    "anomaly_term": "outlier event",
+    "regime_term":  "seismicity regime",
+    "pattern_term": "sequence",
+    "action_term":  "monitoring escalation",
+    "breach_term":  "felt-threshold crossing",
+    "advisory_term": "seismic advisory",
+    "extra": {
+      "high_state": "active seismicity",
+      "low_state":  "background",
+      "transition": "swarm onset",
+      "growth_term": "buildup",
+      "decay_term":  "Omori decay"
+    }
+  },
+  "action_library": [
+    {"id": "issue_seismic_advisory", "label": "Issue seismic advisory",
+     "description": "When a high-magnitude event with shallow depth in a tsunami-prone zone is detected, push an advisory to local civil-protection channels.",
+     "triggered_when": ["magnitude ≥ 6.5", "depth ≤ 70 km", "epicenter offshore"],
+     "predicted_outcome_summary": "Advisories at this threshold catch most genuinely tsunamigenic events.",
+     "base_rate_success": 0.80, "confidence_band_required": "high",
+     "falsification": ["non-tsunamigenic mechanism (strike-slip)"],
+     "assumptions": ["origin parameters resolved within minutes"], "relevant_states": ["aftershock_sequence"]},
+    {"id": "raise_monitoring_aftershock", "label": "Raise station-network cadence in aftershock zone",
+     "description": "Boost local-network sampling and waveform retention while an aftershock sequence is active.",
+     "triggered_when": ["aftershock_sequence active"],
+     "predicted_outcome_summary": "Higher cadence improves catalog completeness for B-value estimation.",
+     "base_rate_success": 0.75, "confidence_band_required": "medium",
+     "falsification": [], "assumptions": ["network capacity available"], "relevant_states": ["aftershock_sequence"]},
+    {"id": "investigate_swarm", "label": "Investigate swarm",
+     "description": "Trigger on-call review when an earthquake swarm pattern persists ≥ 24h.",
+     "triggered_when": ["earthquake_swarm active for ≥ 24h"],
+     "predicted_outcome_summary": "Reviewers identify mechanism (volcanic / fluid-driven / tectonic) ≈ 60% of the time.",
+     "base_rate_success": 0.6, "confidence_band_required": "medium",
+     "falsification": [], "assumptions": [], "relevant_states": ["earthquake_swarm"]},
+    {"id": "compute_b_value", "label": "Recompute regional b-value",
+     "description": "Re-fit Gutenberg-Richter on a rolling window when the seismicity regime shifts.",
+     "triggered_when": ["regime_shift detected"],
+     "predicted_outcome_summary": "Updated b-value recalibrates hazard products downstream.",
+     "base_rate_success": 0.7, "confidence_band_required": "low",
+     "falsification": [], "assumptions": [], "relevant_states": []}
+  ],
+  "constraints": [
+    {"id": "magnitude_bound", "description": "Magnitude ∈ [-1, 10]", "kind": "bound", "hardness": "hard", "on_entity": "magnitude"},
+    {"id": "depth_nonneg",    "description": "Depth ≥ 0",            "kind": "bound", "hardness": "hard", "on_entity": "depth"},
+    {"id": "lat_bound",       "description": "Latitude ∈ [-90, 90]", "kind": "bound", "hardness": "hard", "on_entity": "latitude"},
+    {"id": "lon_bound",       "description": "Longitude ∈ [-180, 180]", "kind": "bound", "hardness": "hard", "on_entity": "longitude"}
+  ]
+}

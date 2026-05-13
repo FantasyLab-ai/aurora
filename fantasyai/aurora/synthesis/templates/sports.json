@@ -1,0 +1,46 @@
+[
+  {
+    "id": "sports_form_regime_shift",
+    "domain": "sports",
+    "specificity": 8,
+    "match_condition": {
+      "requires": [
+        {"kind": "regime_change", "min_count": 1},
+        {"kind": "anomaly",       "min_count": 1}
+      ]
+    },
+    "skeleton": "The performance trace shows a form-regime shift: across the analyzed window, the player or team transitioned between distinct performance bands, with {anomaly_count} outlier game{anomaly_plural} marking the transition. In sports analytics this is the classic 'hot' / 'cold' streak signature — but distinguishing real form change from regression to mean requires opponent and venue context, which the cards on the right surface.",
+    "slot_extractors": {
+      "anomaly_count":  "count(findings[kind=anomaly])",
+      "anomaly_plural": "if anomaly_count > 1: 's'"
+    }
+  },
+  {
+    "id": "sports_fatigue_signature",
+    "domain": "sports",
+    "specificity": 7,
+    "match_condition": {
+      "requires": [
+        {"kind": "anomaly", "min_count": 2}
+      ]
+    },
+    "skeleton": "{anomaly_count} below-baseline games clustered tight in the calendar — the signature of fatigue accumulation. In modern rest-management theory, the leading indicator is rolling-minutes or back-to-back density rather than the games themselves. Cross-reference the surfaced rows with the schedule before drawing performance conclusions.",
+    "slot_extractors": {
+      "anomaly_count": "count(findings[kind=anomaly])"
+    }
+  },
+  {
+    "id": "sports_trajectory",
+    "domain": "sports",
+    "specificity": 6,
+    "match_condition": {
+      "requires": [
+        {"kind": "discovered_motif", "min_count": 1}
+      ]
+    },
+    "skeleton": "The performance series fits {motif_label} — a smooth-trajectory dynamic, not a streak. For sports this usually reads as a real season-long change in role, conditioning, or scheme rather than randomness. The fit gives a credible projection horizon for the next handful of games.",
+    "slot_extractors": {
+      "motif_label": "first(findings[kind=discovered_motif].title)"
+    }
+  }
+]

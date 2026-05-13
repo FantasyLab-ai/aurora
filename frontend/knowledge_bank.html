@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Aurora Knowledge Bank</title>
+<style>
+  :root {
+    --bg-deep: #0e0e1a; --bg-panel: #14152a; --bg-card: #1a1a30;
+    --bevel-light: #25264a; --bevel-hi: #2c2c52; --bevel-dark: #050510;
+    --ink: #d8d8f0; --ink-dim: #9595c0; --ink-faint: #5e5e85;
+    --mint: #88ffd1; --cyan: #6ee7ff; --violet: #7c5cff;
+    --violet-bright: #b794ff; --amber: #ffc857; --crit: #ff5577;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    background: var(--bg-deep); color: var(--ink);
+    font-family: 'Inter', -apple-system, system-ui, sans-serif;
+    font-size: 13px; line-height: 1.5;
+  }
+  .top-bar {
+    padding: 14px 24px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--bevel-light);
+    display: flex; align-items: baseline; justify-content: space-between;
+  }
+  h1 {
+    font-family: 'Major Mono Display', monospace;
+    font-size: 18px; color: var(--violet);
+    letter-spacing: 4px; margin: 0;
+    text-shadow: 0 0 12px rgba(124,92,255,0.3);
+  }
+  .top-bar .right {
+    font-family: 'VT323', monospace;
+    font-size: 12px; color: var(--ink-dim);
+  }
+  .top-bar .right b { color: var(--mint); }
+  .container { padding: 24px; max-width: 1200px; margin: 0 auto; }
+  .summary-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px; margin-bottom: 24px;
+  }
+  .summary-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--bevel-light);
+    border-radius: 2px; padding: 14px;
+  }
+  .summary-card .lbl {
+    font-family: 'Major Mono Display', monospace;
+    font-size: 9px; letter-spacing: 1.8px;
+    color: var(--cyan); text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .summary-card .v {
+    font-size: 22px; color: var(--ink); font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .summary-card .sub {
+    color: var(--ink-faint); font-size: 11px; margin-top: 4px;
+  }
+  .search-row {
+    display: flex; gap: 8px; margin-bottom: 18px; align-items: center;
+  }
+  .search-row input[type="text"] {
+    flex: 1; padding: 10px 12px;
+    background: var(--bg-deep); border: 1px solid var(--bevel-light);
+    color: var(--ink); font-family: inherit; font-size: 13px;
+    border-radius: 2px;
+  }
+  .search-row select, .search-row button {
+    padding: 10px 14px; background: var(--bg-panel);
+    border: 1px solid var(--bevel-light); color: var(--ink);
+    font-family: inherit; font-size: 12px; border-radius: 2px;
+    cursor: pointer; letter-spacing: 1px; text-transform: uppercase;
+  }
+  .search-row button {
+    background: var(--violet); color: white; border-color: var(--violet);
+  }
+  .search-row button:hover { background: var(--violet-bright); }
+  .results { display: flex; flex-direction: column; gap: 10px; }
+  .result {
+    background: var(--bg-panel);
+    border: 1px solid var(--bevel-light);
+    border-left: 3px solid var(--violet);
+    padding: 12px 16px; border-radius: 2px;
+    cursor: pointer;
+    transition: border-color 0.12s, transform 0.12s;
+  }
+  .result:hover {
+    border-color: var(--violet-bright);
+    transform: translateY(-1px);
+  }
+  .result .name {
+    font-size: 14px; font-weight: 600; color: var(--ink); margin-bottom: 2px;
+  }
+  .result .meta {
+    font-family: 'VT323', monospace; font-size: 11px;
+    color: var(--ink-faint); letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .result .meta b { color: var(--mint); }
+  .result .meta .id { color: var(--cyan); }
+  .result .defn {
+    font-size: 12px; color: var(--ink-dim); line-height: 1.5;
+  }
+  .result .relevance {
+    float: right;
+    font-family: 'VT323', monospace;
+    font-size: 11px; color: var(--mint);
+  }
+  .modal-bg {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: none; align-items: center; justify-content: center;
+    padding: 40px; z-index: 100;
+  }
+  .modal-bg.active { display: flex; }
+  .modal-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--violet);
+    box-shadow: 0 0 30px rgba(124,92,255,0.4);
+    max-width: 720px; max-height: 80vh; width: 100%;
+    overflow-y: auto; padding: 24px; border-radius: 2px;
+  }
+  .modal-card h2 {
+    font-family: 'Major Mono Display', monospace;
+    font-size: 16px; color: var(--violet); letter-spacing: 2px;
+    margin: 0 0 12px;
+  }
+  .modal-card .id-line {
+    font-family: 'VT323', monospace; font-size: 11px;
+    color: var(--ink-faint); letter-spacing: 1.5px; margin-bottom: 12px;
+  }
+  .modal-card .id-line b { color: var(--mint); }
+  .modal-card section { margin-bottom: 14px; }
+  .modal-card section .lbl {
+    color: var(--mint); font-weight: 600; display: block; margin-bottom: 4px;
+  }
+  .modal-card .caveats { color: var(--amber); }
+  .modal-card .caveats .lbl { color: var(--amber); }
+  .modal-card ul { margin: 6px 0 0 18px; color: var(--ink-dim); }
+  .modal-card .close {
+    float: right; padding: 4px 12px; cursor: pointer;
+    background: none; border: 1px solid var(--ink-faint);
+    color: var(--ink-faint); font-size: 10px; letter-spacing: 1.5px;
+  }
+</style>
+</head>
+<body>
+  <div class="top-bar">
+    <h1>aurora knowledge bank</h1>
+    <span class="right" id="topRight">loading…</span>
+  </div>
+  <div class="container">
+    <div class="summary-grid" id="summaryGrid">
+      <div class="summary-card"><div class="lbl">Total entries</div><div class="v" id="sumTotal">—</div></div>
+      <div class="summary-card"><div class="lbl">Vector index</div><div class="v" id="sumVecs">—</div><div class="sub" id="sumModel">—</div></div>
+      <div class="summary-card"><div class="lbl">Sources</div><div class="v" id="sumSources">—</div></div>
+      <div class="summary-card"><div class="lbl">Domains</div><div class="v" id="sumDomains">—</div></div>
+    </div>
+
+    <div class="search-row">
+      <input id="q" type="text" placeholder="search…  (e.g. circadian rhythm, damped harmonic, metabolic syndrome)" />
+      <select id="mode">
+        <option value="hybrid">hybrid</option>
+        <option value="structured">structured</option>
+        <option value="semantic">semantic</option>
+      </select>
+      <select id="domain">
+        <option value="">any domain</option>
+      </select>
+      <button id="searchBtn">search</button>
+    </div>
+    <div class="results" id="results"></div>
+  </div>
+
+  <div class="modal-bg" id="modalBg">
+    <div class="modal-card" id="modalCard"></div>
+  </div>
+
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+
+async function loadSummary() {
+  const r = await fetch('/api/knowledge_bank/summary');
+  const j = await r.json();
+  if (!j.ok) return;
+  const s = j.summary;
+  document.getElementById('sumTotal').textContent = s.total_entries.toLocaleString();
+  document.getElementById('sumVecs').textContent = s.n_vectors.toLocaleString();
+  document.getElementById('sumModel').textContent =
+    `${s.embedding_model} · ${s.embedding_dim}-d`;
+  document.getElementById('sumSources').textContent = (s.per_source || []).length;
+  document.getElementById('sumDomains').textContent = (s.per_domain || []).length;
+  document.getElementById('topRight').innerHTML =
+    `<b>${s.total_entries.toLocaleString()}</b> entries · <b>${(s.per_source || []).length}</b> sources`;
+  // Domain options.
+  const sel = document.getElementById('domain');
+  for (const d of (s.per_domain || []).sort((a,b)=>b.n-a.n)) {
+    const opt = document.createElement('option');
+    opt.value = d.domain;
+    opt.textContent = `${d.domain} (${d.n})`;
+    sel.appendChild(opt);
+  }
+}
+
+async function search() {
+  const q = document.getElementById('q').value.trim();
+  if (!q) return;
+  const mode = document.getElementById('mode').value;
+  const domain = document.getElementById('domain').value;
+  const url = '/api/knowledge_bank/search?q=' + encodeURIComponent(q)
+              + '&mode=' + mode + '&limit=30'
+              + (domain ? '&domain=' + encodeURIComponent(domain) : '');
+  const r = await fetch(url);
+  const j = await r.json();
+  const out = document.getElementById('results');
+  if (!j.ok || !j.results || !j.results.length) {
+    out.innerHTML = '<div style="color:var(--ink-faint);padding:20px;text-align:center;">no results</div>';
+    return;
+  }
+  out.innerHTML = j.results.map(r => `
+    <div class="result" data-id="${esc(r.id)}">
+      <span class="relevance">rel ${r.relevance.toFixed(2)}</span>
+      <div class="name">${esc(r.name)}</div>
+      <div class="meta"><span class="id">${esc(r.id)}</span> · source <b>${esc(r.source)}</b> · domains ${(r.domain || []).join(' · ')} · via ${(r.matched_via || []).join(' / ')}</div>
+      <div class="defn">${esc(r.definition || '')}…</div>
+    </div>
+  `).join('');
+  for (const el of out.querySelectorAll('.result')) {
+    el.addEventListener('click', () => openEntry(el.dataset.id));
+  }
+}
+
+async function openEntry(id) {
+  const r = await fetch('/api/knowledge_bank/entry/' + encodeURIComponent(id));
+  const j = await r.json();
+  if (!j.ok) { alert('not found'); return; }
+  const e = j.entry;
+  const refs = (e.references || []).map(r =>
+    `<li>${esc(r.citation || '')}${r.doi ? ` <span style="color:var(--ink-faint);font-size:9px;">DOI ${esc(r.doi)}</span>` : ''}${r.url ? ` <a href="${esc(r.url)}" target="_blank" rel="noopener" style="color:var(--cyan);">link</a>` : ''}</li>`).join('');
+  const caveats = (e.caveats || []).map(c =>
+    `<li><b>${esc(c.severity || 'minor')}</b>: ${esc(c.text || '')}</li>`).join('');
+  const aliases = (e.aliases && e.aliases.length)
+    ? `<section><span class="lbl">Aliases.</span> ${e.aliases.map(a=>esc(a)).join(' · ')}</section>` : '';
+  document.getElementById('modalCard').innerHTML = `
+    <button class="close" onclick="document.getElementById('modalBg').classList.remove('active')">CLOSE</button>
+    <h2>${esc(e.name)}</h2>
+    <div class="id-line">id: ${esc(e.id)} · source <b>${esc(e.source)}</b> · domains ${(e.domain||[]).join(' · ')} · review <b>${esc(e.review_status)}</b> · license <b>${esc(e.license || '?')}</b></div>
+    ${aliases}
+    <section><span class="lbl">Definition.</span> ${esc(e.definition || '')}</section>
+    ${e.mechanism ? `<section><span class="lbl">Mechanism.</span> ${esc(e.mechanism)}</section>` : ''}
+    ${caveats ? `<section class="caveats"><span class="lbl">Caveats.</span><ul>${caveats}</ul></section>` : ''}
+    ${refs ? `<section><span class="lbl" style="color:var(--cyan);">References.</span><ul>${refs}</ul></section>` : ''}
+    ${e.license_url ? `<section><span class="lbl">License URL.</span> <a href="${esc(e.license_url)}" target="_blank" rel="noopener" style="color:var(--cyan);">${esc(e.license_url)}</a></section>` : ''}
+  `;
+  document.getElementById('modalBg').classList.add('active');
+}
+
+document.getElementById('modalBg').addEventListener('click', e => {
+  if (e.target.id === 'modalBg') e.target.classList.remove('active');
+});
+document.getElementById('searchBtn').addEventListener('click', search);
+document.getElementById('q').addEventListener('keydown', e => { if (e.key === 'Enter') search(); });
+
+loadSummary();
+</script>
+</body>
+</html>

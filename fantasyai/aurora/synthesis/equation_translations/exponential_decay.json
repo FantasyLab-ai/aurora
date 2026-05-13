@@ -1,0 +1,23 @@
+{
+  "id": "exponential_decay",
+  "match": {
+    "title_substrings": ["exponential decay", "newton's cooling",
+                          "newton cooling", "first-order decay"],
+    "equation_substrings": ["exp(-", "e^(-", "decay"],
+    "desc_substrings":  ["decay", "cooling", "first-order"]
+  },
+  "summary": "First-order exponential decay back to a baseline at rate τ⁻¹. Half-life ≈ 0.69 / τ⁻¹.",
+  "param_to_intuition": [
+    {
+      "param": "tau",
+      "ranges": [
+        {"min": 0.0,    "max": 1.0,
+         "phrase": "Fast decay — the half-life is short relative to the observed window; the system equilibrates quickly."},
+        {"min": 1.0,    "max": 10.0,
+         "phrase": "Moderate decay timescale — visible relaxation across the window."},
+        {"min": 10.0,   "max": 9999.0,
+         "phrase": "Slow decay — the system retains memory of the initial state for many time units."}
+      ]
+    }
+  ]
+}

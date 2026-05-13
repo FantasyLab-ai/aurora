@@ -1,0 +1,44 @@
+[
+  {
+    "id": "industrial_fault_precursor",
+    "domain": "industrial",
+    "specificity": 9,
+    "match_condition": {
+      "requires": [
+        {"kind": "anomaly", "min_count": 2},
+        {"kind": "discovered_motif", "min_count": 1}
+      ]
+    },
+    "skeleton": "The signature is consistent with an early-fault precursor: the underlying dynamics fit {motif_label}, and {anomaly_count} excursions sit outside the expected envelope. In industrial monitoring this is exactly when scheduling matters — fault probability is rising, time-to-failure is finite, and a planned maintenance window is dramatically cheaper than reactive repair.",
+    "slot_extractors": {
+      "motif_label":   "first(findings[kind=discovered_motif].title)",
+      "anomaly_count": "count(findings[kind=anomaly])"
+    }
+  },
+  {
+    "id": "industrial_operating_regime_shift",
+    "domain": "industrial",
+    "specificity": 7,
+    "match_condition": {
+      "requires": [
+        {"kind": "regime_change", "min_count": 1}
+      ]
+    },
+    "skeleton": "A regime change is visible in the sensor stream. For an industrial system this most often signals one of: a maintenance event, a load-profile shift, or component wear crossing a threshold. The next step is the maintenance log — Aurora can confirm the timing of the shift but the operational context decides which of the three causes applies.",
+    "slot_extractors": {}
+  },
+  {
+    "id": "industrial_oscillator_signature",
+    "domain": "industrial",
+    "specificity": 8,
+    "match_condition": {
+      "requires": [
+        {"kind": "discovered_motif", "min_count": 1}
+      ]
+    },
+    "skeleton": "The system shows a damped oscillator signature consistent with {motif_label}. For mechanical components this is the resonance fingerprint — the natural frequency reveals the structural mode, the damping ratio reveals how much energy the system dissipates per cycle. A change in either over time is the leading indicator of bearing degradation, mounting drift, or imbalance.",
+    "slot_extractors": {
+      "motif_label": "first(findings[kind=discovered_motif].title)"
+    }
+  }
+]

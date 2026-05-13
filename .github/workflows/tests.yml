@@ -1,0 +1,89 @@
+# Aurora — CI test workflow
+#
+# Runs the focused test sweep on every push + PR. The full sweep (with
+# heavy analytical methods) runs nightly; CI here covers the substrate
+# layer + frontend audit + system_model tests so PRs get fast feedback.
+#
+# Matrix: Python 3.10 / 3.11 / 3.12 on Ubuntu.
+
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: pytest (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: Install runtime deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install optional substrate deps
+        run: |
+          # Enables Ed25519 signing tests (2 tests skip without it).
+          pip install cryptography || true
+
+      - name: Run focused test sweep (substrate + system_model + frontend audit)
+        run: |
+          pytest -q \
+            tests/test_aurora_sdk.py \
+            tests/test_aurora_mcp.py \
+            tests/test_decision_contracts.py \
+            tests/test_research_kit.py \
+            tests/test_system_model.py \
+            tests/test_v5_b1_spacetime_enrichment.py \
+            tests/test_v5_b2_cones_phase_resonances.py \
+            tests/test_intervention_simulator.py \
+            tests/test_anomalies_math_results_fallback.py \
+            tests/test_anomaly_count_and_domains.py \
+            tests/test_atom_2_2_network_shape.py \
+            tests/test_atom_2_templates.py \
+            tests/test_v5_frontend_audit.py \
+            tests/test_v5_polish.py \
+            tests/test_atom_1_1_top_n.py \
+            tests/test_explainers.py \
+            tests/test_kb_brief5.py \
+            tests/test_coupled_systems.py
+
+      - name: Import sanity (every public module loads cleanly)
+        run: |
+          python -c "
+          import importlib
+          mods = [
+              'aurora_sdk', 'aurora_sdk.bundle', 'aurora_sdk.findings', 'aurora_sdk.runner',
+              'aurora_mcp', 'aurora_mcp.tools',
+              'fantasyai.aurora.decision_contracts',
+              'fantasyai.aurora.decision_contracts.engine',
+              'fantasyai.aurora.decision_contracts.actions',
+              'fantasyai.aurora.research_kit',
+              'fantasyai.aurora.state_builder',
+              'fantasyai.aurora.system_model.instantiator',
+              'fantasyai.aurora.system_model.spacetime',
+              'fantasyai.aurora.system_model.simulator',
+              'fantasyai.aurora.synthesis.engine',
+          ]
+          for m in mods:
+              importlib.import_module(m)
+              print(f'OK  {m}')
+          "

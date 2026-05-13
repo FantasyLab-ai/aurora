@@ -1,0 +1,31 @@
+[
+  {
+    "id": "enviro_storm_lag_context",
+    "title": "Pre-storm signature",
+    "note": "In open-ocean buoy data, the canonical pre-storm sequence is barometric pressure dropping first, wind speed rising second, wave height third — with measurable lag between each. Aurora's lag arcs make these delays visible; cross-reference with the wind-wave coupling card to confirm the wind-driven mechanism.",
+    "trigger": {
+      "requires": [
+        {"kind": "anomaly", "min_count": 2}
+      ],
+      "optional": [
+        {"kind": "regime_change"}
+      ]
+    }
+  },
+  {
+    "id": "enviro_diurnal",
+    "title": "Diurnal background",
+    "note": "Most environmental time-series carry a diurnal cycle even when nothing dramatic is happening. Anomalies near the diurnal peaks/troughs may reflect diurnal envelope changes rather than independent excursions; check the structure tile's cadence detection before treating them as event signals.",
+    "trigger": {
+      "requires": [{"kind": "anomaly", "min_count": 1}]
+    }
+  },
+  {
+    "id": "enviro_pm_law",
+    "title": "Wind-wave coupling",
+    "note": "The Pierson-Moskowitz law (wave height ∝ wind² · √fetch) is one of Aurora's canonical priors. When the fitted wind-wave relationship matches PM at high confidence, the system is in a fully-developed-sea regime. Departures from PM signal short-fetch conditions, swell from a remote storm, or instrumentation drift.",
+    "trigger": {
+      "requires": [{"kind": "physics_match", "min_count": 1}]
+    }
+  }
+]

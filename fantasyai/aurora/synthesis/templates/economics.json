@@ -1,0 +1,52 @@
+[
+  {
+    "id": "economics_recession_signal",
+    "domain": "economics",
+    "specificity": 9,
+    "match_condition": {
+      "requires": [
+        {"kind": "regime_change", "min_count": 1},
+        {"kind": "anomaly",       "min_count": 1}
+      ],
+      "optional": [
+        {"kind": "forecast_peak"}
+      ]
+    },
+    "skeleton": "The data carries a recession-signal shape: {regime_count} regime change{regime_plural} alongside {anomaly_count} indicator surprise{anomaly_plural}. Leading indicators preceded coincident ones, which is the canonical pre-contraction sequence — though false positives are documented and the actual decision should weight cross-indicator agreement, not any single series. The forecast horizon is reliable for nowcasting but degrades quickly past 2-3 months.",
+    "slot_extractors": {
+      "regime_count":   "count(findings[kind=regime_change])",
+      "regime_plural":  "if regime_count > 1: 's'",
+      "anomaly_count":  "count(findings[kind=anomaly])",
+      "anomaly_plural": "if anomaly_count > 1: 's'"
+    }
+  },
+  {
+    "id": "economics_stable_expansion",
+    "domain": "economics",
+    "specificity": 6,
+    "match_condition": {
+      "requires": [
+        {"kind": "discovered_motif", "min_count": 1}
+      ]
+    },
+    "skeleton": "Indicators are tracking a stable expansion regime: {motif_label} captures the dominant dynamic with no regime break detected. In macroeconomics terms, this is the 'middle of the cycle' — the part where leading indicators stay roughly co-moving and policy transmission lags are predictable.",
+    "slot_extractors": {
+      "motif_label": "first(findings[kind=discovered_motif].title)"
+    }
+  },
+  {
+    "id": "economics_term_inversion",
+    "domain": "economics",
+    "specificity": 8,
+    "match_condition": {
+      "requires": [
+        {"kind": "anomaly", "min_count": 1}
+      ],
+      "optional": [
+        {"kind": "regime_change"}
+      ]
+    },
+    "skeleton": "Aurora surfaced anomalies in the rate / yield-curve series. Term-structure inversions have preceded most US recessions in the last half-century with a 6-18 month lead time, but they're not deterministic — the standard caveat is that the modern policy regime, with active QT/QE, may have shifted the relationship. Use these as one input alongside leading-indicator dispersion, not as a standalone signal.",
+    "slot_extractors": {}
+  }
+]

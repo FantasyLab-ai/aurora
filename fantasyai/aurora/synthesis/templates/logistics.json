@@ -1,0 +1,47 @@
+[
+  {
+    "id": "logistics_bottleneck",
+    "domain": "logistics",
+    "specificity": 9,
+    "match_condition": {
+      "requires": [
+        {"kind": "anomaly", "min_count": 1}
+      ],
+      "optional": [
+        {"kind": "discovered_motif"},
+        {"kind": "regime_change"}
+      ]
+    },
+    "skeleton": "The network shows bottleneck pressure: {anomaly_count} edge{anomaly_plural} or node{anomaly_plural} sit above their normal utilization band. In Little's-Law terms this is the saturation regime — adding flow without expanding capacity will translate directly into queue length and lead time, not throughput. The reroute and capacity-rebalance actions in the right rail are the standard responses; the cascade-projection card shows which downstream nodes feel the pressure first.",
+    "slot_extractors": {
+      "anomaly_count":  "count(findings[kind=anomaly])",
+      "anomaly_plural": "if anomaly_count > 1: 's'"
+    }
+  },
+  {
+    "id": "logistics_cascade",
+    "domain": "logistics",
+    "specificity": 8,
+    "match_condition": {
+      "requires": [
+        {"kind": "regime_change", "min_count": 1}
+      ]
+    },
+    "skeleton": "A network-mode shift is visible: the operating regime changed enough to register as a structural break. In a logistics network this most often follows a single upstream incident that propagates downstream with measurable lag — the lag arcs in the system graph make the propagation explicit. The repair window is short; the next few hours of forward projection have the highest decision value.",
+    "slot_extractors": {}
+  },
+  {
+    "id": "logistics_steady_throughput",
+    "domain": "logistics",
+    "specificity": 5,
+    "match_condition": {
+      "requires": [
+        {"kind": "discovered_motif", "min_count": 1}
+      ]
+    },
+    "skeleton": "The network is in a steady-throughput regime: the dominant dynamic is {motif_label}, with no saturated edges and no cascade signatures. Forecasts at multi-hour horizons are credible; this is the calibration window for tuning buffer levels and lead-time targets.",
+    "slot_extractors": {
+      "motif_label": "first(findings[kind=discovered_motif].title)"
+    }
+  }
+]

@@ -1,0 +1,18 @@
+[
+  {
+    "id": "finance_vol_clustering",
+    "title": "Volatility clustering",
+    "note": "Financial time-series almost always exhibit volatility clustering — high-volatility episodes cluster in time. Aurora's anomaly detector picks out the prints; the regime detector picks out the cluster. Treat vol-cluster signatures as conditional: forecasts are only credible while the cluster persists.",
+    "trigger": {
+      "requires": [{"kind": "anomaly", "min_count": 2}]
+    }
+  },
+  {
+    "id": "finance_correlation_breakdown",
+    "title": "Correlation breakdown in stress",
+    "note": "Cross-asset correlations tighten in active regimes. A 'diversified' portfolio in a calm regime may be effectively concentrated when active conditions arrive. The decision-grade question is not the unconditional correlation but the conditional one — Aurora can compute it from the regimes; ask the copilot.",
+    "trigger": {
+      "requires": [{"kind": "regime_change", "min_count": 1}]
+    }
+  }
+]

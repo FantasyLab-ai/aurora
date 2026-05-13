@@ -1,0 +1,45 @@
+[
+  {
+    "id": "medical_clinical_signal_cluster",
+    "domain": "medical",
+    "specificity": 8,
+    "match_condition": {
+      "requires": [
+        {"kind": "anomaly", "min_count": 2}
+      ]
+    },
+    "skeleton": "Aurora flagged {anomaly_count} clinical signals worth review — these are statistical signatures, not diagnoses. In a medical context, the standard reading is: cluster the events by patient and timestamp, look for confounding co-variates (medication, time of day, instrument calibration), and refer to clinician judgement before any decision. The system is a screening aid, not a verdict.",
+    "slot_extractors": {
+      "anomaly_count": "count(findings[kind=anomaly])"
+    }
+  },
+  {
+    "id": "medical_regime_in_cohort",
+    "domain": "medical",
+    "specificity": 7,
+    "match_condition": {
+      "requires": [
+        {"kind": "regime_change", "min_count": 1}
+      ],
+      "optional": [
+        {"kind": "anomaly"}
+      ]
+    },
+    "skeleton": "A cohort-level regime shift is visible in the data: the population's central tendency moved between regimes. In medical research this typically reflects either a change in cohort composition or a real population-level response to an intervention. Distinguishing the two requires the cohort metadata — Aurora can flag the shift but not its cause.",
+    "slot_extractors": {}
+  },
+  {
+    "id": "medical_biomarker_dynamics",
+    "domain": "medical",
+    "specificity": 8,
+    "match_condition": {
+      "requires": [
+        {"kind": "discovered_motif", "min_count": 1}
+      ]
+    },
+    "skeleton": "The biomarker series fits {motif_label}. In clinical-data context this is a kinetic signature — the parameters describe how fast the biomarker responds, decays, and equilibrates. Cross-reference the fitted timescales with known pharmacokinetics for any administered agents before drawing physiological conclusions.",
+    "slot_extractors": {
+      "motif_label": "first(findings[kind=discovered_motif].title)"
+    }
+  }
+]

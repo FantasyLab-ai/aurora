@@ -1,0 +1,107 @@
+{
+  "id": "ops",
+  "version": "v1",
+  "display_name": "Operations / SLO-driven service systems",
+  "domain_tag": "ops",
+  "description": "Service reliability data: latency, error rate, capacity, dependencies, incidents. Diurnal load curves, regression spikes, cascading failures.",
+  "identification": {
+    "column_keywords": [
+      "latency", "p50", "p95", "p99", "rps", "qps", "throughput",
+      "error_rate", "error_count", "5xx", "4xx", "saturation",
+      "cpu", "memory", "queue", "incident", "deploy", "service",
+      "dependency", "endpoint", "status_code", "slo", "slo_breach"
+    ],
+    "value_range_hints": {
+      "p99":         [0.0, 60000.0],
+      "error_rate":  [0.0, 1.0],
+      "cpu":         [0.0, 1.0]
+    },
+    "cadence_hints": ["second", "subhourly", "hourly"],
+    "domain_tags": ["ops", "sre", "reliability"],
+    "min_keyword_hits": 2
+  },
+  "topology_skeleton": {
+    "entities": [
+      {"id": "service",     "label": "Service",     "role": "actor"},
+      {"id": "request_rate","label": "Request rate","role": "forcing", "unit": "rps"},
+      {"id": "latency",     "label": "Latency",     "role": "response","unit": "ms"},
+      {"id": "error_rate",  "label": "Error rate",  "role": "response","unit": "fraction"},
+      {"id": "capacity",    "label": "Capacity (CPU/mem)", "role": "state"},
+      {"id": "dependency",  "label": "Upstream dependency","role": "actor"},
+      {"id": "incident",    "label": "Incident",    "role": "response"},
+      {"id": "deploy",      "label": "Deployment",  "role": "forcing"}
+    ],
+    "expected_relationships": [
+      {"id": "rel_load_lat",     "source": "request_rate", "target": "latency",    "kind": "causal", "rationale": "queueing theory"},
+      {"id": "rel_cap_lat",      "source": "capacity",     "target": "latency",    "kind": "causal", "rationale": "saturation tail"},
+      {"id": "rel_lat_err",      "source": "latency",      "target": "error_rate", "kind": "correlational"},
+      {"id": "rel_dep_lat",      "source": "dependency",   "target": "latency",    "kind": "causal"},
+      {"id": "rel_deploy_err",   "source": "deploy",       "target": "error_rate", "kind": "causal", "rationale": "deployment regression risk"}
+    ]
+  },
+  "characteristic_patterns": [
+    {"id": "diurnal_load", "name": "Diurnal load curve",
+     "signature": "≈24h sinusoid in request rate",
+     "detection_rule": "FFT dominant frequency near 1/86400 Hz on rps"},
+    {"id": "traffic_spike", "name": "Traffic spike",
+     "signature": "rps step rise > 3σ over 5 minutes",
+     "detection_rule": "anomaly score on rps with severity ≥ warn"},
+    {"id": "saturation", "name": "Capacity saturation",
+     "signature": "p99 latency hockey-sticks while CPU/mem near 100%",
+     "detection_rule": "saturation fit on (cpu, p99) succeeds with K small"},
+    {"id": "deployment_regression", "name": "Deployment regression",
+     "signature": "step change in error_rate / latency aligned with deploy ts",
+     "detection_rule": "ruptures change-point near deploy timestamp"},
+    {"id": "cascading_failure", "name": "Cascading failure",
+     "signature": "dependency error spike → service error spike with lag",
+     "detection_rule": "lagged correlation dependency.error → service.error > 0.6"}
+  ],
+  "vocabulary": {
+    "anomaly_term": "incident",
+    "regime_term":  "phase",
+    "pattern_term": "signature",
+    "action_term":  "remediation",
+    "breach_term":  "SLO breach",
+    "advisory_term": "alert",
+    "extra": {
+      "high_state": "saturated",
+      "low_state":  "healthy",
+      "transition": "regression",
+      "growth_term": "load growth",
+      "decay_term":  "recovery"
+    }
+  },
+  "action_library": [
+    {"id": "scale_up", "label": "Scale up capacity",
+     "description": "Add replicas / vertical resources before saturation triggers SLO breach.",
+     "triggered_when": ["saturation pattern active", "predicted breach in next window"],
+     "predicted_outcome_summary": "Pre-emptive scale-up averts ≈80% of imminent breaches when triggered ≥ 5 min before saturation.",
+     "base_rate_success": 0.80, "confidence_band_required": "medium",
+     "falsification": ["scaling didn't reduce p99"],
+     "assumptions": ["bottleneck is capacity not dependency"],
+     "relevant_states": ["saturation", "traffic_spike"]},
+    {"id": "rollback", "label": "Roll back recent deployment",
+     "description": "If a deployment-regression pattern is detected and confidence is high, revert to the prior known-good version.",
+     "triggered_when": ["deployment_regression detected", "error rise > 3σ"],
+     "predicted_outcome_summary": "Rollbacks resolve ≈70% of post-deploy regressions within 5 min.",
+     "base_rate_success": 0.70, "confidence_band_required": "high",
+     "falsification": ["error persists after rollback"],
+     "assumptions": ["deploy artifact is reversible"], "relevant_states": ["deployment_regression"]},
+    {"id": "throttle", "label": "Throttle / shed load",
+     "description": "Apply rate limits at the edge to keep the SLO intact during a spike.",
+     "triggered_when": ["traffic_spike active", "scale_up not feasible quickly"],
+     "predicted_outcome_summary": "Throttling stabilises latency at the cost of some user-visible 429s.",
+     "base_rate_success": 0.65, "confidence_band_required": "medium",
+     "falsification": [], "assumptions": ["edge supports per-route limits"], "relevant_states": ["traffic_spike"]},
+    {"id": "dependency_circuit_breaker", "label": "Open dependency circuit breaker",
+     "description": "When upstream is the bottleneck, fail fast rather than block on calls.",
+     "triggered_when": ["cascading_failure pattern active"],
+     "predicted_outcome_summary": "Fast-fail isolates the failure domain.",
+     "base_rate_success": 0.75, "confidence_band_required": "high",
+     "falsification": [], "assumptions": [], "relevant_states": ["cascading_failure"]}
+  ],
+  "constraints": [
+    {"id": "error_rate_bound", "description": "error_rate ∈ [0,1]", "kind": "bound", "hardness": "hard", "on_entity": "error_rate"},
+    {"id": "rps_nonneg", "description": "request_rate ≥ 0", "kind": "bound", "hardness": "hard", "on_entity": "request_rate"}
+  ]
+}

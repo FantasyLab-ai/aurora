@@ -1,0 +1,29 @@
+{
+  "id": "low-confidence-review",
+  "name": "Flag low-confidence runs for human review",
+  "description": "Aurora's system-model confidence below 30% means the model is mostly inferred. Route these runs to a human queue for closer inspection before treating the findings as actionable.",
+  "enabled": true,
+  "trigger": {
+    "field": "confidence",
+    "op": "<",
+    "value": 0.30
+  },
+  "actions": [
+    {
+      "type": "webhook",
+      "url": "https://intake.example.com/aurora/review-queue"
+    },
+    {
+      "type": "log",
+      "level": "info",
+      "message": "low-confidence run queued for review"
+    }
+  ],
+  "rate_limit": {
+    "max_per_day": 50
+  },
+  "metadata": {
+    "owner": "data-team@example.com",
+    "policy": "https://wiki.example.com/aurora-confidence-policy"
+  }
+}

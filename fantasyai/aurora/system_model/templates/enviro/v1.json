@@ -1,0 +1,138 @@
+{
+  "id": "enviro",
+  "version": "v1",
+  "display_name": "Environmental / atmospheric / oceanic systems",
+  "domain_tag": "enviro",
+  "description": "Open-air, ocean, and hydrological systems characterised by forcings (wind, pressure, solar) driving state variables (temp, humidity, water level) into response variables (waves, precipitation, runoff).",
+  "identification": {
+    "column_keywords": [
+      "wind", "wind_speed", "gust", "pressure", "barometric", "humidity",
+      "temperature", "temp", "sst", "wave", "wave_height", "fetch",
+      "precip", "rainfall", "solar", "irradiance", "tide", "buoy",
+      "dew_point", "visibility",
+      "tmax", "tmin", "tavg", "prcp", "snow", "snwd", "awnd", "wsf2",
+      "station", "noaa", "ghcnd", "rh"
+    ],
+    "value_range_hints": {
+      "wind_speed": [0.0, 120.0],
+      "pressure":   [800.0, 1100.0],
+      "humidity":   [0.0, 100.0],
+      "temperature": [-60.0, 60.0]
+    },
+    "cadence_hints": ["subhourly", "hourly", "daily"],
+    "domain_tags": ["enviro", "weather", "ocean", "climate"],
+    "min_keyword_hits": 2
+  },
+  "topology_skeleton": {
+    "entities": [
+      {"id": "wind",      "label": "Wind",          "role": "forcing",   "unit": "m/s"},
+      {"id": "pressure",  "label": "Atmospheric pressure", "role": "forcing", "unit": "hPa"},
+      {"id": "solar",     "label": "Solar input",   "role": "forcing"},
+      {"id": "humidity",  "label": "Humidity",      "role": "state",     "unit": "%"},
+      {"id": "air_temp",  "label": "Air temperature", "role": "state",   "unit": "K"},
+      {"id": "sst",       "label": "Sea-surface temp", "role": "state",  "unit": "K"},
+      {"id": "wave_height", "label": "Wave height", "role": "response",  "unit": "m"},
+      {"id": "precip",    "label": "Precipitation", "role": "response",  "unit": "mm"},
+      {"id": "fetch",     "label": "Fetch",         "role": "indicator", "unit": "km"}
+    ],
+    "expected_relationships": [
+      {"id": "rel_wind_wave",   "source": "wind",     "target": "wave_height", "kind": "physical",   "rationale": "wind-wave coupling (Pierson-Moskowitz)"},
+      {"id": "rel_press_storm", "source": "pressure", "target": "wind",        "kind": "causal",     "rationale": "pressure drop → frontal wind"},
+      {"id": "rel_solar_temp",  "source": "solar",    "target": "air_temp",    "kind": "causal",     "rationale": "diurnal heating"},
+      {"id": "rel_temp_humid",  "source": "air_temp", "target": "humidity",    "kind": "correlational"},
+      {"id": "rel_fetch_wave",  "source": "fetch",    "target": "wave_height", "kind": "physical",   "rationale": "fetch-limited growth"}
+    ]
+  },
+  "characteristic_patterns": [
+    {
+      "id": "diurnal_cycle",
+      "name": "Diurnal cycle",
+      "signature": "≈24h sinusoid in temperature/solar; pressure semi-diurnal",
+      "typical_duration_seconds": 86400,
+      "typical_successors": ["frontal_passage"],
+      "detection_rule": "FFT dominant frequency near 1/86400 Hz on temp or solar"
+    },
+    {
+      "id": "frontal_passage",
+      "name": "Frontal passage",
+      "signature": "rapid pressure drop + wind direction shift + temperature jump",
+      "typical_duration_seconds": 14400,
+      "typical_successors": ["calm_after_front", "storm_precursor"],
+      "detection_rule": "pressure dy/dt < -1.5 hPa/h sustained ≥ 90 min"
+    },
+    {
+      "id": "storm_precursor",
+      "name": "Storm precursor",
+      "signature": "pressure < seasonal mean − 2σ AND wind rising AND humidity rising",
+      "typical_duration_seconds": 21600,
+      "typical_successors": ["storm_active"],
+      "detection_rule": "joint anomaly on pressure/wind/humidity"
+    },
+    {
+      "id": "fetch_limited_wave_growth",
+      "name": "Fetch-limited wave growth",
+      "signature": "wave height plateaus at √fetch · wind² scaling",
+      "typical_duration_seconds": null,
+      "typical_successors": ["fully_developed_sea"],
+      "detection_rule": "discovered allometric H ∝ wind² · √fetch"
+    }
+  ],
+  "vocabulary": {
+    "anomaly_term": "anomaly",
+    "regime_term":  "regime",
+    "pattern_term": "signature",
+    "action_term":  "advisory action",
+    "breach_term":  "operational threshold breach",
+    "advisory_term": "advisory",
+    "extra": {
+      "high_state": "storm",
+      "low_state":  "calm",
+      "transition": "frontal passage",
+      "growth_term": "intensification",
+      "decay_term":  "decay"
+    }
+  },
+  "action_library": [
+    {
+      "id": "issue_advisory",
+      "label": "Issue operational advisory",
+      "description": "When a forecast peak crosses the operational ceiling at high confidence, issue an advisory to downstream operators with predicted timing, expected magnitude, and falsification window.",
+      "triggered_when": ["forecast peak > operational ceiling", "confidence ≥ 0.7"],
+      "predicted_outcome_summary": "Pre-emptive advisories reduce uncoordinated breach response by ≈70%.",
+      "base_rate_success": 0.75,
+      "confidence_band_required": "high",
+      "falsification": ["wind dies before predicted peak", "pressure rebounds"],
+      "assumptions": ["downstream operators read advisories", "fetch geometry stable"],
+      "relevant_states": ["frontal_passage", "storm_precursor"]
+    },
+    {
+      "id": "raise_monitoring_cadence",
+      "label": "Raise monitoring cadence",
+      "description": "Switch buoys / stations from default sampling to high-frequency mode while a precursor pattern is active, then revert when the regime ends.",
+      "triggered_when": ["pattern in {storm_precursor, frontal_passage}"],
+      "predicted_outcome_summary": "Higher cadence catches transitions ≈3× faster.",
+      "base_rate_success": 0.65,
+      "confidence_band_required": "medium",
+      "falsification": ["pattern dies before transition observed"],
+      "assumptions": ["sensor budget allows higher cadence"],
+      "relevant_states": ["storm_precursor", "frontal_passage"]
+    },
+    {
+      "id": "scenario_forecast_intervention",
+      "label": "Run scenario forecast under intervention",
+      "description": "Use the what-if engine to test how shifting fetch / wind speed perturbs predicted wave height; supports operational planning.",
+      "triggered_when": ["operational decision pending"],
+      "predicted_outcome_summary": "Scenario forecasting clarifies trade-offs but doesn't reduce uncertainty.",
+      "base_rate_success": 0.6,
+      "confidence_band_required": "medium",
+      "falsification": ["model lacks the perturbation variable"],
+      "assumptions": ["counterfactual is physically plausible"],
+      "relevant_states": []
+    }
+  ],
+  "constraints": [
+    {"id": "humidity_bound", "description": "Relative humidity ∈ [0, 100]%", "kind": "bound", "hardness": "hard", "on_entity": "humidity", "expression": "0 ≤ humidity ≤ 100"},
+    {"id": "pressure_plausible", "description": "Sea-level pressure typically ∈ [870, 1085] hPa", "kind": "bound", "hardness": "soft", "on_entity": "pressure", "expression": "870 ≤ pressure ≤ 1085"},
+    {"id": "wave_nonneg", "description": "Wave height non-negative", "kind": "bound", "hardness": "hard", "on_entity": "wave_height", "expression": "wave_height ≥ 0"}
+  ]
+}

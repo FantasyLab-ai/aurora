@@ -95,6 +95,47 @@ def discover_physics_models(df: pd.DataFrame, target_col: Optional[str] = None, 
     # Phase 4 constraints score (generic invariants)
     constraints = physics_constraints(df=df, target_col=target_col, time_col=time_col)
 
+    # ---- v2.0: also try coupled multi-target systems (Lotka-Volterra, SIR, …)
+    # when the dataset has ≥ 2 strongly-correlated numeric columns. Cheap to
+    # try; the dispatcher returns "error" when the data isn't coupled-shaped.
+    coupled_block: Dict[str, Any] = {"note": "skipped", "reason": "fewer than 2 numeric columns"}
+    try:
+        if len(num_cols) >= 2:
+            from .coupled_systems import discover_coupled
+            # Pick the two highest-variance columns aside from target.
+            other_cols = [c for c in num_cols if c != target_col]
+            other_cols.sort(
+                key=lambda c: float(np.nanvar(pd.to_numeric(df[c], errors="coerce"))),
+                reverse=True,
+            )
+            if other_cols:
+                x_arr = pd.to_numeric(df[target_col], errors="coerce").to_numpy(dtype=float)
+                y_arr = pd.to_numeric(df[other_cols[0]], errors="coerce").to_numpy(dtype=float)
+                # Interpolate gaps so the coupled fit doesn't choke on NaNs.
+                x_arr = pd.Series(x_arr).interpolate(limit_direction="both").to_numpy(dtype=float)
+                y_arr = pd.Series(y_arr).interpolate(limit_direction="both").to_numpy(dtype=float)
+                coupled_block = discover_coupled(t, x_arr, y_arr)
+                coupled_block["x_col"] = target_col
+                coupled_block["y_col"] = other_cols[0]
+    except Exception as e:
+        coupled_block = {"note": "error", "error": str(e)}
+
+    # ---- v2.0: try PDE detection on wide-format spatial-temporal grids.
+    # Most CSVs aren't gridded; the helper returns None and we skip silently.
+    pde_block: Dict[str, Any] = {"note": "skipped", "reason": "no spatial grid detected"}
+    try:
+        from .pde_detection import detect_pde_grid_in_dataframe, discover_pde
+        grid = detect_pde_grid_in_dataframe(df, time_col=time_col)
+        if grid is not None:
+            t_g, x_g, U_g, used_cols = grid
+            pde_result = discover_pde(t_g, x_g, U_g)
+            pde_block = pde_result
+            pde_block["spatial_columns"] = used_cols
+            pde_block["n_t"] = int(t_g.size)
+            pde_block["n_x"] = int(x_g.size)
+    except Exception as e:
+        pde_block = {"note": "error", "error": str(e)}
+
     return {
         "note": "ok",
         "target_col": target_col,
@@ -106,6 +147,9 @@ def discover_physics_models(df: pd.DataFrame, target_col: Optional[str] = None, 
         "all_candidates": results,
         "constraints": constraints,
         "physics_consistency_score": constraints.get("physics_consistency_score", 0.0),
+        # v2.0 multi-target / PDE additions:
+        "coupled_systems": coupled_block,
+        "pde_detection": pde_block,
     }
 
 

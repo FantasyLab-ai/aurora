@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Aurora">
+  <title>Aurora</title>
+  <!-- Simplified favicon: blue wizard hat with one star + bear head dot.
+       At 16x16 the body shape disappears into noise, so we lead with the
+       brand-recognisable hat. -->
+  <!-- Background circle (transparent on most browsers, helps on dark tabs) -->
+  <!-- Hat body -->
+  <path d="M 8 5 Q 7 5 7 7 L 9 21 L 23 21 L 25 7 Q 25 5 23 5 Q 19 7 16 6 Q 12 5 9 5 Z"
+        fill="#2364E8" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Hat brim -->
+  <ellipse cx="16" cy="22" rx="10" ry="2"
+           fill="#2364E8" stroke="#000" stroke-width="1.5"/>
+  <!-- One star -->
+  <path d="M 16 10 L 17 13 L 20 13 L 17.5 15 L 18.5 18 L 16 16.5 L 13.5 18 L 14.5 15 L 12 13 L 15 13 Z"
+        fill="#fff"/>
+  <!-- Bear muzzle peek under brim -->
+  <ellipse cx="16" cy="27" rx="6" ry="3" fill="#fff" stroke="#000" stroke-width="1.5"/>
+  <!-- Eye + nose dots -->
+  <circle cx="18" cy="26" r="0.8" fill="#000"/>
+  <circle cx="20.5" cy="27" r="0.9" fill="#000"/>
+</svg>

@@ -1,0 +1,16 @@
+[
+  {
+    "id": "research_replication_first",
+    "title": "Replication before claim",
+    "note": "Research-context findings should pass replication on independent data before they become claims. Aurora's overnight learning loop tracks promotion thresholds — 3 confirmations across distinct windows + 60% consensus to move from candidate to canonical. Treat surfaced patterns as hypotheses until that bar is cleared.",
+    "trigger": {}
+  },
+  {
+    "id": "research_pre_registration",
+    "title": "Pre-register the analysis",
+    "note": "When a fitted relationship matches a canonical law in the prior library, the path to publication is a pre-registered out-of-sample test — define the metric, the window, the success threshold, then run the comparison. The pre-registration is what defends against post-hoc tuning.",
+    "trigger": {
+      "requires": [{"kind": "physics_match", "min_count": 1}]
+    }
+  }
+]
