@@ -193,48 +193,212 @@ def _run_pipeline(dataset_path: Path,
                   ) -> Path:
     """Invoke the pipeline on a fresh dataset and return the new run_dir.
 
-    Why not just call ``mathstack_v2.run_mathstack_v2`` directly: the
-    pipeline has a one-call wrapper used by the runner CLI. We mirror
-    its behaviour here without depending on the studio_api flask layer
-    (so the SDK works headless).
+    The canonical end-to-end orchestrator is
+    ``scripts/run_aurora_dataset_runner.py`` — it lays out the run_dir,
+    writes schema/structure contracts, calls the math stack, runs deep
+    math, and (optionally) drives the LLM synthesis. That script
+    expects a DataFrame internally and persists everything to disk, so
+    invoking it as a subprocess is both the simplest and most faithful
+    way to get a real run_dir for the SDK.
+
+    First we try an in-process import for ``run_pipeline_for_dataset``
+    (cleaner, ships with future refactors). If that's not present, we
+    shell out to the runner script. We do NOT import ``run_mathstack_v2``
+    directly — it's a stage of the pipeline, not the whole thing, and
+    calling it standalone won't produce a populated run_dir.
     """
-    # Defer imports — keep the SDK importable even if the heavy
-    # analytical deps aren't installed (e.g., for bundle-only use).
+    # Path A: clean in-process entrypoint if a future refactor lands one.
     try:
-        # Highest-level entrypoint the studio_api uses.
         from fantasyai.aurora.run_registry import run_pipeline_for_dataset  # type: ignore
-    except Exception:
-        run_pipeline_for_dataset = None  # type: ignore
-    if run_pipeline_for_dataset is None:
-        # Fallback: assemble the run manually via state_builder + the
-        # mathstack runner. This path is best-effort; most installs
-        # ship run_registry alongside state_builder.
-        from fantasyai.aurora.mathstack_v2 import run_mathstack_v2  # type: ignore
-        out_root = Path(output_root) if output_root else (
-            Path("outputs") / "aurora_dataset_runs"
-        )
-        out_root.mkdir(parents=True, exist_ok=True)
-        # The runner picks its own run_dir name; pass dataset_path and
-        # let it lay out artifacts.
-        result = run_mathstack_v2(  # type: ignore
+        return Path(run_pipeline_for_dataset(  # type: ignore
             str(dataset_path),
-            output_root=str(out_root),
             depth=depth,
             seed=seed,
+            output_root=str(output_root) if output_root else None,
+        ))
+    except ImportError:
+        pass  # fall through to subprocess
+
+    # Path B: subprocess the canonical CLI runner. This is what the
+    # Studio's background-job system uses too.
+    import subprocess
+    import sys
+    import json as _json
+
+    # Map SDK depth → runner flags. The runner accepts --math-v2 (always
+    # on for a real run), --deep-math (tier-2 methods), and --also-llm
+    # (RAG synthesis). Tier "auto" defaults to deep-math; "full" adds
+    # the LLM pass.
+    flags: list[str] = ["--math-v2"]
+    if depth in ("standard", "full", "auto"):
+        flags.append("--deep-math")
+    if depth == "full":
+        flags.append("--also-llm")
+
+    # Seed: runner expects int. Hash a string seed to a stable int so
+    # the SDK's typed Optional[str] is honored without surprises.
+    seed_int: int
+    if seed is None:
+        seed_int = 42
+    else:
+        try:
+            seed_int = int(seed)
+        except (TypeError, ValueError):
+            # Stable hash of the user's seed text → reproducible int seed.
+            import hashlib
+            seed_int = int(hashlib.sha256(str(seed).encode("utf-8"))
+                           .hexdigest()[:8], 16) % (2**31)
+
+    cmd = [
+        sys.executable, "-m", "scripts.run_aurora_dataset_runner",
+        "--dataset", str(dataset_path),
+        "--seed", str(seed_int),
+        *flags,
+    ]
+
+    # Run from the project root so the script's relative output_root
+    # ("outputs/aurora_dataset_runs") lands in the expected place.
+    project_root = Path(__file__).resolve().parents[1]
+
+    # Propagate the parent env, then add the home/cache vars that some
+    # MCP launchers strip. Without these the sentence-transformer
+    # cache isn't found and the model is re-downloaded (or hangs).
+    import os as _os
+    env = _os.environ.copy()
+    for var in ("USERPROFILE", "HOMEDRIVE", "HOMEPATH", "APPDATA",
+                "LOCALAPPDATA", "TEMP", "TMP", "PATH", "HF_HOME",
+                "TRANSFORMERS_CACHE", "HUGGINGFACE_HUB_CACHE",
+                "HF_TOKEN", "HF_HUB_DISABLE_TELEMETRY"):
+        if var in _os.environ:
+            env.setdefault(var, _os.environ[var])
+    # Force offline mode for HF — if we have a cached model, use it;
+    # if not, fail fast rather than hang on a download in an MCP context.
+    env.setdefault("HF_HUB_OFFLINE", "1")
+    env.setdefault("TRANSFORMERS_OFFLINE", "1")
+    # Project root on PYTHONPATH (some launchers don't inherit cwd into it).
+    existing_pp = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = (str(project_root) + _os.pathsep + existing_pp).rstrip(_os.pathsep)
+
+    # Use temp files instead of OS pipes so a chatty subprocess can't
+    # deadlock by filling the pipe buffer. Files have no size limit.
+    import tempfile
+    stdout_f = tempfile.NamedTemporaryFile(
+        mode="w+", delete=False, suffix=".aurora_stdout.log", encoding="utf-8"
+    )
+    stderr_f = tempfile.NamedTemporaryFile(
+        mode="w+", delete=False, suffix=".aurora_stderr.log", encoding="utf-8"
+    )
+    stdout = ""
+    stderr = ""
+    timed_out = False
+    try:
+        try:
+            proc = subprocess.run(
+                cmd, stdout=stdout_f, stderr=stderr_f,
+                cwd=str(project_root), env=env,
+                timeout=300,  # 5 min — MCP clients give up sooner anyway
+            )
+            returncode = proc.returncode
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            returncode = -1
+        stdout_f.close()
+        stderr_f.close()
+        try:
+            with open(stdout_f.name, "r", encoding="utf-8", errors="replace") as f:
+                stdout = f.read()
+            with open(stderr_f.name, "r", encoding="utf-8", errors="replace") as f:
+                stderr = f.read()
+        except Exception:
+            pass
+    finally:
+        for f in (stdout_f, stderr_f):
+            try:
+                _os.unlink(f.name)
+            except Exception:
+                pass
+
+    # Even on timeout / failure, the runner may have produced a partial
+    # run_dir we can salvage. Try stdout-JSON first, then disk scan.
+    run_dir = _extract_run_dir_from_stdout(stdout) if stdout else None
+    if run_dir is None:
+        out_root_path = Path(output_root) if output_root else (
+            project_root / "outputs" / "aurora_dataset_runs"
         )
-        # Best-effort: most runners return a path or a dict with run_dir.
-        if isinstance(result, dict) and result.get("run_dir"):
-            return Path(result["run_dir"])
-        if isinstance(result, (str, Path)):
-            return Path(result)
-        # If we can't resolve, raise — caller needs a real run_dir.
+        if out_root_path.exists():
+            dataset_slug = Path(str(dataset_path)).name
+            # Most recent run_dir matching this dataset's filename.
+            candidates = sorted(
+                (p for p in out_root_path.iterdir()
+                 if p.is_dir() and dataset_slug in p.name),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if candidates:
+                run_dir = candidates[0]
+
+    if timed_out:
+        if run_dir is not None:
+            return run_dir  # partial result on disk — better than nothing
         raise RuntimeError(
-            "pipeline ran but returned no run_dir; the SDK can't continue"
+            "aurora pipeline timed out after 300s with no run_dir on disk. "
+            "If this was called from inside an MCP server, the sentence-"
+            "transformer model is likely not cached in this env. Try running "
+            "the pipeline once from your terminal first to warm the cache, "
+            "then retry through MCP.\n"
+            f"--- STDERR tail ---\n{stderr[-2000:]}"
         )
 
-    return Path(run_pipeline_for_dataset(  # type: ignore
-        str(dataset_path),
-        depth=depth,
-        seed=seed,
-        output_root=str(output_root) if output_root else None,
-    ))
+    if returncode != 0:
+        if run_dir is not None:
+            return run_dir  # partial result — let the caller decide
+        raise RuntimeError(
+            f"aurora runner failed (exit {returncode}).\n"
+            f"--- STDERR (last 4000 chars) ---\n{stderr[-4000:]}\n"
+            f"--- STDOUT (last 1000 chars) ---\n{stdout[-1000:]}"
+        )
+
+    if run_dir is None:
+        raise RuntimeError(
+            "aurora runner succeeded but no run_dir was found in stdout "
+            "or on disk. STDOUT tail:\n" + stdout[-2000:]
+        )
+    return run_dir
+
+
+def _extract_run_dir_from_stdout(stdout: str) -> Optional[Path]:
+    """Pull the run_dir path out of the runner's final JSON summary.
+
+    The runner ends with ``print(json.dumps(summary, indent=2))`` where
+    summary has a ``run_dir`` key. We scan stdout from the end for the
+    last balanced ``{...}`` block and parse that.
+    """
+    import json as _json
+    if not stdout:
+        return None
+    # Walk from end to find the last "}" then back-scan to its matching "{".
+    end = stdout.rfind("}")
+    if end == -1:
+        return None
+    depth_counter = 0
+    start = -1
+    for i in range(end, -1, -1):
+        ch = stdout[i]
+        if ch == "}":
+            depth_counter += 1
+        elif ch == "{":
+            depth_counter -= 1
+            if depth_counter == 0:
+                start = i
+                break
+    if start == -1:
+        return None
+    try:
+        obj = _json.loads(stdout[start:end + 1])
+    except Exception:
+        return None
+    rd = obj.get("run_dir") if isinstance(obj, dict) else None
+    if not rd:
+        return None
+    p = Path(rd)
+    return p if p.exists() else None

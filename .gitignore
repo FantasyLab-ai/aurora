@@ -59,6 +59,10 @@ tmp/
 
 # ---- Claude Code working state — keep local, never publish ----
 .claude/
+# Per-user MCP server config — paths are local; never publish.
+# See docs/mcp.md for how to author one.
+.mcp.json
+.mcp.json.local
 
 # ---- Aurora user-data (knowledge bank, learning store, contract output) ----
 # Per-user state; not for sharing by default. Users opt in to share via
