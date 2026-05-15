@@ -25,6 +25,9 @@ datasets/
 *.gz
 *.txt
 *.exe
+# Allow our actual dependency manifests through the *.txt rule above.
+!requirements.txt
+!requirements-dev.txt
 
 # ---- Outputs ----
 outputs/

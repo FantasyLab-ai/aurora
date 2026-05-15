@@ -1,0 +1,7 @@
+# Aurora — development & testing dependencies (CI uses these, runtime does not).
+
+-r requirements.txt
+
+pytest>=8.0
+pytest-cov>=5.0
+pytest-xdist>=3.5
