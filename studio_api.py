@@ -3895,8 +3895,14 @@ def api_kb_seed_ingest():
 
 # ---------- Brief 5 admin endpoints ---------------------------------------
 
-# Token for admin endpoints. Set AURORA_KB_ADMIN_TOKEN in env to enable.
-def _admin_token_ok() -> bool:
+# Token for KB admin endpoints. Set AURORA_KB_ADMIN_TOKEN to require it.
+# NOTE: this function intentionally has a different name from the
+# learning admin _admin_token_ok at line ~2909 — they use different env
+# vars and different fallback behaviour. Keep them distinct so neither
+# accidentally shadows the other (an earlier bug had the same name and
+# the second def silently overrode the first, bypassing AURORA_ADMIN_TOKEN
+# for the learning endpoints).
+def _kb_admin_token_ok() -> bool:
     expected = os.environ.get("AURORA_KB_ADMIN_TOKEN")
     if not expected:
         # Dev convenience: when no token is set, allow loopback callers only.
@@ -3929,7 +3935,7 @@ _KB_INGEST_STATE: Dict[str, Any] = {
 
 @app.route("/api/knowledge_bank/admin/stages")
 def api_kb_admin_stages():
-    if not _admin_token_ok():
+    if not _kb_admin_token_ok():
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     try:
         from fantasyai.aurora.knowledge_bank.ingest.pipeline import (
@@ -3945,7 +3951,7 @@ def api_kb_admin_ingest_start():
     """Kick off a stage in the background. Idempotent — refuses to start
     a second ingest while one is running (the brief explicitly forbids
     parallel stages)."""
-    if not _admin_token_ok():
+    if not _kb_admin_token_ok():
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     body = request.get_json(force=True, silent=True) or {}
     stage_id = body.get("stage_id") or "stage_1_fred"
@@ -3983,14 +3989,14 @@ def api_kb_admin_ingest_start():
 
 @app.route("/api/knowledge_bank/admin/ingest/status")
 def api_kb_admin_ingest_status():
-    if not _admin_token_ok():
+    if not _kb_admin_token_ok():
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     return jsonify({"ok": True, "state": _KB_INGEST_STATE})
 
 
 @app.route("/api/knowledge_bank/admin/quarantine")
 def api_kb_admin_quarantine():
-    if not _admin_token_ok():
+    if not _kb_admin_token_ok():
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     only_unresolved = request.args.get("unresolved", "1") == "1"
     try:
@@ -4007,7 +4013,7 @@ def api_kb_admin_quarantine():
 @app.route("/api/knowledge_bank/admin/quarantine/<int:qid>/resolve",
             methods=["POST"])
 def api_kb_admin_resolve(qid: int):
-    if not _admin_token_ok():
+    if not _kb_admin_token_ok():
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     body = request.get_json(force=True, silent=True) or {}
     resolution = body.get("resolution") or "rejected"
@@ -4046,7 +4052,7 @@ def api_kb_admin_license_audit():
             methods=["POST"])
 def api_kb_admin_revoke(entry_id: str):
     """Soft-delete an entry. Audit trail preserved in revoked_reason."""
-    if not _admin_token_ok():
+    if not _kb_admin_token_ok():
         return jsonify({"ok": False, "error": "unauthorized"}), 401
     body = request.get_json(force=True, silent=True) or {}
     reason = body.get("reason") or "maintainer revoked"
@@ -4119,6 +4125,34 @@ def main() -> None:
     print(f"[aurora] outputs  = {DEFAULT_OUTPUTS}")
     print(f"[aurora] runner   = {RUNNER_MODULE}")
     print(f"[aurora] http://{host}:{port}")
+
+    # First-run: auto-bootstrap the knowledge bank if no DB exists yet.
+    # Embeds the 59 curated seed entries into ~/.aurora/knowledge_bank/
+    # so synthesis can cite from day one. Adds ~10-20s to the FIRST boot;
+    # subsequent boots skip this entirely (the file exists). Runs in a
+    # background thread so the server still binds quickly.
+    # Skip when AURORA_NO_KB_BOOTSTRAP=1 (CI / scripted envs).
+    if not int(os.environ.get("AURORA_NO_KB_BOOTSTRAP", "0") or 0):
+        try:
+            kb_db = Path.home() / ".aurora" / "knowledge_bank" / "main.db"
+            if not kb_db.exists():
+                print(f"[aurora] knowledge bank not found at {kb_db}")
+                print(f"[aurora] running first-time seed ingest in background...")
+                import threading as _kb_threading
+
+                def _bootstrap_kb():
+                    try:
+                        from fantasyai.aurora.knowledge_bank.ingest import run_seed_ingest
+                        res = run_seed_ingest()
+                        n = (res or {}).get("entries_ingested") or (res or {}).get("count") or "?"
+                        print(f"[aurora] knowledge bank ready: {n} seed entries ingested")
+                    except Exception as e:
+                        print(f"[aurora] KB bootstrap warning ({type(e).__name__}): {e}")
+                        print(f"[aurora] manually: python -m fantasyai.aurora.knowledge_bank.ingest --seed-only")
+
+                _kb_threading.Thread(target=_bootstrap_kb, daemon=True).start()
+        except Exception as e:
+            print(f"[aurora] KB bootstrap check skipped ({type(e).__name__})")
 
     # Auto-open the Studio in the user's default browser ~1.2s after
     # the server binds. We skip when:
