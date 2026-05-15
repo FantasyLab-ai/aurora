@@ -34,10 +34,12 @@ jobs:
           python-version: ${{ matrix.python }}
           cache: pip
 
-      - name: Install runtime deps
+      - name: Install runtime + dev deps
         run: |
+          # requirements-dev.txt pulls in pytest + the runtime stack via `-r requirements.txt`.
+          # Without dev deps, pytest isn't on PATH and the test step fails with exit 127.
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
 
       - name: Install optional substrate deps
         run: |
