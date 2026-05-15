@@ -14770,17 +14770,27 @@
     const ctaEl     = document.getElementById('navBearCta');
     const closeBtn  = document.getElementById('navBearClose');
 
-    // Persisted dismissal — user clicked the ✕ before.
-    const DISMISS_KEY = 'aurora_navigator_dismissed_v1';
-    if (localStorage.getItem(DISMISS_KEY) === 'true') {
+    // The navigator bear always re-appears on page load. Clicking the
+    // ✕ hides it for the *current page session only* — refresh / server
+    // restart / new tab always brings the bear back. We use sessionStorage
+    // (not localStorage) so a refresh resets it.
+    //
+    // Defensive cleanup: legacy v1.1.0 used localStorage which permanently
+    // hid the bear. Wipe any stale flag on load so users who previously
+    // dismissed-permanently see the bear come back.
+    const DISMISS_KEY = 'aurora_navigator_dismissed_session';
+    try { localStorage.removeItem('aurora_navigator_dismissed_v1'); } catch (_) {}
+
+    if (sessionStorage.getItem(DISMISS_KEY) === 'true') {
       bear.setAttribute('data-dismissed', 'true');
-      return;   // never mount the rest of the controller
+      return;   // hidden for this session; will return on refresh
     }
 
     closeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       bear.setAttribute('data-dismissed', 'true');
-      try { localStorage.setItem(DISMISS_KEY, 'true'); } catch (_) {}
+      // Session-only — bear returns on next page load.
+      try { sessionStorage.setItem(DISMISS_KEY, 'true'); } catch (_) {}
     });
 
     // ---- Anchor map (Backlog #3 — narrator upgrade) ---------------------

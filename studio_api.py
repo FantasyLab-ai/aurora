@@ -4106,13 +4106,34 @@ def aurora_plot():
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    # AURORA_HOST defaults to 127.0.0.1 — loopback only, not network-
+    # accessible. Override with AURORA_HOST=0.0.0.0 only if you
+    # intentionally want LAN access (and ideally pair with
+    # AURORA_ADMIN_TOKEN — see SECURITY.md).
     host = os.environ.get("AURORA_HOST", "127.0.0.1")
     port = int(os.environ.get("AURORA_PORT", "8000"))
     debug = bool(int(os.environ.get("AURORA_DEBUG", "0")))
+    no_browser = bool(int(os.environ.get("AURORA_NO_BROWSER", "0")))
+
     print(f"[aurora] frontend = {FRONTEND_DIR}")
     print(f"[aurora] outputs  = {DEFAULT_OUTPUTS}")
     print(f"[aurora] runner   = {RUNNER_MODULE}")
     print(f"[aurora] http://{host}:{port}")
+
+    # Auto-open the Studio in the user's default browser ~1.2s after
+    # the server binds. We skip when:
+    #   * AURORA_NO_BROWSER=1   (headless / scripted / CI use)
+    #   * AURORA_DEBUG=1        (reloader would spawn a 2nd tab on every
+    #                            code change — annoying)
+    #   * WERKZEUG_RUN_MAIN     (already inside a Flask reloader child)
+    if not no_browser and not debug and not os.environ.get("WERKZEUG_RUN_MAIN"):
+        import threading
+        import webbrowser
+        # Localhost-friendly URL: use 'localhost' instead of the bind
+        # host string so wildcard binds (0.0.0.0) still open a working URL.
+        url = f"http://localhost:{port}" if host in ("0.0.0.0", "::") else f"http://{host}:{port}"
+        threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+
     app.run(host=host, port=port, debug=debug, use_reloader=debug)
 
 
