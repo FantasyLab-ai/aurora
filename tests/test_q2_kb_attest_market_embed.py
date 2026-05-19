@@ -300,13 +300,50 @@ class TestMarketplaceListing:
             for k in ("id", "name", "description", "version", "install_state"):
                 assert k in p
 
-    def test_list_marketplace_marks_available_state(self):
+    def test_list_marketplace_marks_state_including_preview(self):
         from fantasyai.aurora.kb.marketplace import list_marketplace
         packs = list_marketplace()
         for p in packs:
             assert p["install_state"] in (
-                "available", "installed", "upgrade_available", "failed",
+                "available", "installed", "upgrade_available",
+                "failed", "preview",
             )
+
+    def test_pending_sha_marks_preview(self):
+        """Packs whose sha256 is 'PENDING_FIRST_BUILD' (or missing)
+        get install_state=preview so the frontend can disable the
+        install button + surface a clear 'not yet released' note."""
+        from fantasyai.aurora.kb.marketplace import list_marketplace
+        packs = list_marketplace()
+        pending = [p for p in packs
+                    if (p.get("sha256") or "").upper().startswith("PENDING")]
+        # The bundled manifest currently has all 4 packs in PENDING state.
+        # We don't pin the count (the manifest can ship real SHAs),
+        # but ANY pending pack must be marked "preview".
+        for p in pending:
+            assert p["install_state"] == "preview", (
+                f"pack {p['id']!r} has PENDING sha but state={p['install_state']!r}"
+            )
+
+    def test_install_pending_pack_returns_preview_error(self):
+        """Installing a PENDING pack returns ok=False + preview=True
+        + actionable error — never a silent failure."""
+        from fantasyai.aurora.kb.marketplace import list_marketplace, install_pack
+        packs = list_marketplace()
+        preview_packs = [p for p in packs if p["install_state"] == "preview"]
+        if not preview_packs:
+            import pytest as _pytest
+            _pytest.skip("no preview packs in manifest")
+        r = install_pack(preview_packs[0]["id"])
+        assert r["ok"] is False
+        assert r.get("preview") is True
+        assert "not yet released" in (r.get("error") or "").lower()
+
+    def test_install_unknown_pack_returns_clean_error(self):
+        from fantasyai.aurora.kb.marketplace import install_pack
+        r = install_pack("does_not_exist_pack_xyz")
+        assert r["ok"] is False
+        assert "not in manifest" in (r.get("error") or "")
 
 
 # ----------------------------------------------------------------------

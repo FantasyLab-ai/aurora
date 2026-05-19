@@ -113,7 +113,15 @@ def list_marketplace(workspace_id: Optional[str] = None
         installed_ver = inst.get("version") or inst.get("installed_version")
         installed_at = inst.get("installed_at")
         is_installed = bool(inst)
+        # Manifest entries whose sha256 is "PENDING_FIRST_BUILD" (or
+        # missing) are reservation slots — listed for transparency but
+        # not actually hosted yet. Mark them clearly so the UI can
+        # render a "preview" badge + disabled install button.
+        sha = str(raw.get("sha256") or "")
+        is_preview = sha.upper().startswith("PENDING") or not sha
         state = "available"
+        if is_preview:
+            state = "preview"
         if is_installed:
             try:
                 if installed_ver is not None and raw.get("version") is not None \
@@ -147,6 +155,16 @@ def list_marketplace(workspace_id: Optional[str] = None
     return out
 
 
+def _resolve_pack_from_manifest(pack_id: str):
+    """Find a Pack object in the bundled manifest by id."""
+    from fantasyai.aurora.knowledge_bank.packs.manifest import load_manifest
+    manifest = load_manifest()
+    for p in (manifest.packs or []):
+        if str(getattr(p, "id", None)) == str(pack_id):
+            return p
+    return None
+
+
 def install_pack(
     pack_id: str,
     *,
@@ -157,25 +175,80 @@ def install_pack(
 
     Args:
         pack_id: the manifest id (e.g. "finance", "industrial").
-        workspace_id: when present, install to the workspace-isolated
-            location; otherwise use the shared install.
+        workspace_id: reserved for Phase 2 cloud / workspace-scoped
+            installs; today we install to the shared on-disk location.
         use_mirror: prefer the HuggingFace mirror over the Cloudflare R2
             primary. Useful when the primary CDN is rate-limiting.
+
+    The full flow:
+      1. Find the Pack in the bundled manifest.
+      2. Refuse early if the pack has SHA=PENDING_FIRST_BUILD — those
+         packs are listed in the manifest as a roadmap signal but
+         aren't actually built / hosted yet.
+      3. Download via ``downloader.download_pack``.
+      4. Install via ``installer.install_pack``.
+      5. Surface a structured result dict so the frontend can render
+         either success ("installed v1 — 1240 entries") or an
+         actionable error.
     """
+    pack = _resolve_pack_from_manifest(pack_id)
+    if pack is None:
+        return {"ok": False, "pack_id": pack_id,
+                "error": f"pack {pack_id!r} not in manifest"}
+
+    sha = str(getattr(pack, "sha256", "") or "")
+    if sha.upper().startswith("PENDING") or not sha:
+        # Honest signal: these manifest entries are reserved slots,
+        # not yet built / hosted. Frontend renders them as "preview"
+        # and the install button should be disabled. We still return
+        # a clean error if someone POSTs anyway.
+        return {"ok": False, "pack_id": pack_id,
+                "preview": True,
+                "error": (f"pack {pack_id!r} is reserved in the manifest but "
+                           f"not yet released (sha256={sha or '<none>'}). "
+                           f"Wait for the next manifest revision."),
+                "manifest_revision": pack_id}
+
     try:
-        from fantasyai.aurora.knowledge_bank.packs.installer import install_pack as _install
+        from fantasyai.aurora.knowledge_bank.packs.downloader import (
+            download_pack, DownloadError,
+        )
+        from fantasyai.aurora.knowledge_bank.packs.installer import (
+            install_pack as _install_pack, InstallError,
+        )
     except Exception as e:
-        return {"ok": False,
-                "error": f"installer unavailable: {type(e).__name__}: {e}"}
+        return {"ok": False, "pack_id": pack_id,
+                "error": f"pack install pipeline unavailable: "
+                          f"{type(e).__name__}: {e}"}
+
+    # Optionally flip primary / mirror order if the caller asked.
+    if use_mirror:
+        try:
+            pack.url_primary, pack.url_mirror = pack.url_mirror, pack.url_primary
+        except Exception:
+            pass
+
     try:
-        result = _install(pack_id, prefer_mirror=use_mirror)
-        if isinstance(result, dict):
-            return {"ok": True, **result}
-        return {"ok": True, "result": str(result)}
+        archive_path = download_pack(pack)
     except Exception as e:
-        return {"ok": False,
-                "error": f"{type(e).__name__}: {e}",
-                "pack_id": pack_id}
+        return {"ok": False, "pack_id": pack_id,
+                "stage": "download",
+                "error": f"download failed: {type(e).__name__}: {e}"}
+
+    try:
+        result = _install_pack(pack, archive_path)
+    except Exception as e:
+        return {"ok": False, "pack_id": pack_id,
+                "stage": "install",
+                "error": f"install failed: {type(e).__name__}: {e}"}
+
+    return {
+        "ok":          True,
+        "pack_id":     getattr(result, "pack_id", pack_id),
+        "version":     getattr(result, "version", None),
+        "pack_dir":    str(getattr(result, "pack_dir", "")),
+        "entry_count": getattr(result, "entry_count", None),
+    }
 
 
 def uninstall_pack(

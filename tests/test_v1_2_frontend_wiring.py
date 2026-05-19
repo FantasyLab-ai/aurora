@@ -316,8 +316,42 @@ class TestV20OmnibusPanel:
     def test_v20_chip_and_panel_present(self):
         html = _read()
         assert 'id="v20ToggleBtn"' in html
-        assert 'id="v20Popover"' in html
+        # The v2.0 LAB renders as a full-screen modal (not a corner popover).
+        assert 'id="v20Modal"' in html
+        assert 'id="v20ModalCard"' in html
         assert "v20Controller" in html
+
+    def test_v20_modal_supports_escape_and_backdrop_close(self):
+        """The modal closes on Escape AND on backdrop click — two
+        ways out so the UX never feels trapped."""
+        html = _read()
+        assert "if (e.key === 'Escape'" in html
+        assert "card.contains(e.target)" in html
+
+    def test_ingest_panel_has_folder_picker_and_dropzone(self):
+        html = _read()
+        # Folder picker (file input with webkitdirectory) + drag/drop zone.
+        assert 'id="ingestBrowseBtn"' in html
+        assert 'id="ingestBrowsePicker"' in html
+        assert 'webkitdirectory' in html
+        assert 'id="ingestDropZone"' in html
+        # The picker change handler reads webkitRelativePath.
+        assert "webkitRelativePath" in html
+
+    def test_marketplace_renders_preview_state_explicitly(self):
+        """Preview-state packs get a warning note + disabled install
+        button, not a silent failure."""
+        html = _read()
+        assert "preview" in html
+        assert "Reserved in the manifest but" in html
+        assert "install (unavailable)" in html
+
+    def test_marketplace_surfaces_install_error_in_row(self):
+        """Install failures show in the row, not as alerts."""
+        html = _read()
+        # The success/failure status lands inline.
+        assert "market-row-status" in html
+        assert "downloading + verifying" in html
 
     def test_v20_all_six_tabs_rendered(self):
         html = _read()
