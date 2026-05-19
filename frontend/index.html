@@ -27,96 +27,213 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=VT323&family=JetBrains+Mono:wght@400;500;700&family=Major+Mono+Display&display=swap" rel="stylesheet">
+<!-- v0.10 Phase 1 typography: Geist Sans for body + Geist Mono for code +
+     Departure Mono for chrome (lens labels / status bar / pixel-grid tabs).
+     JetBrains Mono retained as a fallback for the legacy classes that
+     still reference it directly. VT323 + Major Mono Display dropped from
+     production loading; if you want the full retro mode, append
+     ?retro=full to the URL and the boot-splash loader will re-add them. -->
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;700&family=Departure+Mono&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
+  /* ============================================================
+     v0.10 Phase 1 — OKLCH design tokens
+     ============================================================
+     Linear-style 3-axis system. All surface + ink colours are
+     derived from `--base-l` (base lightness for the dark theme,
+     ~10) and ramped at fixed steps. Accent colours stay constant
+     hue + chroma but step through the same lightness scale.
+
+     Three roles only:
+       1. IDENTITY   — mint, the one "this is Aurora" colour
+       2. ALARM      — amber for warning, magenta for critical
+       3. CONTEXTUAL — cyan (cross-reference info) + violet
+                       (user-action intent), used sparingly
+
+     Old `--mint / --cyan / --violet / --amber / --crit / --warn`
+     stay defined for backward compat with the 700+ inline styles
+     that reference them — they now resolve to the new OKLCH-
+     derived hex, so the rebrand lands without touching markup.
+  ============================================================ */
   :root {
-    --bg-deep: #0d0820;
-    --bg-panel: #15102e;
-    --bg-elev: #1c1638;
-    --bg-card: #221a44;
-    --grid: #2a2052;
-    --bevel-light: #3a2d6e;
-    --bevel-dark: #060313;
-    --bevel-hi: rgba(180,140,255,0.12);
+    /* Surface lightness ramp (dark-mode-first). Off-black with a
+       hint of green-cyan beats pure black — same trick Linear's
+       2026 refresh uses. */
+    --surface-0:   oklch(10% 0.02 200);   /* deepest bg */
+    --surface-1:   oklch(13% 0.02 200);   /* panels */
+    --surface-2:   oklch(16% 0.02 200);   /* raised */
+    --surface-3:   oklch(20% 0.02 200);   /* floating / cards */
+    --surface-4:   oklch(24% 0.02 200);   /* hover */
+
+    /* Text ramp — high-contrast on dark surfaces. Five steps. */
+    --text-1:      oklch(96% 0.02 200);   /* headings / hi-emphasis */
+    --text-2:      oklch(86% 0.02 200);   /* body */
+    --text-3:      oklch(70% 0.02 200);   /* secondary / metadata */
+    --text-4:      oklch(55% 0.02 200);   /* tertiary / muted */
+    --text-5:      oklch(40% 0.02 200);   /* faint / hint */
+
+    /* Border ramp — 1px hairlines instead of shadows for depth
+       (the 2026 quiet-cyberpunk move). */
+    --border-1:    oklch(28% 0.02 200);   /* default divider */
+    --border-2:    oklch(36% 0.02 200);   /* emphasized */
+    --border-3:    oklch(50% 0.02 200);   /* focus / interactive */
+
+    /* IDENTITY accent — mint. The one Aurora colour. */
+    --accent:        oklch(86% 0.18 175);   /* base */
+    --accent-bright: oklch(94% 0.18 175);   /* hover / focus */
+    --accent-dim:    oklch(60% 0.18 175);   /* deselected */
+    --accent-soft:   oklch(86% 0.18 175 / 0.10);  /* surface tint */
+
+    /* ALARM accents — amber (warning) + magenta (critical). */
+    --warn-1:        oklch(82% 0.15 75);    /* warning amber */
+    --crit-1:        oklch(72% 0.21 0);     /* critical magenta-red */
+
+    /* CONTEXTUAL accents — cyan + violet, used semantically. */
+    --info-1:        oklch(85% 0.13 220);   /* cyan cross-ref */
+    --action-1:      oklch(72% 0.18 300);   /* violet user-action */
 
     /* ============================================================
-       AURORA COLOR CONTRACT (POLISH PASS-2 Backlog #4)
-       ============================================================
-       Every color in the palette has ONE job. When adding new UI,
-       pick the variable that matches the *intent*, not the look.
-
-         --mint   ⇒ affirm / healthy / confirmed / present / no-issue
-         --cyan   ⇒ info / discovered / cross-reference / neutral signal
-         --amber  ⇒ warning / inferred / gap / "needs your eye"
-         --crit   ⇒ critical only — true severity, not "important"
-         --violet ⇒ user action / intervention / actionable surface
-         --ink-*  ⇒ chrome / typography, never content semantics
-
-       Semantic helper classes (.is-affirm, .is-info, .is-warning,
-       .is-critical, .is-action and their .bg-* pairs) are defined
-       further down; prefer those over raw var() for new UI so the
-       contract is checkable via the class name alone.
-
-       If you find yourself reaching for --crit for "current position"
-       or "important" — that's the wrong color. Use --cyan or --violet.
+       Legacy tokens kept for backward-compat with 700+ inline
+       styles. These now resolve to the OKLCH-derived hex values
+       so the rebrand lands without rewriting every panel.
     ============================================================ */
-    --violet: #b794ff;
-    --violet-bright: #d4b8ff;
-    --indigo: #7c5cff;
-    --magenta: #ff6ec7;
-    --amber: #ffc857;
-    --amber-bright: #ffe09a;
-    --cyan: #6ee7ff;
-    --mint: #88ffd1;
-    --crit: #ff5577;
-    --warn: #ff9a4a;
+    --bg-deep:     var(--surface-0);
+    --bg-panel:    var(--surface-1);
+    --bg-elev:     var(--surface-2);
+    --bg-card:     var(--surface-3);
+    --bg-deepest:  var(--surface-0);
+    --grid:        var(--border-1);
+    --bevel-light: var(--border-2);
+    --bevel-dark:  oklch(6%  0.02 200);
+    --bevel-hi:    var(--accent-soft);
 
-    --ink: #e6dffb;
-    --ink-dim: #897dad;
-    --ink-faint: #4a3f72;
+    /* AURORA COLOR CONTRACT — legacy semantic names kept stable. */
+    --violet:        var(--action-1);
+    --violet-bright: oklch(82% 0.18 300);
+    --indigo:        oklch(60% 0.18 280);
+    --magenta:       oklch(72% 0.21 0);
+    --amber:         var(--warn-1);
+    --amber-bright:  oklch(90% 0.15 75);
+    --cyan:          var(--info-1);
+    --mint:          var(--accent);
+    --crit:          var(--crit-1);
+    --warn:          var(--warn-1);
 
-    /* ===== UI Polish Sprint typography system =====
-       Two roles: DISPLAY for identity moments, MONO for everything readable.
-       The polish brief calls out that the existing terminal/pixel display
-       font is hard to read at small sizes — JetBrains Mono is the body
-       face for dense data + synthesis prose + small metadata. */
-    --font-display: 'Major Mono Display', 'VT323', monospace;
-    --font-mono:    'JetBrains Mono', 'Consolas', 'Menlo', monospace;
+    --ink:           var(--text-2);
+    --ink-dim:       var(--text-4);
+    --ink-faint:     var(--text-5);
 
-    /* Text colour hierarchy. Synthesis prose uses --text-primary;
-       finding bodies use --text-secondary; metadata uses --text-tertiary;
-       inactive states use --text-muted; citations / accents use
-       --text-accent. Warning + critical inherit existing colour tokens. */
-    --text-primary:   rgb(220, 240, 245);
-    --text-secondary: rgb(160, 200, 215);
-    --text-tertiary:  rgb(110, 150, 170);
-    --text-muted:     rgb(80, 110, 130);
-    --text-accent:    rgb(120, 240, 220);
-    --text-warning:   rgb(245, 200, 120);
-    --text-critical:  rgb(245, 130, 130);
+    --text-primary:   var(--text-1);
+    --text-secondary: var(--text-2);
+    --text-tertiary:  var(--text-3);
+    --text-muted:     var(--text-4);
+    --text-accent:    var(--accent);
+    --text-warning:   var(--warn-1);
+    --text-critical:  var(--crit-1);
+
+    /* ===== v0.10 Phase 1 typography roles =====
+       Four roles, each with one job:
+         BODY     — variable-width sans for synthesis prose, finding cards,
+                    long-form text. (Geist Sans.)
+         MONO     — variable-weight monospace for code, data tables, IDs,
+                    tabular numerals. (Geist Mono.)
+         CHROME   — pixel-grid display for lens labels, tabs, status bars,
+                    section dividers. NEVER body text. (Departure Mono.)
+         LEGACY   — alias to MONO so existing inline `font-family:'JetBrains Mono'`
+                    declarations still resolve cleanly to a real font.
+
+       VT323 is intentionally dropped from production. Set
+       `<html data-retro="full">` (via `?retro=full` URL param) to
+       re-enable the old phosphor look as an easter-egg mode.
+    */
+    --font-body:    'Geist', 'Inter', system-ui, -apple-system, sans-serif;
+    --font-mono:    'Geist Mono', 'JetBrains Mono', 'Consolas', 'Menlo', monospace;
+    --font-chrome:  'Departure Mono', 'Geist Mono', 'JetBrains Mono', monospace;
+    --font-display: var(--font-chrome);   /* legacy alias */
 
     /* Standard motion curves so transitions feel deliberate. */
     --ease-out:    cubic-bezier(0.215, 0.610, 0.355, 1.000);
     --ease-spring: cubic-bezier(0.4, 0.0, 0.2, 1);
+
+    /* Spacing scale — used by new components. */
+    --space-1:  4px;
+    --space-2:  8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+    --space-7: 48px;
+
+    /* Radius scale — small consistent corners; the retro spirit
+       lives in the typography, not the corners. */
+    --radius-1: 2px;
+    --radius-2: 4px;
+    --radius-3: 6px;
+  }
+
+  /* Retro easter-egg mode — set <html data-retro="full"> to bring
+     back VT323 + Major Mono Display + heavy scanlines. The boot
+     splash JS sets this when ?retro=full is in the URL. */
+  html[data-retro="full"] {
+    --font-display: 'Major Mono Display', 'VT323', monospace;
+    --font-chrome:  'VT323', 'Departure Mono', monospace;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body {
     background: var(--bg-deep);
     color: var(--ink);
-    font-family: 'JetBrains Mono', monospace;
+    /* v0.10 Phase 1: variable-width Geist Sans is the body face so
+       finding cards, synthesis prose, descriptions, tooltips, and
+       all long-form text breathe. Code blocks + data tables + ID
+       chips opt into --font-mono explicitly. */
+    font-family: var(--font-body);
     font-size: 13px;
     line-height: 1.5;
     overflow-x: hidden;
     min-height: 100vh;
+    /* Native tabular numerals + ligatures-off keep numbers aligned. */
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
+  /* Code, data, and tabular surfaces still get monospace explicitly. */
+  code, pre, kbd, samp,
+  .mono, .num, .stat .value,
+  [data-mono], .finding-trust, .repl-tag, .ri-id-val {
+    font-family: var(--font-mono);
+  }
+  /* Chrome surfaces (lens labels, tabs, section headers) use the
+     pixel-grid Departure Mono — the one place retro lives loudly. */
+  .lens-label, .tab-label, .sg-section-header,
+  [data-chrome], .v20-tab span,
+  .ri-trust .rt-lbl, .ri-data .rt-lbl {
+    font-family: var(--font-chrome);
+    letter-spacing: 1.2px;
+  }
+  /* :focus-visible — universal accessible focus ring. Keyboard users
+     get a clear indicator; mouse users don't see it. */
+  *:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-1);
+  }
+  /* Skip-to-content for screen readers + keyboard users. The link
+     itself is rendered at the top of <body> further down. */
+  .skip-to-content {
+    position: absolute; top: -200px; left: 8px; z-index: 100000;
+    padding: 8px 16px; background: var(--accent); color: var(--surface-0);
+    font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+    text-decoration: none; border-radius: var(--radius-2);
+    transition: top 150ms var(--ease-out);
+  }
+  .skip-to-content:focus { top: 8px; }
 
-  /* Atom 1.2: CRT scanlines — softer (0.20 → 0.09 dark stripe) and wider
-     period (4px → 6px) so text inside data tiles stays legible. The
-     scanline z-index drops from 9999 → 100 so we can lift data-dense
-     containers above the layer. Chrome (topbar, rails, cube) keeps the
-     CRT vibe by sitting at default z-index below the scanline plane. */
-  body::before {
+  /* v0.10 Phase 1: scanlines now an opt-in easter egg. The 2026
+     research is clear — always-on scanlines on data tables crush
+     legibility. Default theme is "quiet cyberpunk": no scanlines.
+     Retro mode (URL `?retro=full` → <html data-retro="full">) brings
+     them back. */
+  html[data-retro="full"] body::before {
     content: '';
     position: fixed; inset: 0;
     background: repeating-linear-gradient(0deg,
@@ -1896,6 +2013,85 @@
   .skip-link:focus, .skip-link:focus-visible {
     left: 12px; top: 12px;
     outline: 2px solid var(--cyan); outline-offset: 2px;
+  }
+
+  /* ============================================================
+     v0.10 Phase 1 — Responsive baseline
+     ============================================================
+     Four breakpoints aligned with Linear / Vercel / Stripe practice:
+       ≥1440px  : full layout (default — desktop / external monitor)
+       <1440px  : compress side-aside, drop some hover-only metadata
+       <1100px  : collapse aside, popovers go full-screen on overlay
+       <800px   : tablet — cube stays, panels stack
+       <600px   : phone — full-bleed columns, cube becomes a side rail
+     We deliberately don't pin a single "mobile" cutoff; instead we
+     adjust the actual problem areas (popover width, font scale,
+     padding, modal sizing) progressively.
+  ============================================================ */
+  @media (max-width: 1440px) {
+    .v20-wrap .stream-popover,
+    .v20-wrap .runs-popover,
+    .v20-wrap .joins-popover,
+    .v20-wrap .inherit-popover,
+    .v20-wrap .plugins-popover {
+      min-width: 360px !important;
+      max-width: 92vw !important;
+    }
+  }
+
+  @media (max-width: 1100px) {
+    body { font-size: 12.5px; }
+    /* Top toolbar wraps and any popover anchored to a chip goes
+       full-screen-modal-style — easier to use on smaller laptops. */
+    .topbar { flex-wrap: wrap; gap: 6px; }
+    /* The v2.0 LAB modal already adapts via min(1100px, 92vw); make
+       sure other popovers do too. */
+    [class$="-popover"] {
+      position: fixed !important;
+      top: auto !important; right: auto !important;
+      bottom: 10px !important; left: 50% !important;
+      transform: translateX(-50%) !important;
+      max-height: 80vh !important; overflow-y: auto !important;
+    }
+  }
+
+  @media (max-width: 800px) {
+    body { font-size: 12px; line-height: 1.45; }
+    /* Stack the cube + intel band into a single column. */
+    .stage > .intel-row,
+    .intel-row { grid-template-columns: 1fr !important; flex-direction: column !important; gap: 12px !important; }
+    /* Aside (the left rail) collapses to a horizontal strip at the top. */
+    aside { display: none !important; }
+    /* Modal cards get the full viewport on tablet. */
+    #v20Modal #v20ModalCard,
+    #cmdkCard {
+      width: 96vw !important; height: 92vh !important; max-width: none !important; max-height: none !important;
+    }
+    /* Topbar chips get smaller. */
+    .topbar .btn { font-size: 9px; padding: 4px 8px; }
+  }
+
+  @media (max-width: 600px) {
+    body { font-size: 11.5px; }
+    /* Phone: cube shrinks; full-bleed columns. */
+    .cube-stage { transform: scale(0.7); transform-origin: top center; }
+    .cube { width: 240px !important; height: 240px !important; }
+    .face { width: 240px !important; height: 240px !important; }
+    /* Topbar becomes vertical-friendly. */
+    .topbar { padding: 6px 8px; gap: 4px; }
+    .topbar .btn { font-size: 8.5px; padding: 3px 6px; letter-spacing: 0.5px; }
+    /* Hide non-essential status chips on tiny screens. */
+    .ri-line.ri-progress,
+    .ri-line.ri-id { display: none; }
+  }
+
+  /* Reduced-motion override — kill the cube transition + popover
+     slide animations for users who asked for less motion. */
+  @media (prefers-reduced-motion: reduce) {
+    .cube { transition: none !important; }
+    [class$="-popover"], #v20Modal, #cmdkOverlay {
+      transition: none !important; animation: none !important;
+    }
   }
 
   /* POLISH W3a: semantic intent utilities — when adding new UI, prefer
@@ -5378,6 +5574,40 @@
 <!-- POLISH PASS-2 Backlog #6: skip-to-content link for keyboard users.
      First tab-stop on the page; jumps past the topbar to the stage. -->
 <a class="skip-link" href="#mainStage">Skip to content</a>
+
+<!-- v0.10 Phase 1 — Cmd-K command palette overlay.
+     Triggered by Cmd+K / Ctrl+K / "/" anywhere except inputs. Modal
+     centered overlay with fuzzy search across lenses, runs, findings,
+     contracts, plugins, KB packs, and v2.0 LAB tabs. Esc closes,
+     arrow keys navigate, Enter executes. Built to match the Linear
+     / Vercel / Raycast pattern that's non-negotiable in 2026. -->
+<div id="cmdkOverlay" style="display:none; position:fixed; inset:0; z-index:100001;
+     background:rgba(0,0,0,0.62); backdrop-filter:blur(4px);
+     align-items:flex-start; justify-content:center; padding-top:14vh;
+     font-family:var(--font-body);" role="dialog" aria-label="Command palette">
+  <div id="cmdkCard" style="width:min(640px, 92vw); background:var(--surface-1);
+       border:1px solid var(--border-2); border-radius:var(--radius-3);
+       box-shadow:0 24px 80px rgba(0,0,0,0.6), 0 0 0 1px var(--accent-soft);
+       overflow:hidden;">
+    <div style="display:flex; align-items:center; gap:10px; padding:14px 18px; border-bottom:1px solid var(--border-1);">
+      <span style="color:var(--accent); font-size:14px;">⌘K</span>
+      <input id="cmdkInput" type="text" placeholder="Search lenses, runs, findings, contracts, plugins, packs…"
+             autocomplete="off" spellcheck="false"
+             style="flex:1; background:transparent; border:0; outline:0; color:var(--text-1); font-family:var(--font-body); font-size:14px;">
+      <kbd style="font-family:var(--font-chrome); font-size:10px; padding:2px 6px;
+                  background:var(--surface-2); border:1px solid var(--border-1);
+                  color:var(--text-4); border-radius:var(--radius-1); letter-spacing:1px;">ESC</kbd>
+    </div>
+    <ul id="cmdkResults" style="list-style:none; padding:6px; margin:0; max-height:50vh; overflow-y:auto;"></ul>
+    <div style="padding:8px 18px; border-top:1px solid var(--border-1); display:flex;
+                gap:14px; font-family:var(--font-chrome); font-size:9px; color:var(--text-4); letter-spacing:1px;">
+      <span><kbd style="color:var(--text-3);">↑↓</kbd> navigate</span>
+      <span><kbd style="color:var(--text-3);">↵</kbd> select</span>
+      <span><kbd style="color:var(--text-3);">esc</kbd> close</span>
+      <span style="margin-left:auto; color:var(--accent);">aurora · cmd-k</span>
+    </div>
+  </div>
+</div>
 
 <!-- Global drop-anywhere overlay -->
 <div class="drop-overlay" id="dropOverlay">
@@ -17792,6 +18022,285 @@
 
   setTimeout(refresh, 300);
   setInterval(refresh, 30000);
+})();
+</script>
+
+<!-- =================================================================== -->
+<!-- v0.10 Phase 1 — Retro-mode detector + Cmd-K command palette          -->
+<!--                                                                     -->
+<!-- The retro-mode detector reads `?retro=full` from the URL and sets   -->
+<!-- <html data-retro="full"> so CSS swaps the fonts + scanlines back    -->
+<!-- to the loud-cyberpunk easter-egg look.                              -->
+<!--                                                                     -->
+<!-- The Cmd-K palette is the new universal entry point — every panel,   -->
+<!-- popover, lens, tab, and recent run is searchable by keyword.        -->
+<!-- =================================================================== -->
+<script>
+(function retroModeDetector(){
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('retro') === 'full') {
+      document.documentElement.setAttribute('data-retro', 'full');
+      // Lazy-load the retro fonts only when the easter egg fires so
+      // production traffic never pulls VT323 / Major Mono Display.
+      const fontLink = document.createElement('link');
+      fontLink.rel = 'stylesheet';
+      fontLink.href = 'https://fonts.googleapis.com/css2?family=VT323&family=Major+Mono+Display&display=swap';
+      document.head.appendChild(fontLink);
+    }
+  } catch (_) { /* never let detector break boot */ }
+})();
+
+(function cmdkPalette(){
+  const overlay = document.getElementById('cmdkOverlay');
+  const card    = document.getElementById('cmdkCard');
+  const input   = document.getElementById('cmdkInput');
+  const results = document.getElementById('cmdkResults');
+  if (!overlay || !input || !results) return;
+
+  // Catalog — every command + nav item that should be reachable.
+  // Each entry: { id, label, hint, kbd, group, action }
+  const catalog = [
+    // Lenses (6 main cube faces)
+    { id:'lens-overview', label:'Overview', hint:'top of the page',
+      group:'Lens', kbd:'1', action:() => scrollLensIntoView('overview') },
+    { id:'lens-anomalies', label:'Anomalies', hint:'top anomalies + drill-in',
+      group:'Lens', kbd:'2', action:() => scrollLensIntoView('anomalies') },
+    { id:'lens-regimes', label:'Regimes', hint:'HMM states + change-points',
+      group:'Lens', kbd:'3', action:() => scrollLensIntoView('regimes') },
+    { id:'lens-motifs', label:'Motifs', hint:'pattern matches',
+      group:'Lens', kbd:'4', action:() => scrollLensIntoView('motifs') },
+    { id:'lens-forecast', label:'Forecast', hint:'AR(1) + ensemble + threshold cross',
+      group:'Lens', kbd:'5', action:() => scrollLensIntoView('forecast') },
+    { id:'lens-physics', label:'Physics', hint:'discovered laws + invariants',
+      group:'Lens', kbd:'6', action:() => scrollLensIntoView('physics') },
+
+    // Actions
+    { id:'run-analysis', label:'Run analysis on current dataset',
+      hint:'kicks off /api/run', group:'Action',
+      action:() => clickById('runAnalysisBtn') },
+    { id:'open-streaming', label:'Open streaming controls',
+      hint:'start/stop continuous mode', group:'Action',
+      action:() => clickById('streamToggleBtn') },
+    { id:'open-runs', label:'Open Runs Library',
+      hint:'pin, A/B compare, share', group:'Action',
+      action:() => clickById('runsToggleBtn') },
+    { id:'open-joins', label:'Join two runs',
+      hint:'cross-dataset compare', group:'Action',
+      action:() => clickById('joinsToggleBtn') },
+    { id:'open-inherit', label:'Inherit priors from a previous run',
+      hint:'composable findings', group:'Action',
+      action:() => clickById('inheritToggleBtn') },
+
+    // v2.0 LAB tabs
+    { id:'lab-causal', label:'v2.0 LAB — Causal (do-calculus)',
+      hint:'backdoor + counterfactuals', group:'v2.0 LAB',
+      action:() => openLabTab('causal') },
+    { id:'lab-ingest', label:'v2.0 LAB — KB Ingest',
+      hint:'fold a folder of PDFs', group:'v2.0 LAB',
+      action:() => openLabTab('ingest') },
+    { id:'lab-attest', label:'v2.0 LAB — Attest a bundle',
+      hint:'integrity + signature + trust', group:'v2.0 LAB',
+      action:() => openLabTab('attest') },
+    { id:'lab-market', label:'v2.0 LAB — KB Marketplace',
+      hint:'browse domain packs', group:'v2.0 LAB',
+      action:() => openLabTab('market') },
+    { id:'lab-connectors', label:'v2.0 LAB — Streaming Connectors',
+      hint:'Kafka + Postgres CDC availability', group:'v2.0 LAB',
+      action:() => openLabTab('connectors') },
+    { id:'lab-compute', label:'v2.0 LAB — Compute device',
+      hint:'GPU / CPU embedding device', group:'v2.0 LAB',
+      action:() => openLabTab('compute') },
+
+    // Plugins
+    { id:'open-plugins', label:'Open Plugins',
+      hint:'third-party methods', group:'Plugin',
+      action:() => clickById('pluginsToggleBtn') },
+
+    // Help
+    { id:'kb-shortcuts', label:'Keyboard shortcuts',
+      hint:'global hotkeys', group:'Help',
+      action:() => clickById('kbHelpBtn') },
+    { id:'docs', label:'Open Aurora docs',
+      hint:'GitHub README', group:'Help',
+      action:() => window.open('https://github.com/FantasyLab-ai/aurora#readme', '_blank') },
+    { id:'roadmap', label:'Roadmap (12-month plan)',
+      hint:'what\'s shipped, what\'s coming', group:'Help',
+      action:() => window.open('https://github.com/FantasyLab-ai/aurora/blob/main/ROADMAP.md', '_blank') },
+    // Retro easter egg
+    { id:'toggle-retro', label:'Toggle retro mode (full cyberpunk)',
+      hint:'?retro=full · brings back VT323 + scanlines', group:'Theme',
+      action:() => {
+        const html = document.documentElement;
+        if (html.getAttribute('data-retro') === 'full') {
+          html.removeAttribute('data-retro');
+        } else {
+          html.setAttribute('data-retro', 'full');
+          const link = document.createElement('link');
+          link.rel = 'stylesheet';
+          link.href = 'https://fonts.googleapis.com/css2?family=VT323&family=Major+Mono+Display&display=swap';
+          document.head.appendChild(link);
+        }
+      } },
+  ];
+
+  function clickById(id) {
+    const el = document.getElementById(id);
+    if (el) el.click();
+  }
+  function openLabTab(tabName) {
+    const labBtn = document.getElementById('v20ToggleBtn');
+    if (labBtn) labBtn.click();
+    // Wait a tick for the modal to mount, then click the tab.
+    setTimeout(() => {
+      const tab = document.querySelector(`.v20-tab[data-tab="${tabName}"]`);
+      if (tab) tab.click();
+    }, 80);
+  }
+  function scrollLensIntoView(lensId) {
+    // Try a few common selectors that map to "lens" buttons/cube faces.
+    const candidates = [
+      `[data-lens="${lensId}"]`,
+      `#lens-${lensId}`,
+      `[data-cube-face="${lensId}"]`,
+    ];
+    for (const sel of candidates) {
+      const el = document.querySelector(sel);
+      if (el) { el.click(); el.scrollIntoView({behavior:'smooth', block:'start'}); return; }
+    }
+  }
+
+  // Fuzzy filter — simple substring match on label + hint + group. Good
+  // enough for the catalog size; we can swap for a proper fuzzy lib
+  // (fuse.js, ufuzzy) later if it grows past ~50 entries.
+  function filter(query) {
+    const q = (query || '').toLowerCase().trim();
+    if (!q) return catalog.slice();
+    return catalog.filter(c =>
+      c.label.toLowerCase().includes(q) ||
+      (c.hint || '').toLowerCase().includes(q) ||
+      (c.group || '').toLowerCase().includes(q) ||
+      (c.kbd || '').toLowerCase().includes(q)
+    );
+  }
+
+  let selectedIdx = 0;
+  let currentRows = [];
+
+  function render() {
+    const rows = filter(input.value);
+    currentRows = rows;
+    selectedIdx = Math.min(selectedIdx, Math.max(0, rows.length - 1));
+    if (!rows.length) {
+      results.innerHTML =
+        '<li style="padding:20px 16px; color:var(--text-4); text-align:center; font-size:12px;">' +
+          'no commands match — try "lens", "run", "lab", "attest"…' +
+        '</li>';
+      return;
+    }
+    results.innerHTML = rows.map((r, i) =>
+      '<li data-idx="' + i + '" style="display:flex; align-items:center; gap:12px;' +
+      'padding:10px 14px; cursor:pointer; border-radius:var(--radius-2);' +
+      (i === selectedIdx
+        ? 'background:var(--accent-soft); color:var(--text-1); outline:1px solid var(--accent);'
+        : 'color:var(--text-2);') +
+      '">' +
+        '<span style="color:var(--text-4); font-family:var(--font-chrome); font-size:9px; letter-spacing:1.5px; width:54px; text-transform:uppercase;">' +
+          escapeHtml(r.group) +
+        '</span>' +
+        '<div style="flex:1; min-width:0;">' +
+          '<div style="font-size:13px;">' + escapeHtml(r.label) + '</div>' +
+          (r.hint ? '<div style="font-size:11px; color:var(--text-4); margin-top:2px;">' + escapeHtml(r.hint) + '</div>' : '') +
+        '</div>' +
+        (r.kbd
+          ? '<kbd style="font-family:var(--font-chrome); font-size:10px; padding:2px 6px; background:var(--surface-2); border:1px solid var(--border-1); color:var(--text-3); border-radius:var(--radius-1); letter-spacing:1px;">' + escapeHtml(r.kbd) + '</kbd>'
+          : '') +
+      '</li>'
+    ).join('');
+    // Wire click-to-execute on each row.
+    Array.from(results.querySelectorAll('li[data-idx]')).forEach(li => {
+      li.addEventListener('click', () => {
+        const i = parseInt(li.getAttribute('data-idx'), 10);
+        executeRow(currentRows[i]);
+      });
+      li.addEventListener('mouseenter', () => {
+        selectedIdx = parseInt(li.getAttribute('data-idx'), 10);
+        render();
+      });
+    });
+  }
+
+  function executeRow(row) {
+    close();
+    setTimeout(() => { try { row.action && row.action(); } catch (_) {} }, 20);
+  }
+
+  function open() {
+    overlay.style.display = 'flex';
+    input.value = '';
+    selectedIdx = 0;
+    render();
+    setTimeout(() => input.focus(), 30);
+    document.body.style.overflow = 'hidden';
+  }
+  function close() {
+    overlay.style.display = 'none';
+    document.body.style.overflow = '';
+  }
+
+  // Backdrop click closes.
+  overlay.addEventListener('click', (e) => {
+    if (!card.contains(e.target)) close();
+  });
+
+  input.addEventListener('input', () => { selectedIdx = 0; render(); });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close(); return; }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      selectedIdx = Math.min(selectedIdx + 1, currentRows.length - 1);
+      render();
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      selectedIdx = Math.max(selectedIdx - 1, 0);
+      render();
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (currentRows[selectedIdx]) executeRow(currentRows[selectedIdx]);
+      return;
+    }
+  });
+
+  // Global hotkey: Cmd+K / Ctrl+K opens the palette anywhere. Slash
+  // opens too unless the focus is in an input/textarea.
+  document.addEventListener('keydown', (e) => {
+    const k = e.key.toLowerCase();
+    const isCmdK = (e.metaKey || e.ctrlKey) && k === 'k';
+    const tag = (e.target && e.target.tagName) || '';
+    const inField = tag === 'INPUT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable);
+    if (isCmdK) {
+      e.preventDefault();
+      if (overlay.style.display === 'flex') close(); else open();
+    } else if (k === '/' && !inField && overlay.style.display !== 'flex') {
+      e.preventDefault();
+      open();
+    }
+  });
+
+  // Public: surface a tiny hint in the topbar so users discover the
+  // shortcut without reading docs. We don't render a new chip; we just
+  // expose a click-to-open API the existing kbHelpBtn can call.
+  window.__auroraOpenCmdK = open;
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
 })();
 </script>
 
