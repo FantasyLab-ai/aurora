@@ -5573,6 +5573,121 @@
         </div>
       </div>
     </div>
+    <!-- v2.0 omnibus chip — one panel, six tabs covering:
+         · Causal — do() queries + counterfactuals
+         · KB Ingest — fold a folder of PDFs into the workspace KB
+         · Attest — verify a bundle + manage trusted signers
+         · Market — install KB packs
+         · Connectors — Kafka / Postgres-CDC streaming availability
+         · Compute — embedding device (CPU vs GPU)
+         All optional; chip stays visible regardless of which packs
+         are installed. -->
+    <div class="v20-wrap" style="position:relative; margin-right:6px;">
+      <button id="v20ToggleBtn" class="btn"
+              title="v2.0: causal · KB ingest · attestation · marketplace · connectors · compute"
+              aria-haspopup="dialog">
+        <span style="color:var(--ink-faint);">v2.0</span>
+      </button>
+      <div id="v20Popover" style="display:none; position:absolute;
+           top:100%; right:0; margin-top:6px; z-index:10000;
+           min-width:560px; max-width:680px; padding:14px;
+           background:var(--bg-deep); border:1px solid var(--mint);
+           font-family:'JetBrains Mono', monospace; font-size:11px;
+           color:var(--ink); box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+          <span style="font-weight:700; color:var(--mint); letter-spacing:1px;">v2.0 LAB</span>
+          <button id="v20PopClose" type="button" style="background:none; border:0; color:var(--ink-faint); cursor:pointer; font-size:14px;">✕</button>
+        </div>
+        <div id="v20Tabs" style="display:flex; gap:4px; margin-bottom:10px; border-bottom:1px solid var(--ink-faint);">
+          <button class="v20-tab" data-tab="causal" style="padding:5px 10px; background:transparent; border:0; border-bottom:2px solid var(--mint); color:var(--mint); font-family:inherit; cursor:pointer;">Causal</button>
+          <button class="v20-tab" data-tab="ingest" style="padding:5px 10px; background:transparent; border:0; border-bottom:2px solid transparent; color:var(--ink-faint); font-family:inherit; cursor:pointer;">KB Ingest</button>
+          <button class="v20-tab" data-tab="attest" style="padding:5px 10px; background:transparent; border:0; border-bottom:2px solid transparent; color:var(--ink-faint); font-family:inherit; cursor:pointer;">Attest</button>
+          <button class="v20-tab" data-tab="market" style="padding:5px 10px; background:transparent; border:0; border-bottom:2px solid transparent; color:var(--ink-faint); font-family:inherit; cursor:pointer;">Market</button>
+          <button class="v20-tab" data-tab="connectors" style="padding:5px 10px; background:transparent; border:0; border-bottom:2px solid transparent; color:var(--ink-faint); font-family:inherit; cursor:pointer;">Connectors</button>
+          <button class="v20-tab" data-tab="compute" style="padding:5px 10px; background:transparent; border:0; border-bottom:2px solid transparent; color:var(--ink-faint); font-family:inherit; cursor:pointer;">Compute</button>
+        </div>
+
+        <!-- CAUSAL tab -->
+        <div class="v20-panel" data-panel="causal" style="display:block;">
+          <div style="opacity:.7; margin-bottom:8px; line-height:1.4;">
+            Estimate causal effects + counterfactuals on the current run's data, using the system_model DAG. Identification via backdoor; OLS adjustment.
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-bottom:6px;">
+            <input id="causalTreatment" placeholder="treatment column" style="padding:5px 8px; background:var(--bg-deepest); border:1px solid var(--ink-faint); color:var(--ink); font-family:inherit;">
+            <input id="causalOutcome" placeholder="outcome column" style="padding:5px 8px; background:var(--bg-deepest); border:1px solid var(--ink-faint); color:var(--ink); font-family:inherit;">
+          </div>
+          <input id="causalDoValue" placeholder="optional: intervention value (do(T=x))" style="padding:5px 8px; background:var(--bg-deepest); border:1px solid var(--ink-faint); color:var(--ink); font-family:inherit; width:100%; margin-bottom:6px;">
+          <div style="display:flex; gap:6px; margin-bottom:8px;">
+            <button id="causalIdentifyBtn" class="btn" style="flex:1;">identify only</button>
+            <button id="causalDoBtn" class="btn primary" style="flex:1;">estimate do()</button>
+            <button id="causalCfBtn" class="btn" style="flex:1;">counterfactual</button>
+          </div>
+          <div id="causalResults" style="max-height:280px; overflow:auto; padding:6px; background:var(--bg-deepest); border-left:2px solid var(--ink-faint); font-size:10px; line-height:1.5;">
+            <div style="color:var(--ink-faint);">— fill in treatment + outcome, click "estimate do()" —</div>
+          </div>
+        </div>
+
+        <!-- KB INGEST tab -->
+        <div class="v20-panel" data-panel="ingest" style="display:none;">
+          <div style="opacity:.7; margin-bottom:8px; line-height:1.4;">
+            Drop a folder path. Aurora walks it, extracts text from PDFs / TXT / MD files, and folds the chunks into your workspace KB.
+          </div>
+          <input id="ingestFolderInput" placeholder="/path/to/your/papers" style="padding:5px 8px; background:var(--bg-deepest); border:1px solid var(--ink-faint); color:var(--ink); font-family:inherit; width:100%; margin-bottom:6px;">
+          <div style="display:flex; gap:6px; margin-bottom:8px;">
+            <button id="ingestRunBtn" class="btn primary" style="flex:1;">▶ Ingest folder</button>
+            <button id="ingestListBtn" class="btn" style="flex:1;">list ingested</button>
+          </div>
+          <div id="ingestResults" style="max-height:280px; overflow:auto; padding:6px; background:var(--bg-deepest); border-left:2px solid var(--ink-faint); font-size:10px; line-height:1.5;">
+            <div style="color:var(--ink-faint);">— ingest a folder or click "list ingested" —</div>
+          </div>
+        </div>
+
+        <!-- ATTEST tab -->
+        <div class="v20-panel" data-panel="attest" style="display:none;">
+          <div style="opacity:.7; margin-bottom:8px; line-height:1.4;">
+            Verify a bundle's integrity + signer trust. Pass either a local <code>.aurora.json</code> path or paste the bundle JSON.
+          </div>
+          <input id="attestBundlePath" placeholder="/path/to/bundle.aurora.json" style="padding:5px 8px; background:var(--bg-deepest); border:1px solid var(--ink-faint); color:var(--ink); font-family:inherit; width:100%; margin-bottom:6px;">
+          <div style="display:flex; gap:6px; margin-bottom:8px;">
+            <button id="attestVerifyBtn" class="btn primary" style="flex:1;">▶ Verify</button>
+            <button id="attestSignersBtn" class="btn" style="flex:1;">trusted signers</button>
+          </div>
+          <div id="attestResults" style="max-height:280px; overflow:auto; padding:6px; background:var(--bg-deepest); border-left:2px solid var(--ink-faint); font-size:10px; line-height:1.5;">
+            <div style="color:var(--ink-faint);">— enter a bundle path + click "Verify" —</div>
+          </div>
+        </div>
+
+        <!-- MARKET tab -->
+        <div class="v20-panel" data-panel="market" style="display:none;">
+          <div style="opacity:.7; margin-bottom:8px; line-height:1.4;">
+            Browse domain KB packs (Climate / Finance / Biomed / Industrial). Click "install" to download into your workspace KB.
+          </div>
+          <ul id="marketList" style="list-style:none; padding:0; margin:0; max-height:320px; overflow:auto;">
+            <li style="color:var(--ink-faint); padding:4px 0;">loading…</li>
+          </ul>
+        </div>
+
+        <!-- CONNECTORS tab -->
+        <div class="v20-panel" data-panel="connectors" style="display:none;">
+          <div style="opacity:.7; margin-bottom:8px; line-height:1.4;">
+            Streaming connectors available on this install. Greyed out = the connector's Python dep isn't installed.
+          </div>
+          <ul id="connectorsList" style="list-style:none; padding:0; margin:0;">
+            <li style="color:var(--ink-faint); padding:4px 0;">loading…</li>
+          </ul>
+        </div>
+
+        <!-- COMPUTE tab -->
+        <div class="v20-panel" data-panel="compute" style="display:none;">
+          <div style="opacity:.7; margin-bottom:8px; line-height:1.4;">
+            Sentence-transformer device selection. Set <code>AURORA_EMBEDDINGS_DEVICE</code> env var to override (cpu / cuda / mps / auto).
+          </div>
+          <div id="computeStatus" style="padding:6px; background:var(--bg-deepest); border-left:2px solid var(--mint); font-size:10px; line-height:1.55;">
+            loading…
+          </div>
+        </div>
+      </div>
+    </div>
     <!-- v1.2-E: Runs Library — the long-deferred Sessions panel.
          Lists recent runs (pinned first), lets the user load, pin/unpin,
          A/B compare two runs (uses the Q3 joins infrastructure), and
@@ -16391,6 +16506,289 @@
   setTimeout(refreshStatus, 600);
   // Periodic re-probe (keeps the button label honest if the runner stops itself).
   pollTimer = setInterval(refreshStatus, 8000);
+})();
+</script>
+
+<!-- =================================================================== -->
+<!-- v2.0 omnibus panel controller — causal / ingest / attest / market / -->
+<!-- connectors / compute. One panel, six tabs.                          -->
+<!-- =================================================================== -->
+<script>
+(function v20Controller(){
+  const btn = document.getElementById('v20ToggleBtn');
+  const pop = document.getElementById('v20Popover');
+  const closeBtn = document.getElementById('v20PopClose');
+  if (!btn || !pop) return;
+
+  const tabs = pop.querySelectorAll('.v20-tab');
+  const panels = pop.querySelectorAll('.v20-panel');
+
+  function show(open) { pop.style.display = open ? 'block' : 'none'; }
+  btn.addEventListener('click', () => {
+    const open = pop.style.display === 'none' || !pop.style.display;
+    show(open);
+    if (open) {
+      // Refresh whichever tab is currently active.
+      const active = pop.querySelector('.v20-tab[data-active="1"]')
+                  || tabs[0];
+      activate(active.getAttribute('data-tab'));
+    }
+  });
+  if (closeBtn) closeBtn.addEventListener('click', () => show(false));
+  document.addEventListener('click', (e) => {
+    if (pop.style.display === 'none') return;
+    if (pop.contains(e.target) || btn.contains(e.target)) return;
+    show(false);
+  });
+
+  function activate(name) {
+    tabs.forEach(t => {
+      const on = t.getAttribute('data-tab') === name;
+      t.style.borderBottomColor = on ? 'var(--mint)' : 'transparent';
+      t.style.color = on ? 'var(--mint)' : 'var(--ink-faint)';
+      if (on) t.setAttribute('data-active', '1'); else t.removeAttribute('data-active');
+    });
+    panels.forEach(p => {
+      p.style.display = (p.getAttribute('data-panel') === name) ? 'block' : 'none';
+    });
+    // Lazy-load per tab.
+    if (name === 'market')     loadMarket();
+    if (name === 'connectors') loadConnectors();
+    if (name === 'compute')    loadCompute();
+  }
+  tabs.forEach(t => t.addEventListener('click', () => activate(t.getAttribute('data-tab'))));
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+
+  // ---------- Causal -------------------------------------------------
+  const tInp = document.getElementById('causalTreatment');
+  const oInp = document.getElementById('causalOutcome');
+  const doVal = document.getElementById('causalDoValue');
+  const causalRes = document.getElementById('causalResults');
+
+  document.getElementById('causalIdentifyBtn').addEventListener('click', async () => {
+    if (!tInp.value || !oInp.value) return;
+    causalRes.innerHTML = '<div style="color:var(--ink-faint);">identifying…</div>';
+    try {
+      const r = await fetch(`/api/causal/identify?treatment=${encodeURIComponent(tInp.value)}&outcome=${encodeURIComponent(oInp.value)}`);
+      const j = await r.json();
+      renderCausal(j, 'identify');
+    } catch (e) { causalRes.innerHTML = '<div style="color:#ff9aa2;">request failed</div>'; }
+  });
+  document.getElementById('causalDoBtn').addEventListener('click', async () => {
+    if (!tInp.value || !oInp.value) return;
+    causalRes.innerHTML = '<div style="color:var(--ink-faint);">estimating…</div>';
+    try {
+      const body = {treatment: tInp.value, outcome: oInp.value};
+      if (doVal.value) body.intervention_value = doVal.value;
+      const r = await fetch('/api/causal/do', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+      const j = await r.json();
+      renderCausal(j, 'do');
+    } catch (e) { causalRes.innerHTML = '<div style="color:#ff9aa2;">request failed</div>'; }
+  });
+  document.getElementById('causalCfBtn').addEventListener('click', async () => {
+    if (!tInp.value || !oInp.value || !doVal.value) {
+      causalRes.innerHTML = '<div style="color:#ffd54a;">supply treatment + outcome + intervention value</div>';
+      return;
+    }
+    causalRes.innerHTML = '<div style="color:var(--ink-faint);">computing counterfactual…</div>';
+    try {
+      const body = {treatment: tInp.value, outcome: oInp.value,
+                    counterfactual_treatment: parseFloat(doVal.value)};
+      const r = await fetch('/api/causal/counterfactual', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+      const j = await r.json();
+      renderCausal(j, 'cf');
+    } catch (e) { causalRes.innerHTML = '<div style="color:#ff9aa2;">request failed</div>'; }
+  });
+
+  function renderCausal(j, kind) {
+    if (j.error || j.ok === false || j.unidentifiable_reason) {
+      const reason = j.unidentifiable_reason || j.error || 'unidentifiable';
+      causalRes.innerHTML = '<div style="color:#ffd54a;">⚠ ' + esc(reason) + '</div>';
+      return;
+    }
+    let html = '';
+    if (kind === 'identify') {
+      html = '<div><b>identifiable:</b> ' + (j.identifiable ? '✓' : '✗') + '</div>' +
+             '<div><b>adjustment set:</b> ' + esc((j.adjustment_set||[]).join(', ') || '(empty)') + '</div>';
+    } else if (kind === 'do') {
+      html = '<div><b>effect:</b> ' + (j.effect_estimate != null ? (+j.effect_estimate).toFixed(4) : '—') +
+             ' (SE ' + (j.standard_error != null ? (+j.standard_error).toFixed(4) : '—') + ')</div>' +
+             '<div><b>adjustment set:</b> ' + esc((j.adjustment_set||[]).join(', ') || '(empty)') + '</div>' +
+             '<div><b>n_obs:</b> ' + (j.n_obs || '—') + '</div>' +
+             (j.intervention_value != null
+              ? '<div><b>do(' + esc(j.treatment) + '=' + j.intervention_value + ') → ' + esc(j.outcome) + ' predicted at sample mean</b></div>'
+              : '');
+    } else if (kind === 'cf') {
+      html = '<div><b>observed Y:</b> ' + (j.observed_outcome != null ? (+j.observed_outcome).toFixed(4) : '—') + '</div>' +
+             '<div><b>counterfactual Y:</b> ' + (j.counterfactual_outcome != null ? (+j.counterfactual_outcome).toFixed(4) : '—') + '</div>' +
+             '<div><b>delta:</b> ' + (j.delta != null ? (+j.delta).toFixed(4) : '—') + '</div>';
+    }
+    if ((j.assumptions||[]).length) {
+      html += '<div style="margin-top:6px; color:var(--ink-faint);">assumptions:</div><ul style="margin:2px 0 0 14px;">' +
+              j.assumptions.map(a => '<li>' + esc(a) + '</li>').join('') + '</ul>';
+    }
+    causalRes.innerHTML = html;
+  }
+
+  // ---------- KB Ingest ---------------------------------------------
+  const ingestRes = document.getElementById('ingestResults');
+  document.getElementById('ingestRunBtn').addEventListener('click', async () => {
+    const folder = document.getElementById('ingestFolderInput').value.trim();
+    if (!folder) return;
+    ingestRes.innerHTML = '<div style="color:var(--ink-faint);">ingesting…</div>';
+    try {
+      const r = await fetch('/api/kb/ingest/folder', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({folder: folder})});
+      const j = await r.json();
+      if (!j.ok) { ingestRes.innerHTML = '<div style="color:#ff9aa2;">' + esc(j.error || 'failed') + '</div>'; return; }
+      ingestRes.innerHTML = '<div><b>ingested:</b> ' + j.n_ingested + ' files · <b>skipped:</b> ' + j.n_skipped + ' · <b>failed:</b> ' + j.n_failed + ' · <b>chunks:</b> ' + j.n_chunks_written + '</div>' +
+        '<div style="color:var(--ink-faint); margin-top:4px;">out: ' + esc(j.out_path || '—') + '</div>';
+    } catch (e) { ingestRes.innerHTML = '<div style="color:#ff9aa2;">request failed</div>'; }
+  });
+  document.getElementById('ingestListBtn').addEventListener('click', async () => {
+    try {
+      const r = await fetch('/api/kb/ingest/list');
+      const j = await r.json();
+      if (!(j.entries || []).length) { ingestRes.innerHTML = '<div style="color:var(--ink-faint);">— no entries ingested yet —</div>'; return; }
+      ingestRes.innerHTML = j.entries.slice(0,20).map(e =>
+        '<div style="padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05);">' +
+          '<b>' + esc(e.title || '?') + '</b>' +
+          '<div style="color:var(--ink-faint); font-size:9px;">' + esc(e.source || '') +
+            (e.page ? ' · p.' + e.page : '') + '</div>' +
+        '</div>'
+      ).join('');
+    } catch (e) { ingestRes.innerHTML = '<div style="color:#ff9aa2;">request failed</div>'; }
+  });
+
+  // ---------- Attest -------------------------------------------------
+  const attestRes = document.getElementById('attestResults');
+  document.getElementById('attestVerifyBtn').addEventListener('click', async () => {
+    const bp = document.getElementById('attestBundlePath').value.trim();
+    if (!bp) return;
+    attestRes.innerHTML = '<div style="color:var(--ink-faint);">verifying…</div>';
+    try {
+      const r = await fetch('/api/attest/verify', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({bundle_path: bp})});
+      const j = await r.json();
+      const summary = j.summary ? '<span style="color:var(--mint);">✓ VERIFIED</span>' : '<span style="color:#ff7676;">✗ FAILED</span>';
+      attestRes.innerHTML =
+        '<div><b>' + summary + '</b></div>' +
+        '<div><b>integrity:</b> ' + (j.integrity_ok ? '✓' : '✗') + (j.integrity_error ? ' — ' + esc(j.integrity_error) : '') + '</div>' +
+        '<div><b>signature present:</b> ' + (j.signature_present ? '✓' : '—') + '</div>' +
+        '<div><b>signature ok:</b> ' + (j.signature_ok ? '✓' : '—') + '</div>' +
+        '<div><b>trusted signer:</b> ' + (j.trusted_signer ? '✓ ' + esc(j.signer_label || '') :
+          (j.untrusted_signer ? '⚠ not in registry' : '—')) + '</div>' +
+        ((j.warnings || []).length ? '<div style="margin-top:6px; color:#ffd54a;">' + j.warnings.map(w => '⚠ ' + esc(w)).join('<br/>') + '</div>' : '');
+    } catch (e) { attestRes.innerHTML = '<div style="color:#ff9aa2;">request failed</div>'; }
+  });
+  document.getElementById('attestSignersBtn').addEventListener('click', async () => {
+    try {
+      const r = await fetch('/api/attest/signers');
+      const j = await r.json();
+      if (!j.ok) { attestRes.innerHTML = '<div style="color:#ff9aa2;">' + esc(j.error||'failed') + '</div>'; return; }
+      const signers = j.signers || [];
+      if (!signers.length) { attestRes.innerHTML = '<div style="color:var(--ink-faint);">— no trusted signers registered —</div>'; return; }
+      attestRes.innerHTML = signers.map(s =>
+        '<div style="padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05);">' +
+          '<b>' + esc(s.label || s.public_key_hex.slice(0,16) + '…') + '</b>' +
+          '<div style="color:var(--ink-faint); font-size:9px;">' + esc(s.public_key_hex.slice(0,32)) + '…</div>' +
+          (s.domains && s.domains.length ? '<div style="color:var(--ink-faint); font-size:9px;">domains: ' + esc(s.domains.join(', ')) + '</div>' : '') +
+        '</div>'
+      ).join('');
+    } catch (e) { attestRes.innerHTML = '<div style="color:#ff9aa2;">request failed</div>'; }
+  });
+
+  // ---------- Marketplace -------------------------------------------
+  async function loadMarket() {
+    const list = document.getElementById('marketList');
+    list.innerHTML = '<li style="color:var(--ink-faint); padding:4px 0;">loading…</li>';
+    try {
+      const r = await fetch('/api/kb/marketplace');
+      const j = await r.json();
+      const packs = j.packs || [];
+      if (!packs.length) { list.innerHTML = '<li style="color:var(--ink-faint);">— no packs in manifest —</li>'; return; }
+      list.innerHTML = '';
+      packs.forEach(p => {
+        const state = p.install_state || 'available';
+        const stateColor = state === 'installed'         ? 'var(--mint)'
+                          : state === 'upgrade_available' ? '#ffd54a'
+                          : 'var(--ink-faint)';
+        const li = document.createElement('li');
+        li.style.cssText = 'padding:8px; margin-bottom:4px; background:var(--bg-deepest); border-left:2px solid ' + stateColor + ';';
+        li.innerHTML =
+          '<div style="display:flex; justify-content:space-between; gap:8px;">' +
+            '<b>' + esc(p.name) + '</b>' +
+            '<span style="color:' + stateColor + '; font-size:9px; letter-spacing:1px; text-transform:uppercase;">' + state + '</span>' +
+          '</div>' +
+          '<div style="color:var(--ink-faint); margin-top:3px;">' + esc(p.description.slice(0, 180)) + (p.description.length > 180 ? '…' : '') + '</div>' +
+          '<div style="color:var(--ink-faint); margin-top:3px; font-size:9px;">v' + p.version + ' · ' +
+            (p.size_mb || '?') + ' MB · ' + (p.entry_count || '?') + ' entries · ' + esc(p.license || '') + '</div>' +
+          '<div style="margin-top:6px;">' +
+            (state === 'installed'
+              ? '<a href="#" data-act="uninstall" data-pid="' + esc(p.id) + '" style="color:#ff9aa2; font-size:9px; letter-spacing:1px;">uninstall</a>'
+              : '<a href="#" data-act="install" data-pid="' + esc(p.id) + '" style="color:var(--mint); font-size:9px; letter-spacing:1px;">▶ install</a>') +
+          '</div>';
+        li.querySelectorAll('a').forEach(a => {
+          a.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const act = a.getAttribute('data-act');
+            const pid = a.getAttribute('data-pid');
+            a.textContent = act + '…';
+            try {
+              await fetch('/api/kb/marketplace/' + act, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({pack_id: pid})});
+            } catch (e) {}
+            loadMarket();
+          });
+        });
+        list.appendChild(li);
+      });
+    } catch (e) { list.innerHTML = '<li style="color:#ff9aa2;">unable to load marketplace</li>'; }
+  }
+
+  // ---------- Connectors --------------------------------------------
+  async function loadConnectors() {
+    const list = document.getElementById('connectorsList');
+    list.innerHTML = '<li style="color:var(--ink-faint); padding:4px 0;">loading…</li>';
+    try {
+      const r = await fetch('/api/stream/connectors');
+      const j = await r.json();
+      const cs = j.connectors || [];
+      list.innerHTML = '';
+      cs.forEach(c => {
+        const color = c.available ? 'var(--mint)' : 'var(--ink-faint)';
+        const li = document.createElement('li');
+        li.style.cssText = 'padding:6px 8px; margin-bottom:3px; background:var(--bg-deepest); border-left:2px solid ' + color + ';';
+        li.innerHTML =
+          '<div style="display:flex; justify-content:space-between;">' +
+            '<b style="color:' + color + ';">' + esc(c.name) + '</b>' +
+            '<span style="color:' + color + '; font-size:9px; letter-spacing:1px;">' + (c.available ? 'AVAILABLE' : 'NOT INSTALLED') + '</span>' +
+          '</div>' +
+          (!c.available ? '<div style="color:var(--ink-faint); margin-top:2px; font-size:9px;">install hint: <code>' + esc(c.install_hint) + '</code></div>' : '');
+        list.appendChild(li);
+      });
+    } catch (e) { list.innerHTML = '<li style="color:#ff9aa2;">unable to load</li>'; }
+  }
+
+  // ---------- Compute -----------------------------------------------
+  async function loadCompute() {
+    const box = document.getElementById('computeStatus');
+    box.innerHTML = 'loading…';
+    try {
+      const r = await fetch('/api/embeddings/status');
+      const j = await r.json();
+      if (!j.ok) { box.innerHTML = '<span style="color:#ff9aa2;">' + esc(j.error||'failed') + '</span>'; return; }
+      const chosenColor = j.chosen === 'cuda' || j.chosen === 'mps' ? 'var(--mint)' : 'var(--ink)';
+      box.innerHTML =
+        '<div><b>preferred:</b> ' + esc(j.preferred) + '</div>' +
+        '<div><b>chosen:</b> <span style="color:' + chosenColor + ';">' + esc(j.chosen) + '</span></div>' +
+        '<div><b>torch version:</b> ' + (j.torch_version || '<i style="color:var(--ink-faint);">not installed</i>') + '</div>' +
+        '<div><b>CUDA available:</b> ' + (j.cuda_available ? '✓' : '—') + '</div>' +
+        '<div><b>MPS available:</b> ' + (j.mps_available ? '✓' : '—') + '</div>';
+    } catch (e) { box.innerHTML = '<span style="color:#ff9aa2;">request failed</span>'; }
+  }
 })();
 </script>
 

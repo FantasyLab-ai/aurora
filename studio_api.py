@@ -1452,6 +1452,460 @@ def api_plugins():
     })
 
 
+# ---------------------------------------------------------------------------
+# Q2.0 Stream C: Custom KB ingestion (PDFs / folders → private KB)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/kb/ingest/folder", methods=["POST"])
+def api_kb_ingest_folder():
+    """Ingest every supported file under a folder into the workspace KB.
+
+    Body: ``{"folder": "/path/to/papers", "append": true,
+              "glob_pattern": "**/*", "max_files": 200}``
+
+    Workspace-scoped — when auth is enabled, results land in the
+    caller's workspace KB shard, not the shared store.
+    """
+    try:
+        from fantasyai.aurora.kb.ingest import ingest_folder
+    except Exception as e:
+        return jsonify({"ok": False,
+                        "error": f"kb.ingest unavailable: {e}"}), 200
+    body = request.get_json(silent=True) or {}
+    folder = body.get("folder")
+    if not folder:
+        return jsonify({"ok": False, "error": "folder required"}), 400
+    try:
+        target = _safe_path(Path(folder))
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    wid = _current_workspace_id() if _AUTH_AVAILABLE else None
+    report = ingest_folder(
+        target,
+        workspace_id=wid,
+        glob_pattern=str(body.get("glob_pattern", "**/*")),
+        max_files=int(body.get("max_files", 200)),
+        append=bool(body.get("append", True)),
+    )
+    return jsonify(report.to_dict())
+
+
+@app.route("/api/kb/ingest/list")
+def api_kb_ingest_list():
+    """List previously-ingested KB entries for the current workspace."""
+    try:
+        from fantasyai.aurora.kb.ingest import list_workspace_kb_entries
+    except Exception as e:
+        return jsonify({"ok": False,
+                        "error": f"kb.ingest unavailable: {e}",
+                        "entries": []}), 200
+    wid = _current_workspace_id() if _AUTH_AVAILABLE else None
+    limit = request.args.get("limit")
+    try:
+        n = int(limit) if limit else 50
+    except (TypeError, ValueError):
+        n = 50
+    entries = list_workspace_kb_entries(workspace_id=wid, limit=n)
+    # Strip the full text blob from the listing response — frontend
+    # only needs title + summary + source for the table.
+    compact = [{
+        "seed_id":     e.get("seed_id"),
+        "title":       e.get("title"),
+        "summary":     e.get("summary"),
+        "source":      e.get("source"),
+        "page":        e.get("page"),
+        "ingested_at": e.get("ingested_at"),
+    } for e in entries]
+    return jsonify({"ok": True, "n_entries": len(entries), "entries": compact})
+
+
+# ---------------------------------------------------------------------------
+# Q2.0 Stream D: Bundle attestation — verify + trusted-signer registry
+# ---------------------------------------------------------------------------
+
+@app.route("/api/attest/verify", methods=["POST"])
+def api_attest_verify():
+    """Attest a bundle. Either upload via ``bundle`` (POSTed JSON
+    object) OR reference ``bundle_path`` (a file under the
+    contracts-output root)."""
+    try:
+        from fantasyai.aurora.attestation import attest_bundle
+    except Exception as e:
+        return jsonify({"ok": False,
+                        "error": f"attestation unavailable: {e}"}), 200
+    body = request.get_json(silent=True) or {}
+    bundle = body.get("bundle")
+    bundle_path = body.get("bundle_path")
+    require_sig = bool(body.get("require_signature", False))
+    if bundle is None and bundle_path:
+        try:
+            bp = _safe_path(Path(bundle_path))
+            if not bp.exists():
+                return jsonify({"ok": False, "error": "bundle not found"}), 404
+            bundle = json.loads(bp.read_text(encoding="utf-8"))
+        except Exception as e:
+            return jsonify({"ok": False,
+                            "error": f"failed to load bundle: {e}"}), 400
+    if not isinstance(bundle, dict):
+        return jsonify({"ok": False,
+                        "error": "bundle or bundle_path required"}), 400
+    wid = _current_workspace_id() if _AUTH_AVAILABLE else None
+    report = attest_bundle(bundle, workspace_id=wid,
+                            require_signature=require_sig)
+    return jsonify(report.to_dict())
+
+
+@app.route("/api/attest/signers", methods=["GET", "POST"])
+def api_attest_signers():
+    """List or add trusted signers for the current workspace."""
+    try:
+        from fantasyai.aurora.attestation import (
+            list_trusted_signers, add_trusted_signer,
+        )
+    except Exception as e:
+        return jsonify({"ok": False,
+                        "error": f"attestation unavailable: {e}"}), 200
+    wid = _current_workspace_id() if _AUTH_AVAILABLE else None
+    if request.method == "GET":
+        return jsonify({
+            "ok": True,
+            "signers": list_trusted_signers(wid),
+        })
+    body = request.get_json(silent=True) or {}
+    pk = body.get("public_key_hex")
+    if not pk:
+        return jsonify({"ok": False,
+                        "error": "public_key_hex required"}), 400
+    try:
+        entry = add_trusted_signer(
+            pk, workspace_id=wid,
+            label=body.get("label"),
+            added_by=body.get("added_by"),
+            domains=body.get("domains") or [],
+            notes=body.get("notes"),
+        )
+        return jsonify({"ok": True, "signer": entry})
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+
+@app.route("/api/attest/signers/remove", methods=["POST"])
+def api_attest_signers_remove():
+    """Remove a trusted signer."""
+    try:
+        from fantasyai.aurora.attestation import remove_trusted_signer
+    except Exception as e:
+        return jsonify({"ok": False,
+                        "error": f"attestation unavailable: {e}"}), 200
+    body = request.get_json(silent=True) or {}
+    pk = body.get("public_key_hex")
+    if not pk:
+        return jsonify({"ok": False,
+                        "error": "public_key_hex required"}), 400
+    wid = _current_workspace_id() if _AUTH_AVAILABLE else None
+    changed = remove_trusted_signer(pk, workspace_id=wid)
+    return jsonify({"ok": True, "changed": changed})
+
+
+# ---------------------------------------------------------------------------
+# Q2.0 Stream E: KB pack marketplace
+# ---------------------------------------------------------------------------
+
+@app.route("/api/kb/marketplace")
+def api_kb_marketplace():
+    """List all packs in the bundled manifest, annotated with each
+    pack's install state on this machine."""
+    try:
+        from fantasyai.aurora.kb.marketplace import list_marketplace
+    except Exception as e:
+        return jsonify({"ok": False,
+                        "error": f"marketplace unavailable: {e}",
+                        "packs": []}), 200
+    wid = _current_workspace_id() if _AUTH_AVAILABLE else None
+    packs = list_marketplace(workspace_id=wid)
+    return jsonify({"ok": True, "n_packs": len(packs), "packs": packs})
+
+
+@app.route("/api/kb/marketplace/install", methods=["POST"])
+def api_kb_marketplace_install():
+    """Install a pack by id."""
+    try:
+        from fantasyai.aurora.kb.marketplace import install_pack
+    except Exception as e:
+        return jsonify({"ok": False,
+                        "error": f"marketplace unavailable: {e}"}), 200
+    body = request.get_json(silent=True) or {}
+    pid = body.get("pack_id")
+    if not pid:
+        return jsonify({"ok": False, "error": "pack_id required"}), 400
+    wid = _current_workspace_id() if _AUTH_AVAILABLE else None
+    return jsonify(install_pack(pid, workspace_id=wid,
+                                  use_mirror=bool(body.get("use_mirror", False))))
+
+
+@app.route("/api/kb/marketplace/uninstall", methods=["POST"])
+def api_kb_marketplace_uninstall():
+    """Uninstall a pack by id."""
+    try:
+        from fantasyai.aurora.kb.marketplace import uninstall_pack
+    except Exception as e:
+        return jsonify({"ok": False,
+                        "error": f"marketplace unavailable: {e}"}), 200
+    body = request.get_json(silent=True) or {}
+    pid = body.get("pack_id")
+    if not pid:
+        return jsonify({"ok": False, "error": "pack_id required"}), 400
+    wid = _current_workspace_id() if _AUTH_AVAILABLE else None
+    return jsonify(uninstall_pack(pid, workspace_id=wid))
+
+
+# ---------------------------------------------------------------------------
+# Q2.0 Stream F: GPU embeddings status
+# ---------------------------------------------------------------------------
+
+@app.route("/api/embeddings/status")
+def api_embeddings_status():
+    """Report which device sentence-transformer will use."""
+    try:
+        from fantasyai.aurora.embedding_device import embedding_device_info
+        return jsonify({"ok": True, **embedding_device_info()})
+    except Exception as e:
+        return jsonify({"ok": False,
+                        "error": f"embedding_device unavailable: {e}"}), 200
+
+
+# ---------------------------------------------------------------------------
+# Q2.0 Stream B: Streaming connectors availability
+# ---------------------------------------------------------------------------
+
+@app.route("/api/stream/connectors")
+def api_stream_connectors():
+    """Report which streaming connectors are available on this install."""
+    try:
+        from fantasyai.aurora.streaming.connectors import available_connectors
+    except Exception as e:
+        return jsonify({"ok": False,
+                        "error": f"connectors unavailable: {e}",
+                        "connectors": []}), 200
+    rows = available_connectors()
+    return jsonify({
+        "ok": True,
+        "connectors": [
+            {"name": n, "available": a, "install_hint": h}
+            for (n, a, h) in rows
+        ],
+    })
+
+
+# ---------------------------------------------------------------------------
+# Q2.0 Stream A: Causal inference — do() queries + counterfactuals
+# ---------------------------------------------------------------------------
+
+def _load_run_df_and_dag(run_dir: Path):
+    """Helper: read the run's dataset + system_model so causal endpoints
+    can run identification + estimation against real data."""
+    from fantasyai.aurora.causal import load_dag_from_system_model
+    state_doc = _read_run_json(run_dir, "state.json") if False else None
+    # Build state on the fly so we get the live system_model (state.json
+    # isn't always materialised on disk).
+    if _HAVE_STATE:
+        try:
+            state = build_state(run_dir)
+        except Exception:
+            state = None
+    else:
+        state = None
+    system_model = (state or {}).get("system_model")
+    dag = load_dag_from_system_model(system_model)
+    # Resolve the dataset path from run meta.
+    meta = _read_json(run_dir / "_RUN_META.json") or {}
+    ds_path = meta.get("dataset_path")
+    df = None
+    if ds_path and Path(ds_path).exists():
+        try:
+            import pandas as pd
+            df = pd.read_csv(ds_path)
+        except Exception:
+            df = None
+    return df, dag, state
+
+
+def _read_run_json(run_dir, name):
+    try:
+        p = Path(run_dir) / name
+        if p.exists():
+            return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return None
+
+
+@app.route("/api/causal/dag")
+def api_causal_dag():
+    """Return the causal DAG built from the run's system_model.
+
+    Query: ``?run_dir=<path>`` (defaults to latest run).
+    Useful for the frontend's DAG inspector + for clients that want
+    to verify which edges would feed an identification check.
+    """
+    try:
+        from fantasyai.aurora.causal import load_dag_from_system_model
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"causal module unavailable: {e}"}), 200
+    rd_arg = request.args.get("run_dir")
+    rd = Path(rd_arg) if rd_arg else (find_latest_run(DEFAULT_OUTPUTS)
+                                       if _HAVE_STATE else None)
+    if rd is None or not rd.exists():
+        return jsonify({"ok": False, "error": "no run found"}), 200
+    if _HAVE_STATE:
+        try:
+            state = build_state(rd)
+        except Exception:
+            state = {}
+    else:
+        state = {}
+    sm = (state or {}).get("system_model") or {}
+    dag = load_dag_from_system_model(sm)
+    return jsonify({
+        "ok": True,
+        "run_dir":      str(rd),
+        "nodes":        sorted(dag.nodes),
+        "edges":        [
+            {"source": s, "target": t,
+              "weight": dag.edge_confidence.get((s, t), 0.5)}
+            for s, kids in dag.edges.items() for t in kids
+        ],
+        "n_nodes":      len(dag.nodes),
+        "n_edges":      sum(len(v) for v in dag.edges.values()),
+        "dropped_edges": [list(e) for e in dag.dropped_edges],
+        "acyclic":      dag.is_acyclic(),
+    })
+
+
+@app.route("/api/causal/identify")
+def api_causal_identify():
+    """Cheap identifiability check — no estimation. Query params:
+    ``treatment``, ``outcome``, ``run_dir`` (optional)."""
+    try:
+        from fantasyai.aurora.causal import (
+            load_dag_from_system_model, identification_status,
+        )
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"causal module unavailable: {e}"}), 200
+    treatment = request.args.get("treatment")
+    outcome = request.args.get("outcome")
+    if not treatment or not outcome:
+        return jsonify({"ok": False,
+                        "error": "treatment + outcome required"}), 400
+    rd_arg = request.args.get("run_dir")
+    rd = Path(rd_arg) if rd_arg else (find_latest_run(DEFAULT_OUTPUTS)
+                                       if _HAVE_STATE else None)
+    if rd is None or not rd.exists():
+        return jsonify({"ok": False, "error": "no run found"}), 200
+    if _HAVE_STATE:
+        try:
+            state = build_state(rd)
+        except Exception:
+            state = {}
+    else:
+        state = {}
+    sm = (state or {}).get("system_model") or {}
+    dag = load_dag_from_system_model(sm)
+    return jsonify(identification_status(dag, treatment, outcome))
+
+
+@app.route("/api/causal/do", methods=["GET", "POST"])
+def api_causal_do():
+    """Estimate the causal effect of ``do(treatment = value)`` on outcome.
+
+    Body / query:
+        treatment, outcome — required
+        intervention_value — optional; predicts counterfactual outcome
+        run_dir            — optional; defaults to latest
+        extra_adjust       — optional list of additional adjustment cols
+    """
+    try:
+        from fantasyai.aurora.causal import do_query
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"causal module unavailable: {e}"}), 200
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+    else:
+        body = {k: v for k, v in request.args.items()}
+    treatment = body.get("treatment")
+    outcome = body.get("outcome")
+    if not treatment or not outcome:
+        return jsonify({"ok": False,
+                        "error": "treatment + outcome required"}), 400
+    try:
+        iv = body.get("intervention_value")
+        iv = float(iv) if iv not in (None, "") else None
+    except (TypeError, ValueError):
+        iv = None
+    extra_adjust = body.get("extra_adjust") or []
+    if isinstance(extra_adjust, str):
+        extra_adjust = [s.strip() for s in extra_adjust.split(",") if s.strip()]
+    rd_arg = body.get("run_dir")
+    rd = Path(rd_arg) if rd_arg else (find_latest_run(DEFAULT_OUTPUTS)
+                                       if _HAVE_STATE else None)
+    if rd is None or not rd.exists():
+        return jsonify({"ok": False, "error": "no run found"}), 200
+    df, dag, _ = _load_run_df_and_dag(rd)
+    if df is None:
+        return jsonify({"ok": False,
+                        "error": "could not load dataset for run; "
+                                 "ensure the CSV at meta.dataset_path is readable"}), 200
+    result = do_query(df, dag, treatment, outcome,
+                       intervention_value=iv,
+                       extra_adjust=list(extra_adjust))
+    return jsonify(result.to_dict())
+
+
+@app.route("/api/causal/counterfactual", methods=["POST"])
+def api_causal_counterfactual():
+    """Counterfactual query.
+
+    Body: ``{"treatment", "outcome", "counterfactual_treatment",
+             "row_index", "run_dir"}``.
+    """
+    try:
+        from fantasyai.aurora.causal import counterfactual_query
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"causal module unavailable: {e}"}), 200
+    body = request.get_json(silent=True) or {}
+    treatment = body.get("treatment")
+    outcome = body.get("outcome")
+    cft = body.get("counterfactual_treatment")
+    if not treatment or not outcome or cft is None:
+        return jsonify({"ok": False,
+                        "error": "treatment + outcome + counterfactual_treatment required"}), 400
+    try:
+        cft = float(cft)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False,
+                        "error": "counterfactual_treatment must be numeric"}), 400
+    row_index = body.get("row_index")
+    try:
+        row_index = int(row_index) if row_index is not None else None
+    except (TypeError, ValueError):
+        row_index = None
+    rd_arg = body.get("run_dir")
+    rd = Path(rd_arg) if rd_arg else (find_latest_run(DEFAULT_OUTPUTS)
+                                       if _HAVE_STATE else None)
+    if rd is None or not rd.exists():
+        return jsonify({"ok": False, "error": "no run found"}), 200
+    df, dag, _ = _load_run_df_and_dag(rd)
+    if df is None:
+        return jsonify({"ok": False,
+                        "error": "could not load dataset for run"}), 200
+    result = counterfactual_query(
+        df, dag, treatment, outcome,
+        counterfactual_treatment=cft,
+        row_index=row_index,
+    )
+    return jsonify(result.to_dict())
+
+
 @app.route("/api/joins/analyze", methods=["GET", "POST"])
 def api_joins_analyze():
     """Compute a join report between two finished runs.

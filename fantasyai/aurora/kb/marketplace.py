@@ -1,0 +1,224 @@
+"""
+KB pack marketplace listing (v2.0 Stream E).
+
+The pack format + downloader + installer + registry all shipped in
+v1.2 (see ``fantasyai/aurora/knowledge_bank/packs/``). v2.0 adds the
+**marketplace** layer on top: a single read API that combines the
+manifest catalogue with the install-state of each pack on this
+machine, ready for a frontend panel to render.
+
+We don't add a server-side marketplace right now — the manifest is
+already a curated, signed-ish JSON file in the repo. "Listing" =
+read manifest + cross-reference local installed-pack registry.
+
+When Aurora Cloud Phase 3 lights up a real marketplace control plane
+(submission flow, review, revenue share), this module gains an
+optional ``remote_manifest_url`` mode. Local-first stays the
+default.
+"""
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field, asdict
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+
+@dataclass
+class MarketplaceEntry:
+    """One pack as seen from the marketplace."""
+    id:               str
+    name:             str
+    description:      str
+    domain_tags:      List[str]
+    method_coverage:  List[str]
+    version:          int
+    size_mb:          float
+    entry_count:      int
+    license:          str
+    maintainer:       Optional[str] = None
+    homepage:         Optional[str] = None
+    url_primary:      Optional[str] = None
+    url_mirror:       Optional[str] = None
+    sha256:           Optional[str] = None
+    installed:        bool = False
+    installed_version: Optional[int] = None
+    installed_at:     Optional[float] = None
+    install_state:    str = "available"   # available | installed | upgrade_available | failed
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+def _load_manifest() -> Dict[str, Any]:
+    """Read the bundled manifest. Tolerates missing file."""
+    try:
+        from fantasyai.aurora.knowledge_bank.packs import manifest as manifest_mod
+        path = getattr(manifest_mod, "__file__", None)
+        if path:
+            json_path = Path(path).parent / "manifest.json"
+            if json_path.exists():
+                return json.loads(json_path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {"schema_version": "1.0.0", "packs": []}
+
+
+def _installed_packs(workspace_id: Optional[str] = None
+                     ) -> Dict[str, Dict[str, Any]]:
+    """Map pack_id → install record. Looks up the existing registry
+    from ``fantasyai.aurora.knowledge_bank.packs.registry``."""
+    out: Dict[str, Dict[str, Any]] = {}
+    try:
+        from fantasyai.aurora.knowledge_bank.packs.registry import (
+            list_installed_packs,
+        )
+        for rec in list_installed_packs() or []:
+            pid = (rec or {}).get("id") or (rec or {}).get("pack_id")
+            if pid:
+                out[str(pid)] = rec
+    except Exception:
+        pass
+    # Also consider workspace-installed packs (Phase 2 isolation).
+    try:
+        from fantasyai.aurora.auth import workspace_dir
+        ws = workspace_dir(workspace_id)
+        ws_registry = ws / "kb" / "installed_packs.json"
+        if ws_registry.exists():
+            data = json.loads(ws_registry.read_text(encoding="utf-8"))
+            for rec in (data.get("packs") or []):
+                pid = (rec or {}).get("id")
+                if pid:
+                    out[str(pid)] = rec
+    except Exception:
+        pass
+    return out
+
+
+def list_marketplace(workspace_id: Optional[str] = None
+                      ) -> List[Dict[str, Any]]:
+    """Return one entry per pack in the manifest, annotated with
+    install state for the current workspace.
+    """
+    manifest = _load_manifest()
+    installed = _installed_packs(workspace_id)
+    out: List[Dict[str, Any]] = []
+    for raw in manifest.get("packs") or []:
+        if not isinstance(raw, dict):
+            continue
+        pid = raw.get("id")
+        if not pid:
+            continue
+        inst = installed.get(pid) or {}
+        installed_ver = inst.get("version") or inst.get("installed_version")
+        installed_at = inst.get("installed_at")
+        is_installed = bool(inst)
+        state = "available"
+        if is_installed:
+            try:
+                if installed_ver is not None and raw.get("version") is not None \
+                        and int(installed_ver) < int(raw["version"]):
+                    state = "upgrade_available"
+                else:
+                    state = "installed"
+            except Exception:
+                state = "installed"
+        entry = MarketplaceEntry(
+            id=str(pid),
+            name=str(raw.get("name") or pid),
+            description=str(raw.get("description") or ""),
+            domain_tags=list(raw.get("covers_domains") or []),
+            method_coverage=list(raw.get("covers_methods") or []),
+            version=int(raw.get("version") or 1),
+            size_mb=float(raw.get("size_mb") or 0),
+            entry_count=int(raw.get("entry_count") or 0),
+            license=str(raw.get("license") or ""),
+            maintainer=raw.get("maintainer"),
+            homepage=raw.get("homepage"),
+            url_primary=raw.get("url_primary"),
+            url_mirror=raw.get("url_mirror"),
+            sha256=raw.get("sha256"),
+            installed=is_installed,
+            installed_version=int(installed_ver) if installed_ver else None,
+            installed_at=float(installed_at) if installed_at else None,
+            install_state=state,
+        )
+        out.append(entry.to_dict())
+    return out
+
+
+def install_pack(
+    pack_id: str,
+    *,
+    workspace_id: Optional[str] = None,
+    use_mirror: bool = False,
+) -> Dict[str, Any]:
+    """Install a pack from the manifest. Returns a status dict.
+
+    Args:
+        pack_id: the manifest id (e.g. "finance", "industrial").
+        workspace_id: when present, install to the workspace-isolated
+            location; otherwise use the shared install.
+        use_mirror: prefer the HuggingFace mirror over the Cloudflare R2
+            primary. Useful when the primary CDN is rate-limiting.
+    """
+    try:
+        from fantasyai.aurora.knowledge_bank.packs.installer import install_pack as _install
+    except Exception as e:
+        return {"ok": False,
+                "error": f"installer unavailable: {type(e).__name__}: {e}"}
+    try:
+        result = _install(pack_id, prefer_mirror=use_mirror)
+        if isinstance(result, dict):
+            return {"ok": True, **result}
+        return {"ok": True, "result": str(result)}
+    except Exception as e:
+        return {"ok": False,
+                "error": f"{type(e).__name__}: {e}",
+                "pack_id": pack_id}
+
+
+def uninstall_pack(
+    pack_id: str,
+    *,
+    workspace_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Uninstall a previously-installed pack. The shared registry
+    handles disk-level removal; a workspace-installed pack is
+    removed from the workspace's installed_packs.json instead."""
+    # Try the shared installer first.
+    try:
+        from fantasyai.aurora.knowledge_bank.packs.registry import (
+            unregister_pack,
+        )
+    except Exception:
+        unregister_pack = None  # type: ignore
+    removed_shared = False
+    if unregister_pack is not None:
+        try:
+            removed_shared = bool(unregister_pack(pack_id))
+        except Exception:
+            removed_shared = False
+    # Workspace-scoped removal (best-effort).
+    removed_ws = False
+    try:
+        from fantasyai.aurora.auth import workspace_dir
+        ws = workspace_dir(workspace_id)
+        wf = ws / "kb" / "installed_packs.json"
+        if wf.exists():
+            data = json.loads(wf.read_text(encoding="utf-8"))
+            old = data.get("packs") or []
+            new = [p for p in old if str(p.get("id")) != str(pack_id)]
+            if len(new) != len(old):
+                data["packs"] = new
+                wf.write_text(json.dumps(data, indent=2, default=str),
+                                encoding="utf-8")
+                removed_ws = True
+    except Exception:
+        pass
+    return {
+        "ok":      removed_shared or removed_ws,
+        "pack_id": pack_id,
+        "removed_shared": removed_shared,
+        "removed_workspace": removed_ws,
+    }

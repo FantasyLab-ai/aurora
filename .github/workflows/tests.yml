@@ -78,6 +78,9 @@ jobs:
             tests/test_contract_action_types.py \
             tests/test_runs_library.py \
             tests/test_mcp_http_transport.py \
+            tests/test_q2_causal_inference.py \
+            tests/test_q2_streaming_connectors.py \
+            tests/test_q2_kb_attest_market_embed.py \
             tests/test_v1_2_frontend_wiring.py \
             tests/test_coupled_systems.py
 

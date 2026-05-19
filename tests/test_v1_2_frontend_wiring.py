@@ -305,3 +305,39 @@ class TestV12DEFFrontendSurfaces:
         assert "new_findings" in html
         assert "disappeared_findings" in html
         assert "physics_law_changed" in html
+
+
+# ----------------------------------------------------------------------
+# v2.0 omnibus panel surfaces
+# ----------------------------------------------------------------------
+
+class TestV20OmnibusPanel:
+
+    def test_v20_chip_and_panel_present(self):
+        html = _read()
+        assert 'id="v20ToggleBtn"' in html
+        assert 'id="v20Popover"' in html
+        assert "v20Controller" in html
+
+    def test_v20_all_six_tabs_rendered(self):
+        html = _read()
+        for tab in ("causal", "ingest", "attest",
+                     "market", "connectors", "compute"):
+            assert f'data-tab="{tab}"' in html, f"v2.0 tab {tab!r} missing"
+
+    def test_v20_endpoints_called(self):
+        html = _read()
+        # Each tab hits its backend endpoint.
+        for endpoint in (
+            "/api/causal/identify",
+            "/api/causal/do",
+            "/api/causal/counterfactual",
+            "/api/kb/ingest/folder",
+            "/api/kb/ingest/list",
+            "/api/attest/verify",
+            "/api/attest/signers",
+            "/api/kb/marketplace",
+            "/api/stream/connectors",
+            "/api/embeddings/status",
+        ):
+            assert endpoint in html, f"v2.0 panel doesn't call {endpoint}"
