@@ -1172,6 +1172,211 @@ def api_runs():
 
 
 # ---------------------------------------------------------------------------
+# Q3 Stream A: composable findings — priors that flow run-to-run.
+#
+# These endpoints let the Studio (or any SDK caller) extract a prior
+# pack from a finished run and inspect what's reusable. The next run
+# inherits by writing the same pack into its own ``priors_pack.json``;
+# state_builder loads it and tags aligned findings with PRIOR badges.
+# ---------------------------------------------------------------------------
+
+@app.route("/api/priors/from_run")
+def api_priors_from_run():
+    """Extract a prior pack from a finished run.
+
+    Query: ``?run_id=<id>`` OR ``?run_dir=<path>``.
+
+    Returns the JSON shape ``PriorPack.to_dict()`` produces, plus a
+    ``can_inherit`` boolean — useful for the frontend to decide
+    whether to enable the INHERIT picker for this run.
+    """
+    try:
+        from fantasyai.aurora.composable import extract_prior_pack
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"composable unavailable: {e}"}), 200
+
+    rd_arg = request.args.get("run_dir") or request.args.get("run_id")
+    if not rd_arg:
+        return jsonify({"ok": False, "error": "run_id or run_dir required"}), 400
+    rd = Path(rd_arg)
+    if not rd.is_absolute():
+        # Treat as a run_id under the default outputs.
+        rd = DEFAULT_OUTPUTS / rd_arg
+    try:
+        rd = _safe_path(rd)
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    if not rd.exists():
+        return jsonify({"ok": False, "error": f"run not found: {rd_arg}"}), 404
+    pack = extract_prior_pack(rd)
+    d = pack.to_dict()
+    d["can_inherit"] = bool(pack.n_priors)
+    return jsonify({"ok": True, **d})
+
+
+@app.route("/api/priors/list")
+def api_priors_list():
+    """List recent runs annotated with their prior-pack richness.
+
+    Returns a compact list the Studio's INHERIT picker uses to render
+    a dropdown. Heavy fields stripped — call /api/priors/from_run for
+    the full pack of any specific run.
+    """
+    if not _HAVE_STATE:
+        return jsonify({"ok": False, "runs": []}), 200
+    try:
+        from fantasyai.aurora.composable import extract_prior_pack
+    except Exception:
+        return jsonify({"ok": True, "runs": []}), 200
+    runs = list_runs(DEFAULT_OUTPUTS) or []
+    out: List[Dict[str, Any]] = []
+    for r in runs[:50]:
+        run_dir = r.get("run_dir") if isinstance(r, dict) else None
+        if not run_dir:
+            continue
+        try:
+            pack = extract_prior_pack(Path(run_dir))
+        except Exception:
+            continue
+        out.append({
+            "run_id":         pack.source_run_id,
+            "run_dir":        run_dir,
+            "dataset":        pack.source_dataset,
+            "target_col":     pack.target_col,
+            "n_priors":       pack.n_priors,
+            "has_physics":    bool(pack.physics),
+            "has_regimes":    bool(pack.regimes),
+            "has_baseline":   bool(pack.baseline),
+            "extracted_at":   pack.extracted_at,
+        })
+    return jsonify({"ok": True, "runs": out})
+
+
+# ---------------------------------------------------------------------------
+# Q3 Stream B: multi-dataset joins — pair-wise run reports.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Q3 Stream C: Plugin SDK — discover + report on third-party methods.
+# ---------------------------------------------------------------------------
+
+@app.route("/api/plugins")
+def api_plugins():
+    """List discovered Aurora plugins + their load/run status.
+
+    Returns the same shape ``PluginInfo.to_dict()`` produces, one per
+    plugin. Frontend renders this in the PLUGINS panel.
+    """
+    try:
+        from fantasyai.aurora.plugins import discover_plugins
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"plugins module unavailable: {e}",
+                        "plugins": []}), 200
+    plugins = discover_plugins()
+    return jsonify({
+        "ok": True,
+        "n_plugins": len(plugins),
+        "n_loaded":  sum(1 for p in plugins if p.status == "loaded"),
+        "plugins":   [p.to_dict() for p in plugins],
+    })
+
+
+@app.route("/api/joins/analyze", methods=["GET", "POST"])
+def api_joins_analyze():
+    """Compute a join report between two finished runs.
+
+    Inputs (GET query OR POST body):
+        run_a_dir, run_b_dir — absolute paths to the two run directories.
+
+    Returns the JoinReport.to_dict() shape — shared keys, schema
+    compatibility, cross-correlations, inheritance candidates, warnings.
+
+    The report is a pure read computation; neither source run is modified.
+    """
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        a = body.get("run_a_dir") or body.get("run_a")
+        b = body.get("run_b_dir") or body.get("run_b")
+    else:
+        a = request.args.get("run_a_dir") or request.args.get("run_a")
+        b = request.args.get("run_b_dir") or request.args.get("run_b")
+    if not a or not b:
+        return jsonify({"ok": False, "error": "run_a_dir + run_b_dir required"}), 400
+    try:
+        pa = _safe_path(Path(a))
+        pb = _safe_path(Path(b))
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    try:
+        from fantasyai.aurora.joins import compute_join_report
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"joins module unavailable: {e}"}), 200
+    report = compute_join_report(pa, pb)
+    return jsonify(report.to_dict())
+
+
+@app.route("/api/priors/inherit", methods=["POST"])
+def api_priors_inherit():
+    """Stage a prior pack to be picked up by the next run.
+
+    Body: ``{"source_run_dir": "...", "target_run_dir": "..."}``
+
+    Writes ``<target_run_dir>/priors_pack.json``. The state_builder
+    picks it up automatically the next time /api/state is queried
+    against that run.
+
+    Note: callers can also POST a raw pack via ``pack`` instead of
+    ``source_run_dir`` — useful for programmatic chaining when the
+    pack already lives elsewhere.
+    """
+    try:
+        from fantasyai.aurora.composable import (
+            extract_prior_pack, write_prior_pack, PriorPack,
+        )
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"composable unavailable: {e}"}), 200
+    body = request.get_json(silent=True) or {}
+    target_arg = body.get("target_run_dir")
+    if not target_arg:
+        return jsonify({"ok": False, "error": "target_run_dir required"}), 400
+    try:
+        target = _safe_path(Path(target_arg))
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    if not target.exists():
+        return jsonify({"ok": False, "error": f"target run not found"}), 404
+
+    raw_pack = body.get("pack")
+    if raw_pack and isinstance(raw_pack, dict):
+        # Direct write — the pack is already shaped.
+        out = target / "priors_pack.json"
+        out.write_text(
+            __import__("json").dumps(raw_pack, indent=2, sort_keys=True,
+                                       default=str),
+            encoding="utf-8",
+        )
+        return jsonify({"ok": True, "written": str(out),
+                        "source": "direct"})
+    src_arg = body.get("source_run_dir")
+    if not src_arg:
+        return jsonify({"ok": False,
+                        "error": "either pack or source_run_dir required"}), 400
+    try:
+        src = _safe_path(Path(src_arg))
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    pack = extract_prior_pack(src)
+    out = target / "priors_pack.json"
+    write_prior_pack(pack, out)
+    return jsonify({
+        "ok": True,
+        "written":     str(out),
+        "source_run":  pack.source_run_id,
+        "n_priors":    pack.n_priors,
+    })
+
+
+# ---------------------------------------------------------------------------
 # Demo datasets — listed for the empty-state chips
 # ---------------------------------------------------------------------------
 
@@ -1984,6 +2189,23 @@ def api_run():
     if seed_text is not None:
         seed_text = str(seed_text).strip() or None
 
+    # Q3 Stream A: optional ``inherit_from`` — a run_dir whose extracted
+    # priors should flow into this run. The runner writes the pack into
+    # the new run's directory once a run_dir is allocated; state_builder
+    # picks it up and tags aligned findings with PRIOR badges.
+    inherit_from = body.get("inherit_from") or None
+    if inherit_from and isinstance(inherit_from, dict):
+        inherit_from = inherit_from.get("run_dir")
+    if inherit_from:
+        try:
+            inherit_from_safe = _safe_path(Path(str(inherit_from)))
+            if not inherit_from_safe.exists():
+                inherit_from_safe = None
+        except Exception:
+            inherit_from_safe = None
+    else:
+        inherit_from_safe = None
+
     # ---- Synchronous path: cache hits + caller asked for sync ---------
     # Cache hits resolve in <50ms — no point spinning a thread.
     if sync:
@@ -2020,6 +2242,20 @@ def api_run():
                     os.utime(cached, None)
                 except Exception:
                     pass
+                # Q3 Stream A: cache-hit path also honours inherit_from.
+                if inherit_from_safe is not None:
+                    try:
+                        from fantasyai.aurora.composable import (
+                            extract_prior_pack, write_prior_pack,
+                        )
+                        pack = extract_prior_pack(inherit_from_safe)
+                        if pack.n_priors > 0:
+                            write_prior_pack(
+                                pack,
+                                cached / "priors_pack.json",
+                            )
+                    except Exception:
+                        pass
                 return jsonify({
                     "ok": True,
                     "async": False,
@@ -2067,6 +2303,23 @@ def api_run():
             err = result.get("error_summary") or result.get("error")
             if run_dir:
                 _reg.set_run_dir(run_id, run_dir)
+                # Q3 Stream A: if the kickoff requested inheritance, copy
+                # the source run's prior pack into this run's directory.
+                # state_builder picks it up the next time /api/state runs.
+                if inherit_from_safe is not None:
+                    try:
+                        from fantasyai.aurora.composable import (
+                            extract_prior_pack, write_prior_pack,
+                        )
+                        pack = extract_prior_pack(inherit_from_safe)
+                        if pack.n_priors > 0:
+                            write_prior_pack(
+                                pack,
+                                Path(run_dir) / "priors_pack.json",
+                            )
+                    except Exception:
+                        # Composable findings are additive — never block run completion.
+                        pass
                 # Final tier-state sync from disk so the snapshot is accurate.
                 try:
                     from fantasyai.aurora.sampling import SamplingState

@@ -1830,6 +1830,23 @@ def build_state(run_dir: Path) -> Dict[str, Any]:
         # Even on a hard read failure, still emit the 7-tile shell.
         extended_methods_state = _build_extended_methods({})
 
+    # Q3 Stream A: composable findings. If this run was kicked off with
+    # ``inherit_from=<prior_run_id>``, the runner script copies that
+    # run's priors_pack.json into this run dir. We load it here, tag
+    # the findings list with ``prior_source`` decorations, and build a
+    # ``composed_from`` summary the frontend can render.
+    composed_from_state: Dict[str, Any] = _none_unavail("no inherited priors")
+    try:
+        from fantasyai.aurora.composable import (
+            load_prior_pack, apply_prior_pack_to_findings,
+        )
+        pack = load_prior_pack(run_dir)
+        if pack:
+            composed_from_state = apply_prior_pack_to_findings(findings, pack)
+    except Exception:
+        # Composable findings are additive — never block state assembly.
+        pass
+
     # W10: KB grounding — attempt to attach a citation chip to each finding.
     # Failures are silent (KB is best-effort enrichment, never blocking).
     try:
@@ -1888,6 +1905,12 @@ def build_state(run_dir: Path) -> Dict[str, Any]:
         # The frontend renders one tile per method in the ADVANCED METHODS
         # grid, pulling its headline from this block.
         "extended_methods": extended_methods_state,
+        # Q3 Stream A: composable findings. When the run inherited
+        # priors from a previous run, this block summarises which
+        # priors were loaded and how many findings aligned with them.
+        # Findings that matched are stamped with a ``prior_source``
+        # decoration the frontend renders as a PRIOR badge.
+        "composed_from": composed_from_state,
     }
 
     # ---- Hardening sprint Problem 3: run_meta block. Always present on

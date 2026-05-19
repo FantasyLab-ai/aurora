@@ -130,9 +130,40 @@ def run_extended_methods(
             })
             claim_seq += 1
 
+    # Q3 Stream C: also run any installed Plugin SDK methods. Third-party
+    # plugins register via the ``aurora_plugins`` entry-point group;
+    # their findings flow alongside the 7 built-in v1.2 methods.
+    plugin_block: Dict[str, Any] = {}
+    try:
+        from fantasyai.aurora.plugins import run_plugin_methods
+        plugin_out = run_plugin_methods(
+            df,
+            target_col=target_col,
+            time_col=time_col,
+            timeout_s=timeout_s,
+        )
+        plugin_findings = plugin_out.get("findings") or []
+        for f in plugin_findings:
+            if isinstance(f, dict):
+                # Renumber claim_ids to stay unique across built-ins + plugins.
+                if not f.get("claim_id"):
+                    f["claim_id"] = f"{f.get('method', 'plugin')}-{claim_seq:04d}"
+                    claim_seq += 1
+                findings.append(f)
+        plugin_block = {
+            "per_plugin":    plugin_out.get("per_plugin") or {},
+            "plugins":       plugin_out.get("plugins") or [],
+            "n_plugins_run": plugin_out.get("n_plugins_run") or 0,
+        }
+    except Exception:
+        # Plugins are additive — never break the built-in run.
+        plugin_block = {"per_plugin": {}, "plugins": [], "n_plugins_run": 0}
+
     return {
-        "findings": findings,
-        "per_method": per_method,
+        "findings":      findings,
+        "per_method":    per_method,
         "n_methods_run": len(method_specs),
-        "n_findings": len(findings),
+        "n_findings":    len(findings),
+        # Q3 Stream C: surface plugin telemetry alongside built-ins.
+        "plugins":       plugin_block,
     }

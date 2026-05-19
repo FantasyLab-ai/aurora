@@ -5573,6 +5573,111 @@
         </div>
       </div>
     </div>
+    <!-- Q3 Stream C: Plugin SDK panel. Lists third-party Aurora plugins
+         registered via the ``aurora_plugins`` entry point group, with
+         their load status + last-run telemetry. Helps the user see
+         immediately whether their installed plugins are healthy. -->
+    <div class="plugins-wrap" style="position:relative; margin-right:6px;">
+      <button id="pluginsToggleBtn" class="btn"
+              title="Third-party Aurora plugins discovered via the aurora_plugins entry point."
+              aria-haspopup="dialog">
+        <span style="color:var(--ink-faint);">plugins:</span>
+        <b id="pluginsToggleLbl">0</b>
+      </button>
+      <div id="pluginsPopover" class="plugins-popover" style="display:none;
+           position:absolute; top:100%; right:0; margin-top:6px; z-index:10000;
+           min-width:380px; max-width:480px; padding:14px;
+           background:var(--bg-deep); border:1px solid var(--mint);
+           font-family:'JetBrains Mono', monospace; font-size:11px;
+           color:var(--ink); box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+          <span style="font-weight:700; color:var(--mint); letter-spacing:1px;">INSTALLED PLUGINS</span>
+          <button id="pluginsPopClose" type="button" style="background:none; border:0; color:var(--ink-faint); cursor:pointer; font-size:14px;">✕</button>
+        </div>
+        <div style="opacity:.7; line-height:1.45; margin-bottom:10px;">
+          Aurora discovers plugins via the <code>aurora_plugins</code> entry-point group. Each plugin's findings flow alongside the 7 built-in v1.2 methods.
+        </div>
+        <ul id="pluginsList" style="list-style:none; padding:0; margin:0;
+            max-height:260px; overflow:auto; font-size:10px; line-height:1.5;">
+          <li id="pluginsListEmpty" style="color:var(--ink-faint); padding:4px 0;">loading…</li>
+        </ul>
+        <div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--ink-faint); opacity:.6; font-size:10px;">
+          See <a href="https://github.com/FantasyLab-ai/aurora/blob/main/docs/plugins.md" target="_blank" rel="noopener" style="color:var(--mint);">docs/plugins.md</a> for plugin authoring.
+        </div>
+      </div>
+    </div>
+    <!-- Q3 Stream B: multi-dataset joins. Lets the user pick two
+         finished runs and view a join report — shared keys, schema
+         compatibility, cross-correlations, inheritance candidates.
+         The report is read-only and never modifies either source run. -->
+    <div class="joins-wrap" style="position:relative; margin-right:6px;">
+      <button id="joinsToggleBtn" class="btn"
+              title="Join two finished Aurora runs to surface shared keys, cross-correlations, and inheritance candidates."
+              aria-haspopup="dialog">JOIN RUNS</button>
+      <div id="joinsPopover" class="joins-popover" style="display:none;
+           position:absolute; top:100%; right:0; margin-top:6px; z-index:10000;
+           min-width:480px; max-width:560px; padding:14px;
+           background:var(--bg-deep); border:1px solid var(--mint);
+           font-family:'JetBrains Mono', monospace; font-size:11px;
+           color:var(--ink); box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+          <span style="font-weight:700; color:var(--mint); letter-spacing:1px;">MULTI-DATASET JOIN</span>
+          <button id="joinsPopClose" type="button" style="background:none; border:0; color:var(--ink-faint); cursor:pointer; font-size:14px;">✕</button>
+        </div>
+        <div style="opacity:.7; line-height:1.45; margin-bottom:10px;">
+          Pick two finished runs to surface shared keys, schema compatibility, and inheritance candidates. Neither source run is modified.
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">
+          <label>
+            <div style="color:var(--ink-faint); margin-bottom:3px;">RUN A</div>
+            <select id="joinRunASel" style="width:100%; padding:5px; background:var(--bg-deepest); border:1px solid var(--ink-faint); color:var(--ink); font-family:inherit;"></select>
+          </label>
+          <label>
+            <div style="color:var(--ink-faint); margin-bottom:3px;">RUN B</div>
+            <select id="joinRunBSel" style="width:100%; padding:5px; background:var(--bg-deepest); border:1px solid var(--ink-faint); color:var(--ink); font-family:inherit;"></select>
+          </label>
+        </div>
+        <button id="joinComputeBtn" class="btn primary" style="width:100%; margin-bottom:10px;">▶ COMPUTE JOIN REPORT</button>
+        <div id="joinResults" style="font-size:10px; line-height:1.55;
+             max-height:380px; overflow:auto;">
+          <div style="color:var(--ink-faint);">— pick two runs and click "compute" —</div>
+        </div>
+      </div>
+    </div>
+    <!-- Q3 Stream A: composable findings — INHERIT FROM picker. Lets
+         the user select a prior run whose fitted physics + regimes +
+         baseline get carried forward into the next analysis. The
+         next run's findings then carry a PRIOR badge where they
+         align with (or drift from) the inherited priors. -->
+    <div class="inherit-wrap" style="position:relative; margin-right:6px;">
+      <button id="inheritToggleBtn" class="btn"
+              title="Inherit fitted priors from a previous run (physics law, regime structure, baseline stats). Aligned findings get a PRIOR badge."
+              aria-haspopup="dialog">
+        <span style="color:var(--ink-faint);">inherit:</span>
+        <b id="inheritToggleLbl">none</b>
+      </button>
+      <div id="inheritPopover" class="inherit-popover" style="display:none;
+           position:absolute; top:100%; right:0; margin-top:6px; z-index:10000;
+           min-width:380px; max-width:460px; padding:14px;
+           background:var(--bg-deep); border:1px solid var(--mint);
+           font-family:'JetBrains Mono', monospace; font-size:11px;
+           color:var(--ink); box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+          <span style="font-weight:700; color:var(--mint); letter-spacing:1px;">INHERIT PRIORS FROM A PREVIOUS RUN</span>
+          <button id="inheritPopClose" type="button" style="background:none; border:0; color:var(--ink-faint); cursor:pointer; font-size:14px;">✕</button>
+        </div>
+        <div style="opacity:.7; line-height:1.45; margin-bottom:10px;">
+          The selected run's fitted physics law, regime structure, and baseline are carried into the next analysis as priors. Findings that align get a PRIOR badge.
+        </div>
+        <ul id="inheritRunsList" style="list-style:none; padding:0; margin:0;
+            max-height:280px; overflow:auto; font-size:10px; line-height:1.5;">
+          <li id="inheritRunsListEmpty" style="color:var(--ink-faint); padding:4px 0;">loading recent runs…</li>
+        </ul>
+        <div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--ink-faint); display:flex; gap:8px;">
+          <button id="inheritClearBtn" class="btn" style="flex:1;">clear inheritance</button>
+        </div>
+      </div>
+    </div>
     <button id="runAnalysisBtn" class="btn primary">▶ RUN ANALYSIS</button>
 
     <!-- Seed-input popover (anchored to the toggle button) -->
@@ -12636,6 +12741,32 @@
         }
       } catch (e) { /* non-fatal — badge is enrichment */ }
 
+      // Q3 Stream A: PRIOR badge — this finding aligns with (or
+      // drifted from) a prior carried in from a previous run. The
+      // state_builder attaches a ``prior_source`` block via the
+      // composable.applier module; we just render it.
+      let priorBadge = '';
+      const ps = f.prior_source;
+      if (ps && ps.alignment) {
+        const alignColor = ps.alignment === 'matches' ? 'var(--mint)'
+                         : ps.alignment === 'drifts'  ? '#ffd54a'
+                         : '#ff9aa2';  // novel
+        const alignIcon = ps.alignment === 'matches' ? '↺'
+                        : ps.alignment === 'drifts'  ? '⤳'
+                        : '✦';
+        const note = fmt.esc(ps.note || ('prior ' + ps.kind));
+        const srcRun = fmt.esc(ps.run_id || '');
+        priorBadge = `<span class="finding-prior" data-alignment="${fmt.esc(ps.alignment)}"
+              title="${note} (from run ${srcRun})"
+              style="display:inline-flex; align-items:center; gap:3px;
+                      padding:2px 7px; margin-left:6px;
+                      border:1px solid ${alignColor}; color:${alignColor};
+                      font-size:9px; letter-spacing:1px; text-transform:uppercase;
+                      background:rgba(0,0,0,0.25);">
+          ${alignIcon} PRIOR · ${fmt.esc(ps.alignment)}
+        </span>`;
+      }
+
       // Replication tag — present when this finding has been compared
       // across tiers. Kept compact; full delta_summary in title attr.
       let replTag = '';
@@ -12711,7 +12842,7 @@
                    data-treatment="${fmt.esc(treatment)}"
                    data-seed-section="${fmt.esc(section || '')}"
                    data-headline-kind="${fmt.esc(headlineKind)}">
-        <div class="finding-head"><span class="severity ${sev}">${(f.severity || 'info').toUpperCase()}</span>${methodBadge}${headlineIcon}${verifiedBadge}${replTag}<span class="finding-conf">CONF <b>${conf}</b></span></div>
+        <div class="finding-head"><span class="severity ${sev}">${(f.severity || 'info').toUpperCase()}</span>${methodBadge}${headlineIcon}${verifiedBadge}${priorBadge}${replTag}<span class="finding-conf">CONF <b>${conf}</b></span></div>
         <div class="finding-title">${fmt.esc(renderedTitle)}</div>
         ${referentChip}
         <div class="finding-desc">${fmt.esc(renderedBody)}</div>
@@ -13718,6 +13849,13 @@
           // backend persists it and the SeedRanker picks it up after
           // analysis completes.
           seed_text: window.__pendingSeedText || '',
+          // Q3 Stream A: inherit fitted priors from a previous run.
+          // The INHERIT picker sets window.__auroraInheritFrom; if it's
+          // present we send the source run_dir so the backend can stage
+          // its priors_pack.json under the new run directory.
+          inherit_from: (window.__auroraInheritFrom
+                          ? window.__auroraInheritFrom.run_dir
+                          : null),
         }),
       }, 30000);   // 30s for the kickoff itself; polling takes care of duration
       kickoff = await r.json();
@@ -16214,6 +16352,361 @@
   setTimeout(refreshStatus, 600);
   // Periodic re-probe (keeps the button label honest if the runner stops itself).
   pollTimer = setInterval(refreshStatus, 8000);
+})();
+</script>
+
+<!-- =================================================================== -->
+<!-- Q3 Stream C — plugins panel controller.                             -->
+<!--                                                                     -->
+<!-- Lists installed Aurora plugins with load status + last-run health.  -->
+<!-- =================================================================== -->
+<script>
+(function pluginsController(){
+  const btn      = document.getElementById('pluginsToggleBtn');
+  const lbl      = document.getElementById('pluginsToggleLbl');
+  const pop      = document.getElementById('pluginsPopover');
+  const closeBtn = document.getElementById('pluginsPopClose');
+  const listEl   = document.getElementById('pluginsList');
+  if (!btn || !pop || !listEl) return;
+
+  function show(open) { pop.style.display = open ? 'block' : 'none'; }
+  btn.addEventListener('click', () => {
+    const open = pop.style.display === 'none' || !pop.style.display;
+    show(open);
+    if (open) refresh();
+  });
+  if (closeBtn) closeBtn.addEventListener('click', () => show(false));
+  document.addEventListener('click', (e) => {
+    if (pop.style.display === 'none') return;
+    if (pop.contains(e.target) || btn.contains(e.target)) return;
+    show(false);
+  });
+
+  async function refresh() {
+    try {
+      const r = await fetch('/api/plugins');
+      const j = await r.json();
+      const plugins = (j && j.plugins) || [];
+      lbl.textContent = String(j.n_loaded || 0);
+      if (!plugins.length) {
+        listEl.innerHTML =
+          '<li style="color:var(--ink-faint); padding:4px 0;">' +
+            '— no plugins installed —<br>' +
+            '<span style="opacity:.7;">install one via pip; Aurora auto-discovers via the <code>aurora_plugins</code> entry-point.</span>' +
+          '</li>';
+        return;
+      }
+      listEl.innerHTML = '';
+      plugins.forEach(p => {
+        const status = (p.status || '').toLowerCase();
+        const color = status === 'loaded'        ? 'var(--mint)'
+                    : status === 'import_error'  ? '#ff7676'
+                    : status === 'contract_error'? '#ffd54a'
+                    : 'var(--ink-faint)';
+        const li = document.createElement('li');
+        li.style.cssText = 'padding:6px 8px; margin-bottom:3px; ' +
+                            'background:var(--bg-deepest); border-left:2px solid ' + color + ';';
+        const lastRun = p.last_status
+          ? '<div style="opacity:.7; margin-top:2px;">last run: <b>' + escapeHtml(p.last_status) + '</b>' +
+              (p.last_elapsed_s != null
+                ? ' · ' + (+p.last_elapsed_s).toFixed(2) + 's'
+                : '') +
+              (p.last_error ? ' · <span style="color:#ff9aa2;">' + escapeHtml(String(p.last_error).slice(0,80)) + '</span>' : '') +
+            '</div>'
+          : '';
+        li.innerHTML =
+          '<div style="display:flex; justify-content:space-between; gap:8px;">' +
+            '<b>' + escapeHtml(p.name) + '</b>' +
+            '<span style="color:' + color + '; font-size:9px; letter-spacing:1px; text-transform:uppercase;">' +
+              escapeHtml(status) +
+            '</span>' +
+          '</div>' +
+          '<div style="color:var(--ink-faint); margin-top:2px; font-size:9px;">' +
+            escapeHtml(p.target || '?') +
+            (p.version ? ' · v' + escapeHtml(p.version) : '') +
+          '</div>' +
+          (p.error ? '<div style="color:#ff9aa2; margin-top:2px;">' + escapeHtml(String(p.error).slice(0,140)) + '</div>' : '') +
+          lastRun;
+        listEl.appendChild(li);
+      });
+    } catch (e) {
+      listEl.innerHTML = '<li style="color:#ff9aa2;">unable to load plugins</li>';
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // Refresh on load so the chip shows the loaded count without
+  // requiring the user to open the popover first.
+  setTimeout(refresh, 800);
+})();
+</script>
+
+<!-- =================================================================== -->
+<!-- Q3 Stream B — multi-dataset joins controller.                       -->
+<!--                                                                     -->
+<!-- Two-run selector + "compute" button that hits /api/joins/analyze.   -->
+<!-- Renders schema compatibility, shared keys, cross-correlations,      -->
+<!-- and inheritance candidates inside the popover.                      -->
+<!-- =================================================================== -->
+<script>
+(function joinsController(){
+  const btn       = document.getElementById('joinsToggleBtn');
+  const pop       = document.getElementById('joinsPopover');
+  const closeBtn  = document.getElementById('joinsPopClose');
+  const aSel      = document.getElementById('joinRunASel');
+  const bSel      = document.getElementById('joinRunBSel');
+  const computeBtn= document.getElementById('joinComputeBtn');
+  const resultsEl = document.getElementById('joinResults');
+  if (!btn || !pop) return;
+
+  function show(open) { pop.style.display = open ? 'block' : 'none'; }
+  btn.addEventListener('click', () => {
+    const open = pop.style.display === 'none' || !pop.style.display;
+    show(open);
+    if (open) populateRunSelectors();
+  });
+  if (closeBtn) closeBtn.addEventListener('click', () => show(false));
+  document.addEventListener('click', (e) => {
+    if (pop.style.display === 'none') return;
+    if (pop.contains(e.target) || btn.contains(e.target)) return;
+    show(false);
+  });
+
+  async function populateRunSelectors() {
+    try {
+      const r = await fetch('/api/runs');
+      const j = await r.json();
+      const runs = (j && j.runs) || [];
+      aSel.innerHTML = '';
+      bSel.innerHTML = '';
+      runs.slice(0, 50).forEach((r, i) => {
+        const label = (r.dataset_name || r.run_id || 'run-' + i) +
+                      ' · ' + String(r.run_id || '').slice(0, 30);
+        const dir = r.run_dir || '';
+        if (!dir) return;
+        const optA = new Option(label, dir);
+        const optB = new Option(label, dir);
+        aSel.add(optA);
+        bSel.add(optB);
+      });
+      if (runs.length >= 2 && bSel.options.length >= 2) {
+        bSel.selectedIndex = 1;
+      }
+    } catch (e) {
+      resultsEl.innerHTML = '<div style="color:#ff9aa2;">unable to load runs</div>';
+    }
+  }
+
+  computeBtn.addEventListener('click', async () => {
+    const a = aSel.value;
+    const b = bSel.value;
+    if (!a || !b) {
+      resultsEl.innerHTML = '<div style="color:#ff9aa2;">pick two runs first</div>';
+      return;
+    }
+    if (a === b) {
+      resultsEl.innerHTML = '<div style="color:#ffd54a;">pick two DIFFERENT runs</div>';
+      return;
+    }
+    resultsEl.innerHTML = '<div style="color:var(--ink-faint);">computing join report…</div>';
+    try {
+      const url = '/api/joins/analyze?run_a_dir=' + encodeURIComponent(a)
+                  + '&run_b_dir=' + encodeURIComponent(b);
+      const r = await fetch(url);
+      const j = await r.json();
+      if (!j.ok) {
+        resultsEl.innerHTML = '<div style="color:#ff9aa2;">join failed: ' +
+                              escapeHtml(j.error || (j.warnings || []).join('; ')) + '</div>';
+        return;
+      }
+      renderReport(j);
+    } catch (e) {
+      resultsEl.innerHTML = '<div style="color:#ff9aa2;">request failed: ' + escapeHtml(String(e)) + '</div>';
+    }
+  });
+
+  function renderReport(j) {
+    const sc = j.schema_compatibility || {};
+    const cadColor = sc.cadence_match === 'mismatch' ? '#ffd54a'
+                    : sc.cadence_match === 'approx'   ? 'var(--mint)'
+                    : 'var(--ink-dim)';
+    const warnHtml = (sc.warnings || []).length
+      ? '<div style="margin-top:6px; padding:6px; border-left:2px solid #ffd54a; background:rgba(255,213,74,0.06);">' +
+          (sc.warnings || []).map(w =>
+            '<div>⚠ ' + escapeHtml(w) + '</div>').join('') +
+        '</div>'
+      : '';
+    const sharedHtml = (j.shared_keys || []).length
+      ? '<table style="width:100%; border-collapse:collapse;">' +
+        (j.shared_keys || []).map(k =>
+          '<tr><td style="padding:3px 6px; border-bottom:1px solid rgba(255,255,255,0.05);">' +
+            '<b>' + escapeHtml(k.name) + '</b>' +
+            '<span style="margin-left:6px; color:var(--ink-faint);">' + escapeHtml(k.kind) + '</span>' +
+            '<div style="opacity:.7; margin-top:2px;">' + escapeHtml(k.rationale) + '</div>' +
+          '</td>' +
+          '<td style="padding:3px 6px; text-align:right; color:var(--mint); font-weight:700;">' +
+            (k.overlap_quality * 100).toFixed(0) + '%' +
+          '</td></tr>'
+        ).join('') +
+        '</table>'
+      : '<div style="color:var(--ink-faint);">— no shared keys discovered —</div>';
+    const inheritHtml = (j.inheritance_candidates || []).length
+      ? (j.inheritance_candidates || []).map(c =>
+          '<div style="padding:5px 7px; margin-bottom:3px; ' +
+                'border-left:2px solid var(--cyan); background:rgba(110,231,255,0.04);">' +
+            '<b>' + escapeHtml(c.from) + ' → ' + escapeHtml(c.to) + '</b>' +
+            ' · ' + escapeHtml(c.kind) + ': ' +
+            '<span style="color:var(--mint);">' + escapeHtml(String(c.value)) + '</span>' +
+            '<div style="opacity:.7; margin-top:2px;">' + escapeHtml(c.rationale) + '</div>' +
+          '</div>'
+        ).join('')
+      : '<div style="color:var(--ink-faint);">— neither side has reusable priors yet —</div>';
+    const crossHtml = (j.cross_correlations || []).length
+      ? (j.cross_correlations || []).map(c =>
+          '<div style="padding:3px 6px; border-bottom:1px solid rgba(255,255,255,0.05);">' +
+            escapeHtml(c.col_a) + ' ↔ ' + escapeHtml(c.col_b) +
+            (c.r != null ? ' <b style="color:var(--mint);">r=' + (+c.r).toFixed(3) + '</b>' : '') +
+            (c.key ? ' <span style="color:var(--ink-faint);">via ' + escapeHtml(c.key) + '</span>' : '') +
+            '<div style="opacity:.7;">' + escapeHtml(c.rationale) + '</div>' +
+          '</div>'
+        ).join('')
+      : '<div style="color:var(--ink-faint);">— no cross-correlation hints from per-run artifacts —</div>';
+    resultsEl.innerHTML =
+      '<div style="font-size:9px; color:var(--ink-faint); letter-spacing:1px; text-transform:uppercase; margin-bottom:4px;">SCHEMA COMPATIBILITY</div>' +
+      '<div>cols: <b>' + sc.n_cols_a + '</b> × <b>' + sc.n_cols_b + '</b>' +
+      ' · rows: <b>' + (sc.row_count_a || '—') + '</b> × <b>' + (sc.row_count_b || '—') + '</b>' +
+      ' · cadence: <span style="color:' + cadColor + ';">' + escapeHtml(sc.cadence_match || 'n/a') + '</span>' +
+      '</div>' +
+      warnHtml +
+      '<div style="font-size:9px; color:var(--ink-faint); letter-spacing:1px; text-transform:uppercase; margin:10px 0 4px;">SHARED KEYS</div>' +
+      sharedHtml +
+      '<div style="font-size:9px; color:var(--ink-faint); letter-spacing:1px; text-transform:uppercase; margin:10px 0 4px;">CROSS-CORRELATION HINTS</div>' +
+      crossHtml +
+      '<div style="font-size:9px; color:var(--ink-faint); letter-spacing:1px; text-transform:uppercase; margin:10px 0 4px;">INHERITANCE CANDIDATES</div>' +
+      inheritHtml;
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+})();
+</script>
+
+<!-- =================================================================== -->
+<!-- Q3 Stream A — composable findings: INHERIT picker controller.       -->
+<!--                                                                     -->
+<!-- Lists recent runs that produced extractable priors (physics law /   -->
+<!-- regime structure / baseline), and stages them onto the next run's   -->
+<!-- run_dir when the user clicks "inherit". The next run picks up the   -->
+<!-- pack via state_builder + tags aligned findings with PRIOR badges.   -->
+<!-- =================================================================== -->
+<script>
+(function inheritController(){
+  const btn = document.getElementById('inheritToggleBtn');
+  const lbl = document.getElementById('inheritToggleLbl');
+  const pop = document.getElementById('inheritPopover');
+  const closeBtn = document.getElementById('inheritPopClose');
+  const listEl = document.getElementById('inheritRunsList');
+  const emptyEl = document.getElementById('inheritRunsListEmpty');
+  const clearBtn = document.getElementById('inheritClearBtn');
+  if (!btn || !pop || !listEl) return;
+
+  // Stash the selected source run on window so /api/run/start can read it.
+  window.__auroraInheritFrom = null;
+
+  function show(open) { pop.style.display = open ? 'block' : 'none'; }
+
+  btn.addEventListener('click', () => {
+    const open = pop.style.display === 'none' || !pop.style.display;
+    show(open);
+    if (open) refreshList();
+  });
+  if (closeBtn) closeBtn.addEventListener('click', () => show(false));
+  document.addEventListener('click', (e) => {
+    if (pop.style.display === 'none') return;
+    if (pop.contains(e.target) || btn.contains(e.target)) return;
+    show(false);
+  });
+
+  clearBtn.addEventListener('click', () => {
+    window.__auroraInheritFrom = null;
+    lbl.textContent = 'none';
+    show(false);
+  });
+
+  async function refreshList() {
+    listEl.innerHTML = '<li style="color:var(--ink-faint); padding:4px 0;">loading recent runs…</li>';
+    try {
+      const r = await fetch('/api/priors/list');
+      if (!r.ok) throw new Error('status ' + r.status);
+      const j = await r.json();
+      const runs = (j && j.runs) || [];
+      const richRuns = runs.filter(x => (x.n_priors || 0) > 0);
+      if (!richRuns.length) {
+        listEl.innerHTML = '<li style="color:var(--ink-faint); padding:4px 0;">— no recent runs have extractable priors yet —</li>';
+        return;
+      }
+      listEl.innerHTML = '';
+      richRuns.slice(0, 20).forEach(r => {
+        const chips = [];
+        if (r.has_physics)  chips.push('physics');
+        if (r.has_regimes)  chips.push('regimes');
+        if (r.has_baseline) chips.push('baseline');
+        const li = document.createElement('li');
+        li.style.cssText = 'padding:6px 8px; margin-bottom:3px; cursor:pointer; ' +
+                            'background:var(--bg-deepest); border-left:2px solid var(--mint);';
+        li.innerHTML =
+          '<div style="display:flex; justify-content:space-between; gap:8px;">' +
+            '<b>' + escapeHtml(r.dataset || r.run_id || '?') + '</b>' +
+            '<span style="color:var(--ink-faint);">' + (r.n_priors || 0) + ' priors</span>' +
+          '</div>' +
+          '<div style="color:var(--ink-faint); margin-top:2px;">' +
+            'run ' + escapeHtml(String(r.run_id || '?').slice(0, 40)) +
+            ' · target ' + escapeHtml(String(r.target_col || '—')) +
+          '</div>' +
+          (chips.length
+            ? '<div style="margin-top:3px;">' +
+                chips.map(c =>
+                  '<span style="display:inline-block; margin-right:4px; ' +
+                  'padding:1px 5px; background:rgba(255,255,255,0.05); ' +
+                  'border:1px solid var(--ink-faint); font-size:9px; ' +
+                  'color:var(--ink-dim); letter-spacing:1px; text-transform:uppercase;">' +
+                  escapeHtml(c) + '</span>'
+                ).join('') +
+              '</div>'
+            : '');
+        li.addEventListener('click', () => {
+          window.__auroraInheritFrom = {
+            run_dir: r.run_dir,
+            run_id: r.run_id,
+            dataset: r.dataset,
+            n_priors: r.n_priors,
+          };
+          lbl.textContent = (r.dataset || r.run_id || '?').slice(0, 22);
+          show(false);
+          if (typeof window.__toast === 'function') {
+            window.__toast('Next run inherits ' + r.n_priors + ' priors from ' + (r.dataset || r.run_id));
+          }
+        });
+        listEl.appendChild(li);
+      });
+    } catch (e) {
+      listEl.innerHTML = '<li style="color:#ff9aa2; padding:4px 0;">unable to load runs</li>';
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
 })();
 </script>
 

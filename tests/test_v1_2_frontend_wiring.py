@@ -228,3 +228,45 @@ class TestPhase2FrontendSurfaces:
         assert "workspaceController" in html
         assert "/api/auth/whoami" in html
         assert "/api/auth/usage" in html
+
+
+# ----------------------------------------------------------------------
+# Q3 frontend surfaces: INHERIT picker + JOIN RUNS + PLUGINS
+# ----------------------------------------------------------------------
+
+class TestQ3FrontendSurfaces:
+
+    def test_inherit_picker_present(self):
+        html = _read()
+        assert 'id="inheritToggleBtn"' in html
+        assert 'id="inheritPopover"' in html
+        assert 'id="inheritRunsList"' in html
+        assert "inheritController" in html
+        assert "/api/priors/list" in html
+        # PRIOR badge renders on findings that align with a prior pack.
+        assert "prior_source" in html
+        assert "PRIOR" in html
+
+    def test_join_runs_picker_present(self):
+        html = _read()
+        assert 'id="joinsToggleBtn"' in html
+        assert 'id="joinsPopover"' in html
+        assert 'id="joinRunASel"' in html
+        assert 'id="joinRunBSel"' in html
+        assert "joinsController" in html
+        assert "/api/joins/analyze" in html
+
+    def test_plugins_panel_present(self):
+        html = _read()
+        assert 'id="pluginsToggleBtn"' in html
+        assert 'id="pluginsPopover"' in html
+        assert 'id="pluginsList"' in html
+        assert "pluginsController" in html
+        assert "/api/plugins" in html
+
+    def test_inherit_from_sent_to_run_endpoint(self):
+        html = _read()
+        # The /api/run kickoff body MUST include inherit_from so the
+        # backend can stage the prior pack on the new run dir.
+        assert "inherit_from" in html
+        assert "__auroraInheritFrom" in html

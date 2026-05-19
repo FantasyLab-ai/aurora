@@ -74,6 +74,7 @@ jobs:
             tests/test_streaming.py \
             tests/test_streaming_phase2.py \
             tests/test_auth_workspaces.py \
+            tests/test_q3_composable_joins_plugins.py \
             tests/test_v1_2_frontend_wiring.py \
             tests/test_coupled_systems.py
 
