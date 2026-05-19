@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Aurora — Excel Add-in manifest.
+
+  Microsoft's Office Add-in framework loads this manifest when a user
+  side-loads (or installs from AppSource) the add-in. The actual UI is
+  served from the Aurora Studio (Flask). This file just declares the
+  add-in's identity, the ribbon button, and the task pane URL.
+
+  Reference:
+    https://learn.microsoft.com/office/dev/add-ins/develop/add-in-manifests
+-->
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+           xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+           xsi:type="TaskPaneApp">
+
+  <!-- Stable identifier (you'll regenerate this when you actually publish). -->
+  <Id>00000000-aaaa-bbbb-cccc-000000000001</Id>
+  <Version>0.1.0</Version>
+  <ProviderName>FantasyLab AI</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="Aurora" />
+  <Description DefaultValue="Run Aurora's glass-box quantitative analysis on a selected range. Cited findings, zero fabricated, local-first." />
+  <IconUrl DefaultValue="https://kb.aurora.fantasylab.ai/assets/aurora-mascot-wizard-32.png" />
+  <HighResolutionIconUrl DefaultValue="https://kb.aurora.fantasylab.ai/assets/aurora-mascot-wizard-128.png" />
+  <SupportUrl DefaultValue="https://github.com/FantasyLab-ai/aurora" />
+
+  <!-- Domains the task pane is allowed to navigate to.
+       For local Aurora, this is the Studio. For a hosted Aurora,
+       you'd add the hosted URL too. -->
+  <AppDomains>
+    <AppDomain>http://localhost:8000</AppDomain>
+    <AppDomain>https://kb.aurora.fantasylab.ai</AppDomain>
+  </AppDomains>
+
+  <Hosts>
+    <Host Name="Workbook"/>
+  </Hosts>
+
+  <DefaultSettings>
+    <!-- Default task-pane page. Aurora's Studio renders an embedded view. -->
+    <SourceLocation DefaultValue="http://localhost:8000/excel-taskpane.html" />
+  </DefaultSettings>
+
+  <Permissions>ReadWriteDocument</Permissions>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Workbook">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="aurora.GetStartedTitle" />
+            <Description resid="aurora.GetStartedDescription" />
+            <LearnMoreUrl resid="aurora.GetStartedLearnMore" />
+          </GetStarted>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="aurora.AnalyzeGroup">
+                <Label resid="aurora.GroupLabel" />
+                <Icon>
+                  <bt:Image size="16" resid="aurora.Icon16" />
+                  <bt:Image size="32" resid="aurora.Icon32" />
+                  <bt:Image size="80" resid="aurora.Icon80" />
+                </Icon>
+                <Control xsi:type="Button" id="aurora.AnalyzeButton">
+                  <Label resid="aurora.AnalyzeButtonLabel" />
+                  <Supertip>
+                    <Title resid="aurora.AnalyzeButtonLabel" />
+                    <Description resid="aurora.AnalyzeButtonDescription" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="aurora.Icon16" />
+                    <bt:Image size="32" resid="aurora.Icon32" />
+                    <bt:Image size="80" resid="aurora.Icon80" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="aurora.TaskpaneUrl" />
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+
+    <Resources>
+      <bt:Images>
+        <bt:Image id="aurora.Icon16" DefaultValue="https://kb.aurora.fantasylab.ai/assets/aurora-mascot-wizard-16.png" />
+        <bt:Image id="aurora.Icon32" DefaultValue="https://kb.aurora.fantasylab.ai/assets/aurora-mascot-wizard-32.png" />
+        <bt:Image id="aurora.Icon80" DefaultValue="https://kb.aurora.fantasylab.ai/assets/aurora-mascot-wizard-80.png" />
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="aurora.GetStartedLearnMore" DefaultValue="https://github.com/FantasyLab-ai/aurora" />
+        <bt:Url id="aurora.TaskpaneUrl" DefaultValue="http://localhost:8000/excel-taskpane.html" />
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="aurora.GetStartedTitle" DefaultValue="Aurora is ready" />
+        <bt:String id="aurora.GroupLabel" DefaultValue="Aurora" />
+        <bt:String id="aurora.AnalyzeButtonLabel" DefaultValue="Analyze Selection" />
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="aurora.GetStartedDescription" DefaultValue="Select a range with headers, click Analyze Selection. Aurora runs locally, returns cited findings (anomalies, regimes, causality, physics fits), zero fabricated." />
+        <bt:String id="aurora.AnalyzeButtonDescription" DefaultValue="Run Aurora's glass-box quantitative analysis on the currently selected range." />
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

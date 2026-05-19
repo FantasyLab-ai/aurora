@@ -50,6 +50,12 @@ from .missingness import (
     MissingnessPattern,
     classify_missingness,
 )
+from .irregular_series import (
+    IrregularityReport,
+    detect_time_column,
+    analyse_sampling,
+    recommend_resample_freq,
+)
 from .findings import (
     run_preflight,
     PreflightResult,
@@ -64,6 +70,11 @@ __all__ = [
     # Missingness
     "MissingnessPattern",
     "classify_missingness",
+    # Irregular sampling
+    "IrregularityReport",
+    "detect_time_column",
+    "analyse_sampling",
+    "recommend_resample_freq",
     # Top-level
     "run_preflight",
     "PreflightResult",

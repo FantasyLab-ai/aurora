@@ -728,6 +728,117 @@ def api_contract_infer():
 # Runs list
 # ---------------------------------------------------------------------------
 
+@app.route("/api/preflight")
+def api_preflight():
+    """Run Aurora's preflight (data-quality) checks on the dataset
+    associated with the current run_dir (or an explicit ``?path=``).
+
+    Returns Aurora-shaped findings describing schema violations,
+    missingness patterns, and sampling regularity. This is the
+    "7th-face / data-quality lens" backend — the frontend cube-face
+    panel is wired up separately.
+
+    Example:
+        GET /api/preflight                      → latest run's dataset
+        GET /api/preflight?run_dir=...          → specific run_dir
+        GET /api/preflight?path=/abs/file.csv   → arbitrary CSV
+    """
+    try:
+        from fantasyai.aurora.preflight import run_preflight
+        import pandas as _pd
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": f"preflight module unavailable: {type(e).__name__}: {e}",
+        }), 200
+
+    # Resolve dataset path. Priority: ?path=, then ?run_dir=, then latest.
+    csv_path: Optional[Path] = None
+    explicit_path = request.args.get("path")
+    if explicit_path:
+        try:
+            csv_path = _safe_path(Path(explicit_path))
+        except ValueError as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+    else:
+        run_dir_arg = request.args.get("run_dir")
+        rd: Optional[Path] = None
+        if run_dir_arg:
+            try:
+                rd = _safe_path(Path(run_dir_arg))
+            except ValueError as e:
+                return jsonify({"ok": False, "error": str(e)}), 400
+        else:
+            rd = find_latest_run(DEFAULT_OUTPUTS) or None
+        if rd and rd.exists():
+            # Pull dataset path from the run's structure_contract / meta.
+            for fname in ("_RUN_META.json", "_RESOLVED_CONTRACT.json",
+                           "structure_contract.json"):
+                p = rd / fname
+                if not p.exists():
+                    continue
+                try:
+                    with open(p, "r", encoding="utf-8") as f:
+                        meta = json.load(f)
+                except Exception:
+                    continue
+                ds = meta.get("dataset_path") or meta.get("dataset") or {}
+                if isinstance(ds, dict):
+                    ds = ds.get("path")
+                if ds:
+                    candidate = Path(ds)
+                    if candidate.exists():
+                        csv_path = candidate
+                        break
+    if csv_path is None or not csv_path.exists():
+        return jsonify({
+            "ok": False,
+            "error": "no dataset found; supply ?path= or ?run_dir= explicitly",
+        }), 200
+
+    try:
+        df = _pd.read_csv(csv_path)
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": f"could not read {csv_path}: {type(e).__name__}: {e}",
+        }), 200
+
+    try:
+        result = run_preflight(df)
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": f"preflight crashed: {type(e).__name__}: {e}",
+        }), 200
+
+    return jsonify({
+        "ok": True,
+        "dataset_path": str(csv_path),
+        "summary": result.summary(),
+        "findings": result.findings,
+        "schema_columns": {
+            name: {
+                "inferred_type": s.inferred_type,
+                "confidence": s.confidence,
+                "non_null_count": s.non_null_count,
+            }
+            for name, s in result.column_schemas.items()
+        },
+        "irregular_sampling": (
+            {
+                "time_column": result.irregular_sampling.time_column,
+                "pattern": result.irregular_sampling.pattern,
+                "median_gap_seconds": result.irregular_sampling.median_gap_seconds,
+                "cv": result.irregular_sampling.cv,
+                "n_outlier_gaps": result.irregular_sampling.n_outlier_gaps,
+                "recommended_resample": result.irregular_sampling.recommended_resample,
+            }
+            if result.irregular_sampling is not None else None
+        ),
+    })
+
+
 @app.route("/api/runs")
 def api_runs():
     if not _HAVE_STATE:

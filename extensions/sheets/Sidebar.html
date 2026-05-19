@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+               margin: 0; padding: 12px; font-size: 13px; color: #222; }
+        h2 { margin: 0 0 6px 0; font-size: 1.1em; }
+        .muted { color: #777; font-size: 0.85em; margin-bottom: 12px; }
+        select, button { font-size: 13px; padding: 6px 10px; margin-right: 4px; }
+        button { background: #5aa9ff; color: white; border: 0; border-radius: 4px;
+                 cursor: pointer; }
+        button:disabled { opacity: 0.5; cursor: wait; }
+        #status { margin-top: 10px; color: #555; }
+        #findings { margin-top: 12px; }
+        .finding { border-left: 3px solid #5aa9ff; padding: 6px 10px;
+                    margin: 6px 0; background: #f7f9fc; }
+        .finding.crit { border-color: #ff4f6b; }
+        .finding.warn { border-color: #ffb84a; }
+        .sev { font-weight: 600; font-size: 0.85em; text-transform: uppercase; }
+        .sev.crit { color: #ff4f6b; }
+        .sev.warn { color: #ffb84a; }
+        .sev.info { color: #5aa9ff; }
+        .meta { color: #777; font-size: 0.8em; margin-top: 2px; }
+    </style>
+</head>
+<body>
+
+    <h2>Aurora</h2>
+    <div class="muted">
+        Select a range with headers + numeric data, then click Analyze.
+        Aurora runs locally — cited findings, zero fabricated.
+    </div>
+
+    <div>
+        <select id="depth">
+            <option value="quick">quick (~30s)</option>
+            <option value="standard" selected>standard (~60s)</option>
+            <option value="full">full (with LLM synthesis)</option>
+        </select>
+        <button id="analyze-btn" onclick="onAnalyze()">Analyze Selection</button>
+    </div>
+
+    <div id="status"></div>
+    <div id="findings"></div>
+
+    <script>
+        function onAnalyze() {
+            const btn = document.getElementById("analyze-btn");
+            const status = document.getElementById("status");
+            const findings = document.getElementById("findings");
+            const depth = document.getElementById("depth").value;
+            btn.disabled = true;
+            status.textContent = "Sending to Aurora…";
+            findings.innerHTML = "";
+
+            google.script.run
+                .withSuccessHandler((rows) => {
+                    btn.disabled = false;
+                    status.textContent = (rows && rows.length)
+                        ? `${rows.length} findings.`
+                        : "No findings returned.";
+                    render(rows || []);
+                })
+                .withFailureHandler((err) => {
+                    btn.disabled = false;
+                    status.textContent = "Error: " + (err.message || err);
+                })
+                .analyzeFromSidebar(depth);
+        }
+
+        function render(rows) {
+            const target = document.getElementById("findings");
+            target.innerHTML = "";
+            rows.slice(0, 50).forEach(f => {
+                const sev = (f.severity || "info").toLowerCase();
+                const div = document.createElement("div");
+                div.className = "finding " + sev;
+                div.innerHTML = `
+                    <div class="sev ${sev}">${sev}</div>
+                    <div>${escapeHtml(f.title || "")}</div>
+                    <div class="meta">${escapeHtml(f.method || "")} ·
+                                       conf ${(f.confidence || 0).toFixed(2)}</div>
+                `;
+                target.appendChild(div);
+            });
+        }
+
+        function escapeHtml(s) {
+            return String(s == null ? "" : s)
+                .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        }
+    </script>
+</body>
+</html>

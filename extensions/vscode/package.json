@@ -1,0 +1,113 @@
+{
+  "name": "aurora-vscode",
+  "displayName": "Aurora — Glass-box Quantitative Intelligence",
+  "description": "Right-click any CSV/Parquet file in VS Code to run an Aurora analysis. Cited findings, zero fabricated, local-first.",
+  "version": "0.1.0",
+  "publisher": "fantasylab-ai",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Data Science",
+    "Other"
+  ],
+  "keywords": [
+    "data analysis",
+    "anomaly detection",
+    "forecasting",
+    "aurora",
+    "glass-box ai",
+    "verification",
+    "local-first"
+  ],
+  "icon": "media/aurora-mascot-wizard.png",
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onCommand:aurora.analyzeCurrentFile",
+    "onCommand:aurora.openStudio",
+    "onCommand:aurora.runOnSelection"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "aurora.analyzeCurrentFile",
+        "title": "Aurora: Analyze Current File",
+        "category": "Aurora"
+      },
+      {
+        "command": "aurora.openStudio",
+        "title": "Aurora: Open Studio",
+        "category": "Aurora"
+      },
+      {
+        "command": "aurora.runOnSelection",
+        "title": "Aurora: Run on Selection",
+        "category": "Aurora"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "aurora.analyzeCurrentFile",
+          "when": "resourceExtname == .csv || resourceExtname == .tsv || resourceExtname == .parquet || resourceExtname == .xlsx",
+          "group": "navigation@10"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "aurora.analyzeCurrentFile",
+          "when": "resourceExtname == .csv || resourceExtname == .tsv",
+          "group": "navigation@10"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Aurora",
+      "properties": {
+        "aurora.studioUrl": {
+          "type": "string",
+          "default": "http://localhost:8000",
+          "description": "URL of the running Aurora Studio (the Flask server)."
+        },
+        "aurora.defaultDepth": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "quick",
+            "standard",
+            "full"
+          ],
+          "default": "auto",
+          "description": "Default analytical depth for new runs."
+        },
+        "aurora.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Path to the Python interpreter used to run Aurora CLI commands."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "eslint": "^8.50.0",
+    "typescript": "^5.3.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FantasyLab-ai/aurora.git",
+    "directory": "extensions/vscode"
+  },
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/FantasyLab-ai/aurora"
+}

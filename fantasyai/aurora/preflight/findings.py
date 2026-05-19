@@ -38,12 +38,20 @@ from .schema_validation import (
     SchemaViolation,
     detect_schema_violations,
 )
+from .irregular_series import (
+    IrregularityReport,
+    detect_time_column,
+    analyse_sampling,
+    to_finding as _irregular_to_finding,
+    PATTERN_NONE as IRREGULAR_PATTERN_NONE,
+)
 
 
 # Method labels used in finding dicts. Match Aurora's existing naming
 # convention (snake_case, no spaces).
 METHOD_SCHEMA = "preflight_schema_validation"
 METHOD_MISSINGNESS = "preflight_missingness"
+METHOD_IRREGULAR = "preflight_irregular_series"
 
 
 # ---------------------------------------------------------------------------
@@ -59,6 +67,7 @@ class PreflightResult:
     column_schemas: Dict[str, ColumnSchema] = field(default_factory=dict)
     schema_violations: List[SchemaViolation] = field(default_factory=list)
     missingness: List[MissingnessPattern] = field(default_factory=list)
+    irregular_sampling: Optional[IrregularityReport] = None
     findings: List[Dict[str, Any]] = field(default_factory=list)
 
     def __bool__(self) -> bool:
@@ -131,15 +140,32 @@ def run_preflight(
         # "minor noise" — they just produce info-severity findings.
         missingness.append(pattern)
 
+    # Irregular sampling — only when a time column is present (or named).
+    irregular_report: Optional[IrregularityReport] = None
+    detected_time_col = time_column or detect_time_column(df)
+    if detected_time_col and detected_time_col in df.columns:
+        try:
+            irregular_report = analyse_sampling(df, detected_time_col)
+        except Exception:
+            irregular_report = None
+
     # Convert to Aurora-shaped findings.
     findings: List[Dict[str, Any]] = []
     findings.extend(_violations_to_findings(violations))
     findings.extend(_missingness_to_findings(missingness))
+    if irregular_report is not None and \
+       irregular_report.pattern != IRREGULAR_PATTERN_NONE:
+        # Only emit a finding when there's an actual diagnosis.
+        findings.append(_irregular_to_finding(
+            irregular_report,
+            claim_seq=len(findings),
+        ))
 
     return PreflightResult(
         column_schemas=schemas,
         schema_violations=violations,
         missingness=missingness,
+        irregular_sampling=irregular_report,
         findings=findings,
     )
 

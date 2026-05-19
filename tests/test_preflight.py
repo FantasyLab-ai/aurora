@@ -344,3 +344,72 @@ class TestRunPreflight:
         assert "by_severity" in summary
         assert summary["total_findings"] >= 1
         assert summary["schema_columns_checked"] == 1
+
+
+# ===========================================================================
+# Irregular-sampling detection (Stream 1.1c)
+# ===========================================================================
+
+class TestIrregularSeries:
+
+    def test_regular_sampling_classified_regular(self):
+        from fantasyai.aurora.preflight import analyse_sampling, detect_time_column
+        times = pd.date_range("2024-01-01", periods=200, freq="h")
+        df = pd.DataFrame({"ts": times, "x": range(200)})
+        col = detect_time_column(df)
+        assert col == "ts"
+        report = analyse_sampling(df, col)
+        assert report.pattern == "regular"
+        assert report.cv < 0.05
+
+    def test_irregular_sampling_classified_irregular(self):
+        from fantasyai.aurora.preflight import analyse_sampling
+        # Wildly varying gaps.
+        timestamps = pd.to_datetime([
+            "2024-01-01T00:00:00", "2024-01-01T00:01:00",
+            "2024-01-01T00:30:00", "2024-01-01T05:00:00",
+            "2024-01-02T00:00:00", "2024-01-02T00:05:00",
+            "2024-01-03T10:00:00", "2024-01-04T00:00:00",
+            "2024-01-04T00:01:00", "2024-01-04T00:02:00",
+        ])
+        df = pd.DataFrame({"ts": timestamps, "x": range(10)})
+        report = analyse_sampling(df, "ts")
+        assert report.pattern in ("irregular", "gaps")
+        assert report.cv > 0.5
+
+    def test_bulk_gap_detected(self):
+        from fantasyai.aurora.preflight import analyse_sampling
+        # 100 evenly-spaced minutes + one 24-hour gap + 100 more minutes
+        base = pd.date_range("2024-01-01", periods=100, freq="min")
+        after = pd.date_range("2024-01-02", periods=100, freq="min")
+        times = list(base) + list(after)
+        df = pd.DataFrame({"ts": times, "x": range(len(times))})
+        report = analyse_sampling(df, "ts")
+        assert report.pattern == "gaps"
+        assert report.n_outlier_gaps >= 1
+        assert report.max_gap_seconds > 60 * 60  # > 1 hour
+
+    def test_run_preflight_emits_sampling_finding(self):
+        from fantasyai.aurora.preflight import run_preflight
+        # Build a df with a clear time column + a sensor-fault column,
+        # confirming we get findings from BOTH the schema check and the
+        # sampling check.
+        times = pd.date_range("2024-01-01", periods=100, freq="h")
+        df = pd.DataFrame({
+            "ts": times,
+            "temp": [20.0 + i * 0.1 for i in range(95)] + ["ERR"] * 5,
+        })
+        result = run_preflight(df, time_column="ts")
+        kinds = {f["kind_hint"] for f in result.findings}
+        # ts is regular → no sampling finding; temp has violations → schema finding.
+        assert "schema_violation" in kinds
+        assert result.irregular_sampling is not None
+        assert result.irregular_sampling.pattern == "regular"
+
+    def test_recommend_resample_freq_buckets_correctly(self):
+        from fantasyai.aurora.preflight import recommend_resample_freq
+        assert recommend_resample_freq(0.5) == "1s"
+        assert recommend_resample_freq(45) == "1min"
+        assert recommend_resample_freq(280) == "5min"
+        assert recommend_resample_freq(3500) == "1h"
+        assert recommend_resample_freq(50000) == "1D"
