@@ -1210,19 +1210,14 @@ EXTENDED_METHOD_ORDER = [
 def _build_extended_methods(ext_doc: Optional[Dict]) -> Dict[str, Any]:
     """Project ``extended_methods.json`` into per-method tile data.
 
-    The runner script writes ``extended_methods.json`` with shape::
-
-        {"findings": [<Aurora finding>, ...],
-         "per_method": {"var": {"status": "fit", "elapsed_s": 1.23}, ...},
-         "n_methods_run": 7,
-         "n_findings": 7}
-
-    Frontend wants one entry per method with the headline number already
-    extracted (so it can render the tile without re-parsing the
-    description text). We pull that from each finding's ``evidence`` block.
+    ALWAYS returns the full 7-tile structure — even when the runner
+    didn't produce extended_methods.json yet (legacy run dirs) or when
+    the doc is malformed. This is intentional: the user must always see
+    "Aurora knows about these 7 methods" rather than being silently
+    presented with a half-grid. Methods that have no data show with
+    ``status="missing"`` and a hint to re-run.
     """
-    if not isinstance(ext_doc, dict):
-        return _none_unavail("extended_methods.json malformed")
+    ext_doc = ext_doc if isinstance(ext_doc, dict) else {}
     findings = ext_doc.get("findings") or []
     per_method_raw = ext_doc.get("per_method") or {}
     if not isinstance(findings, list):
@@ -1263,8 +1258,12 @@ def _build_extended_methods(ext_doc: Optional[Dict]) -> Dict[str, Any]:
             # re-parsing prose. Truncated to a safe subset for size.
             "evidence":     _trim_evidence(ev),
         }
+    # `available` reflects "the doc was loaded for this run" — the
+    # frontend uses it to decide whether to show the "pending — re-run
+    # to populate" hint vs. a real headline. The 7 tile slots ALWAYS
+    # render either way.
     return {
-        "available":      bool(findings),
+        "available":      bool(ext_doc),
         "n_methods_run":  int(ext_doc.get("n_methods_run") or len(EXTENDED_METHOD_ORDER)),
         "n_findings":     int(ext_doc.get("n_findings") or len(findings)),
         "n_fit":          n_fit,
@@ -1817,17 +1816,19 @@ def build_state(run_dir: Path) -> Dict[str, Any]:
     # (VAR, DTW, BOCPD, Robust PCA, EMD, Kalman, Spectral Entropy).
     # The runner script writes extended_methods.json; each entry is
     # ALREADY in Aurora finding shape so we just append.
-    extended_methods_state: Dict[str, Any] = _none_unavail("extended_methods.json missing")
+    # NOTE: extended_methods_state is ALWAYS populated — the builder
+    # returns 7 tile slots even when the JSON file doesn't exist, so
+    # the frontend renders the grid consistently across legacy + new runs.
+    extended_methods_state: Dict[str, Any]
     try:
         ext_doc = _read_json(run_dir / "extended_methods.json") or {}
         ext_findings = ext_doc.get("findings") if isinstance(ext_doc, dict) else None
         if isinstance(ext_findings, list):
             findings.extend([f for f in ext_findings if isinstance(f, dict)])
-        # Build a per-method dict the frontend can render as method tiles.
         extended_methods_state = _build_extended_methods(ext_doc)
     except Exception:
-        # Extended methods are additive — never block the rest of state assembly.
-        pass
+        # Even on a hard read failure, still emit the 7-tile shell.
+        extended_methods_state = _build_extended_methods({})
 
     # W10: KB grounding — attempt to attach a citation chip to each finding.
     # Failures are silent (KB is best-effort enrichment, never blocking).

@@ -5487,6 +5487,17 @@
              style="margin-right: 6px;">
       <span id="seedInputToggleLbl">✎ FOCUS</span>
     </button>
+    <!-- v1.2 Stream 2.4 Phase 2: workspace identity chip. Shows which
+         tenant the current session is acting as. Hidden in single-tenant
+         (default) deploys so the local-first UX is unchanged. Click → /api/auth/usage. -->
+    <button id="workspaceChip" class="btn"
+            style="display:none; margin-right:6px; padding:4px 10px;
+                    border:1px solid var(--mint); background:var(--bg-deep);
+                    color:var(--mint); letter-spacing:1px; font-size:10px;"
+            title="The workspace this session is acting as. Click for usage summary.">
+      <span style="color:var(--ink-faint);">workspace:</span>
+      <b id="workspaceChipLabel">—</b>
+    </button>
     <!-- v1.2 Stream 1.4 Phase 1: STREAMING control — start/stop continuous
          mode that watches a directory and re-analyses as new data arrives.
          The button reflects status (idle / watching / firing); clicking
@@ -5527,6 +5538,14 @@
           <input type="number" id="streamPollInput" value="2.0" min="0.5" step="0.5"
                   style="width:100%; padding:6px 8px; background:var(--bg-deepest); border:1px solid var(--ink-faint); color:var(--ink); font-family:inherit;">
         </label>
+        <!-- Phase 2: opt-in Decision Contracts auto-fire. When checked,
+             every genuinely-new finding (post-dedupe) is evaluated
+             against loaded contracts; matches fire webhook / slack
+             actions in real time. -->
+        <label style="display:flex; align-items:center; gap:6px; margin-bottom:10px; cursor:pointer;">
+          <input type="checkbox" id="streamFireContractsInput">
+          <span>auto-fire Decision Contracts on new findings</span>
+        </label>
         <div style="display:flex; gap:8px; margin-bottom:10px;">
           <button id="streamStartBtn" class="btn primary" style="flex:1;">▶ START</button>
           <button id="streamStopBtn" class="btn warn" style="flex:1;" disabled>✗ STOP</button>
@@ -5536,6 +5555,18 @@
           <div><span style="color:var(--ink-faint);">status:</span> <span id="streamStatusState">idle</span></div>
           <div><span style="color:var(--ink-faint);">events received:</span> <span id="streamEventCount">0</span></div>
           <div><span style="color:var(--ink-faint);">last event:</span> <span id="streamLastEvent">—</span></div>
+          <div><span style="color:var(--ink-faint);">deduped findings remembered:</span> <span id="streamDedupeSize">0</span></div>
+          <div><span style="color:var(--ink-faint);">contracts bridge:</span> <span id="streamContractsState">off</span></div>
+        </div>
+        <!-- Phase 2: live findings strip. Every new_finding event from
+             the SSE bus drops into this list (most recent on top, capped
+             at 8). Gives the user an at-a-glance "what's new right now?". -->
+        <div style="margin-top:10px;">
+          <div style="color:var(--ink-faint); font-size:10px; margin-bottom:4px; letter-spacing:1px;">LIVE FINDINGS</div>
+          <ul id="streamLiveFindings" style="list-style:none; padding:0; margin:0;
+              max-height:180px; overflow:auto; font-size:10px; line-height:1.5;">
+            <li id="streamLiveFindingsEmpty" style="color:var(--ink-faint); padding:4px 0;">— no live findings yet —</li>
+          </ul>
         </div>
         <div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--ink-faint); opacity:.6; font-size:10px;">
           See <a href="https://github.com/FantasyLab-ai/aurora/blob/main/docs/streaming.md" target="_blank" rel="noopener" style="color:var(--mint);">docs/streaming.md</a> for programmatic ingestion + integration patterns.
@@ -12013,13 +12044,32 @@
     // tile, even when the method skipped — so the user always sees
     // "did Aurora run VAR on my data, and what did it find?" without
     // having to dig through findings.
+    //
+    // We render the 7 tiles REGARDLESS of state.extended_methods.available:
+    // legacy run dirs (built before extended_methods.json existed) still
+    // get the 7-slot grid, all marked "pending — re-run to populate."
     // ---------------------------------------------------------------
-    const ext = state && state.extended_methods;
-    if (ext && ext.available && ext.per_method) {
-      const order = ext.order || ['var','dtw','bocpd','robust_pca','emd','kalman','spectral_entropy'];
+    const ext = (state && state.extended_methods) || {};
+    const extPerMethod = ext.per_method || {};
+    const extOrder = ext.order || ['var','dtw','bocpd','robust_pca','emd','kalman','spectral_entropy'];
+    const extLabelFallback = {
+      var: 'VAR · multivariate',
+      dtw: 'DTW · pattern match',
+      bocpd: 'BOCPD · change points',
+      robust_pca: 'Robust PCA · L+S',
+      emd: 'EMD · intrinsic modes',
+      kalman: 'Kalman · state filter',
+      spectral_entropy: 'Spectral entropy',
+    };
+    {
+      const order = extOrder;
       for (const name of order) {
-        const m = ext.per_method[name];
-        if (!m) continue;
+        const m = extPerMethod[name] || {
+          label: extLabelFallback[name] || name,
+          method: name,
+          status: 'missing',
+          evidence: {},
+        };
         const status = (m.status || 'missing').toLowerCase();
         // Map evidence → headline + detail per method type.
         const ev = m.evidence || {};
@@ -15977,11 +16027,16 @@
   const pathInp    = document.getElementById('streamPathInput');
   const globInp    = document.getElementById('streamGlobInput');
   const pollInp    = document.getElementById('streamPollInput');
+  const fireInp    = document.getElementById('streamFireContractsInput');
   const startBtn   = document.getElementById('streamStartBtn');
   const stopBtn    = document.getElementById('streamStopBtn');
   const stateEl    = document.getElementById('streamStatusState');
   const countEl    = document.getElementById('streamEventCount');
   const lastEl     = document.getElementById('streamLastEvent');
+  const dedupeEl   = document.getElementById('streamDedupeSize');
+  const contracEl  = document.getElementById('streamContractsState');
+  const liveListEl = document.getElementById('streamLiveFindings');
+  const liveEmptyEl= document.getElementById('streamLiveFindingsEmpty');
   if (!btn || !pop) return;
 
   let eventSource = null;
@@ -16028,6 +16083,8 @@
       stateEl.textContent = running
         ? `watching ${j.path || ''} · ${j.window_rows || 0} rows in window`
         : 'idle';
+      if (dedupeEl)  dedupeEl.textContent  = String(j.dedupe_size || 0);
+      if (contracEl) contracEl.textContent = j.contracts_attached ? 'attached' : 'off';
       startBtn.disabled = running;
       stopBtn.disabled  = !running;
       setIndicator(running ? 'watching' : 'idle');
@@ -16050,6 +16107,8 @@
           path: path,
           file_glob: (globInp.value || '*.csv').trim(),
           poll_interval_s: parseFloat(pollInp.value || '2.0'),
+          // Phase 2: opt-in Decision Contracts auto-fire on new findings.
+          fire_contracts: !!(fireInp && fireInp.checked),
         }),
       });
       const j = await r.json();
@@ -16096,13 +16155,49 @@
           setIndicator('firing');
           // Reset to "watching" after a brief flash so the user sees the pulse.
           setTimeout(() => setIndicator('watching'), 1200);
+          // Phase 2: surface each new_finding in the live findings list.
+          if (kind === 'new_finding') {
+            appendLiveFinding(data, stamp);
+          }
           // Lightweight notification — surface the existing in-app toast if we have one.
           if (typeof window.__toast === 'function') {
-            window.__toast(`Streaming: ${kind} (${data.source || ''})`);
+            window.__toast(`Streaming: ${kind} (${(data.payload && data.payload.method) || data.source || ''})`);
           }
         }
       } catch (_) {}
     };
+
+    function appendLiveFinding(data, stamp) {
+      if (!liveListEl) return;
+      const p = (data && data.payload) || {};
+      const sev = String(p.severity || 'info').toLowerCase();
+      const sevColor = sev === 'crit' ? '#ff7676'
+                     : sev === 'warn' ? '#ffd54a'
+                     : 'var(--mint)';
+      const method = p.method || '?';
+      const title  = p.title || '(untitled)';
+      const li = document.createElement('li');
+      li.style.cssText = 'padding:5px 6px; border-left:2px solid ' + sevColor +
+                          '; margin-bottom:3px; background:var(--bg-deepest);';
+      li.innerHTML = '<div style="display:flex; justify-content:space-between; gap:8px;">' +
+                       '<span style="color:' + sevColor + '; text-transform:uppercase;">' +
+                         (sev) + ' · ' + escapeHtml(method) +
+                       '</span>' +
+                       '<span style="color:var(--ink-faint);">' + stamp + '</span>' +
+                     '</div>' +
+                     '<div style="margin-top:2px;">' + escapeHtml(title) + '</div>';
+      if (liveEmptyEl && liveEmptyEl.parentNode) liveEmptyEl.remove();
+      liveListEl.insertBefore(li, liveListEl.firstChild);
+      // Cap at 8 entries to keep the popover compact.
+      while (liveListEl.children.length > 8) {
+        liveListEl.removeChild(liveListEl.lastChild);
+      }
+    }
+    function escapeHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
     eventSource.addEventListener('window_advanced', e => onEvent('window_advanced', e));
     eventSource.addEventListener('new_finding',    e => onEvent('new_finding',    e));
     eventSource.addEventListener('regime_changed', e => onEvent('regime_changed', e));
@@ -16119,6 +16214,75 @@
   setTimeout(refreshStatus, 600);
   // Periodic re-probe (keeps the button label honest if the runner stops itself).
   pollTimer = setInterval(refreshStatus, 8000);
+})();
+</script>
+
+<!-- =================================================================== -->
+<!-- v1.2 Stream 2.4 Phase 2 — workspace identity chip + usage summary.  -->
+<!--                                                                     -->
+<!-- Probes /api/auth/whoami to discover whether the server is running   -->
+<!-- in multi-tenant mode. If so, surface the current workspace_id in    -->
+<!-- the top toolbar so the user always knows whose data they're seeing. -->
+<!-- =================================================================== -->
+<script>
+(function workspaceController(){
+  const chip = document.getElementById('workspaceChip');
+  const label = document.getElementById('workspaceChipLabel');
+  if (!chip || !label) return;
+
+  async function refresh() {
+    try {
+      const r = await fetch('/api/auth/whoami');
+      if (!r.ok) return;
+      const j = await r.json();
+      // Only show the chip in multi-tenant deployments (auth required
+      // OR authenticated). Single-tenant local installs see nothing,
+      // preserving Phase 1 UX.
+      const wid = j.workspace_id || 'default';
+      const showChip = !!(j.auth_required || j.authenticated);
+      if (showChip) {
+        label.textContent = wid + (j.authenticated ? '' : ' · anon');
+        chip.style.display = 'inline-flex';
+      } else {
+        chip.style.display = 'none';
+      }
+      window.__auroraWorkspace = j;
+    } catch (e) {
+      // Silent — auth module is optional.
+    }
+  }
+
+  chip.addEventListener('click', async () => {
+    try {
+      const r = await fetch('/api/auth/usage');
+      const j = await r.json();
+      if (!j.ok) {
+        alert('usage unavailable: ' + (j.error || 'unknown'));
+        return;
+      }
+      const lines = [
+        'WORKSPACE: ' + (j.workspace_id || '—'),
+        'EVENTS:    ' + (j.n_events || 0),
+        'WINDOW:    ' + (j.first_ts
+                            ? new Date(j.first_ts*1000).toLocaleString()
+                              + ' → ' +
+                              new Date(j.last_ts*1000).toLocaleString()
+                            : '—'),
+        '',
+        'BY ENDPOINT:',
+      ];
+      const eps = j.per_endpoint || {};
+      Object.keys(eps).sort((a,b) => eps[b]-eps[a]).slice(0, 12).forEach(k => {
+        lines.push('  ' + k.padEnd(40) + ' ' + String(eps[k]).padStart(5));
+      });
+      alert(lines.join('\n'));
+    } catch (e) {
+      alert('usage request failed');
+    }
+  });
+
+  setTimeout(refresh, 300);
+  setInterval(refresh, 30000);
 })();
 </script>
 

@@ -72,6 +72,8 @@ jobs:
             tests/test_new_methods.py \
             tests/test_llm_providers.py \
             tests/test_streaming.py \
+            tests/test_streaming_phase2.py \
+            tests/test_auth_workspaces.py \
             tests/test_v1_2_frontend_wiring.py
 
       - name: Smoke-test runner module loads

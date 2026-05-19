@@ -141,6 +141,94 @@ aurora.example.com {
 If you need any of these now, run a single-tenant instance per user.
 That model works fine on Fly's free tier for solo users.
 
+## Phase 2: multi-tenant auth + per-workspace storage
+
+Phase 2 of the cloud roadmap ships in v1.2 — you can now run a single
+Aurora instance with multiple authenticated workspaces, each with its
+own isolated runs/KB/contracts/uploads directory.
+
+### Enabling auth
+
+Set `AURORA_AUTH_REQUIRED=1` and provide tokens via either of:
+
+**Env vars** (convenient for small deployments):
+
+```bash
+AURORA_AUTH_REQUIRED=1
+AURORA_TOKEN_ALICE=alice-secret-token-here
+AURORA_TOKEN_BOB=bob-secret-token-here
+AURORA_DATA_ROOT=/var/aurora    # where workspace dirs live
+```
+
+The workspace id is the lowercased suffix of the env var.
+
+**Token file** (convenient for fleets):
+
+```bash
+AURORA_AUTH_REQUIRED=1
+AURORA_TOKEN_FILE=/etc/aurora/tokens.json
+```
+
+```json
+{
+  "alice-secret-token-here": {"workspace_id": "alice", "label": "Alice's research"},
+  "bob-secret-token-here":   {"workspace_id": "bob",   "label": "Bob's prod"}
+}
+```
+
+Both sources can coexist — env vars take priority over the file.
+
+### Calling authenticated endpoints
+
+Any of three transport options work:
+
+```bash
+curl -H "Authorization: Bearer alice-secret-token-here" http://localhost:8000/api/state
+curl -H "X-Aurora-Token: alice-secret-token-here"       http://localhost:8000/api/state
+curl "http://localhost:8000/api/state?token=alice-secret-token-here"
+```
+
+### What gets isolated per workspace
+
+```
+${AURORA_DATA_ROOT}/workspaces/<workspace_id>/
+  runs/        ← all aurora_dataset_runs/* for this workspace
+  kb/          ← knowledge bank (tenant-private)
+  contracts/   ← decision contract output
+  uploads/     ← per-session data uploads
+  usage.jsonl  ← per-workspace usage log
+```
+
+### Usage logging + billing prep
+
+Every authenticated request appends one JSON line to the workspace's
+`usage.jsonl`. The shape is documented in
+`fantasyai/aurora/auth/usage.py`. Aurora Cloud Phase 3 (the managed
+offering) ships the aggregator that turns these into billing rollups;
+this Phase 2 build emits the raw events so you can ship them to your
+existing billing system (Stripe, ChartMogul, anything that ingests
+JSONL).
+
+Workspaces can see their own usage at `/api/auth/usage` and the
+top-toolbar workspace chip in the Studio UI.
+
+### Workspace identity in the UI
+
+The Studio's top toolbar gains a `workspace: <id>` chip whenever the
+server is running in multi-tenant mode (i.e. `AURORA_AUTH_REQUIRED=1`
+or the request authenticated successfully). Click it for a usage
+summary popup. The chip is hidden in single-tenant mode — local-first
+UX stays untouched.
+
+### What's still Phase 3
+
+| Feature | Why deferred |
+|---|---|
+| Managed `cloud.aurora.fantasylab.ai` | Needs hosted infra + billing integration |
+| Cross-workspace admin views | Phase 2 ships workspace-self; admin views need org RBAC |
+| OAuth / SSO | Tokens cover 95% of cloud deployments; SSO is an enterprise add-on |
+| Per-workspace LLM credentials | Phase 2 uses the host's single LLM config; per-workspace credentials need a secret store |
+
 ## Updating
 
 Aurora versions move forward via the Dockerfile. To update:

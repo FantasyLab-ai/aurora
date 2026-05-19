@@ -137,9 +137,21 @@ class TestStreamingUI:
 class TestStateBuilderExtendedMethods:
 
     def test_build_extended_methods_handles_missing_doc(self):
+        # CRITICAL: even when extended_methods.json doesn't exist for
+        # this run, the builder MUST still return the 7-tile shell so
+        # the frontend renders a consistent grid. available=False just
+        # signals "this run didn't produce data" — it never hides tiles.
         from fantasyai.aurora.state_builder import _build_extended_methods
         out = _build_extended_methods(None)
         assert out["available"] is False
+        assert "per_method" in out
+        assert set(out["per_method"].keys()) == {
+            "var", "dtw", "bocpd", "robust_pca",
+            "emd", "kalman", "spectral_entropy",
+        }
+        # All 7 tiles default to "missing" so frontend shows them as pending.
+        for name, tile in out["per_method"].items():
+            assert tile["status"] == "missing"
 
     def test_build_extended_methods_produces_seven_tiles(self):
         from fantasyai.aurora.state_builder import _build_extended_methods
@@ -182,3 +194,37 @@ class TestStateBuilderExtendedMethods:
         # imf_stats is whitelisted but should be capped at 64 entries.
         assert len(out["imf_stats"]) == 64
         assert out["n_obs"] == 100
+
+
+# ----------------------------------------------------------------------
+# Phase 2 frontend surfaces: live findings + workspace chip + contracts toggle
+# ----------------------------------------------------------------------
+
+class TestPhase2FrontendSurfaces:
+
+    def test_live_findings_list_present(self):
+        html = _read()
+        assert 'id="streamLiveFindings"' in html
+        assert 'id="streamLiveFindingsEmpty"' in html
+        assert "LIVE FINDINGS" in html
+        assert "appendLiveFinding" in html
+
+    def test_contracts_toggle_present(self):
+        html = _read()
+        assert 'id="streamFireContractsInput"' in html
+        assert "fire_contracts" in html
+        assert "auto-fire Decision Contracts" in html
+
+    def test_dedupe_and_contracts_status_surfaced(self):
+        html = _read()
+        assert 'id="streamDedupeSize"' in html
+        assert 'id="streamContractsState"' in html
+
+    def test_workspace_chip_present(self):
+        html = _read()
+        assert 'id="workspaceChip"' in html
+        assert 'id="workspaceChipLabel"' in html
+        # Defaults to display:none so single-tenant deploys stay clean.
+        assert "workspaceController" in html
+        assert "/api/auth/whoami" in html
+        assert "/api/auth/usage" in html

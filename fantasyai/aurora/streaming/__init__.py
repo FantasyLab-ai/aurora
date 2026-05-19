@@ -28,9 +28,14 @@ Phase 1 of streaming mode ships these primitives:
     polling cadence; clients with SSE support get push, the rest
     keep polling.
 
-Phase 2+ will add: Kafka topic ingestion, Postgres CDC, BOCPD-style
-truly-online detectors, and an event-driven Decision Contracts
-trigger.
+Phase 2 ships:
+  * Per-finding **dedupe** so ``new_finding`` events only fire for
+    genuinely new findings, not every poll cycle.
+  * **Decision Contracts bridge** — auto-fire contracts when a
+    streaming finding matches their trigger predicate.
+
+Phase 3+ will add: Kafka topic ingestion, Postgres CDC, BOCPD-style
+truly-online detectors.
 """
 from __future__ import annotations
 
@@ -55,6 +60,14 @@ from .events import (
     EVENT_WINDOW_ADVANCED,
     EVENT_HEARTBEAT,
 )
+from .dedupe import (
+    FindingDedupeStore,
+    finding_identity,
+)
+from .contracts_bridge import (
+    evaluate_finding_against_contracts,
+    make_bridge,
+)
 
 __all__ = [
     # Watcher
@@ -76,4 +89,9 @@ __all__ = [
     "EVENT_REGIME_CHANGED",
     "EVENT_WINDOW_ADVANCED",
     "EVENT_HEARTBEAT",
+    # Phase 2: dedupe + contracts bridge
+    "FindingDedupeStore",
+    "finding_identity",
+    "evaluate_finding_against_contracts",
+    "make_bridge",
 ]

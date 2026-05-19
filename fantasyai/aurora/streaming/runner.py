@@ -43,6 +43,7 @@ from .events import (
     EVENT_REGIME_CHANGED,
     EVENT_WINDOW_ADVANCED,
 )
+from .dedupe import FindingDedupeStore, finding_identity
 
 LOG = logging.getLogger(__name__)
 
@@ -109,6 +110,13 @@ class IncrementalRunner:
         # Track the last regime "state" we published so we only fire
         # regime_changed when the state actually transitions.
         self._last_regime: Optional[str] = None
+        # Phase 2: per-finding dedupe. Prevents the bus from re-emitting
+        # ``new_finding`` for findings we've already announced.
+        self._dedupe = FindingDedupeStore(max_size=5_000)
+        # Optional contracts bridge — set via .attach_contracts_bridge()
+        # at construction time by callers who want Decision Contracts
+        # to auto-fire on new findings.
+        self._contracts_bridge: Optional[Callable[[Dict[str, Any]], None]] = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -139,6 +147,22 @@ class IncrementalRunner:
     @property
     def is_running(self) -> bool:
         return self._running
+
+    def attach_contracts_bridge(
+        self, fn: Callable[[Dict[str, Any]], None],
+    ) -> None:
+        """Register a callback that fires for every genuinely-new
+        finding (post-dedupe). Used by ``contracts_bridge`` to evaluate
+        Decision Contract triggers against streaming findings.
+
+        The callback receives the raw finding dict; failures are caught
+        and logged so a contract crash never takes down the runner.
+        """
+        self._contracts_bridge = fn
+
+    def dedupe_size(self) -> int:
+        """How many finding identities are currently remembered."""
+        return len(self._dedupe)
 
     # ------------------------------------------------------------------
     # Manual / programmatic ingestion (bypasses the watcher)
@@ -219,19 +243,35 @@ class IncrementalRunner:
         self.result.last_findings_count = len(findings)
         self.result.last_severity_rollup = sev_counts
 
-        # Publish a new-finding event for any crit/warn that wasn't
-        # in the previous run. Phase 1 = simple "publish the whole
-        # severity rollup"; phase 2 will dedupe at the per-finding level.
-        if findings:
-            self.bus.publish(StreamEvent(
-                kind=EVENT_NEW_FINDING,
-                payload={
-                    "n_findings": len(findings),
-                    "severity_rollup": sev_counts,
-                    "source": source,
-                },
-                source=source,
-            ))
+        # Phase 2: per-finding dedupe. Only fire ``new_finding`` for
+        # findings whose identity hash hasn't been seen before. This
+        # is what subscribers actually want: "ping me when something
+        # NEW happens", not "ping me every poll cycle."
+        new_findings, _ = self._dedupe.filter_new(findings, ts=time.time())
+        if new_findings:
+            # One bus event per genuinely-new finding, so contracts /
+            # webhooks / Studio chips can target individual claims.
+            for f in new_findings:
+                payload = {
+                    "method":      f.get("method"),
+                    "severity":    f.get("severity"),
+                    "title":       f.get("title"),
+                    "description": f.get("description"),
+                    "claim_id":    f.get("claim_id"),
+                    "identity":    finding_identity(f),
+                    "source":      source,
+                }
+                self.bus.publish(StreamEvent(
+                    kind=EVENT_NEW_FINDING,
+                    payload=payload,
+                    source=source,
+                ))
+                # Decision Contracts auto-fire bridge.
+                if self._contracts_bridge is not None:
+                    try:
+                        self._contracts_bridge(f)
+                    except Exception:
+                        LOG.exception("contracts bridge failed")
 
         # Detect "regime changed" — any finding with kind_hint that
         # mentions regimes/state-shift.

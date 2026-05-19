@@ -388,6 +388,142 @@ app = Flask(__name__, static_folder=None)
 CORS(app)  # permissive by default; tighten via env when deploying.
 
 
+# ---------------------------------------------------------------------------
+# v1.2 Stream 2.4 Phase 2 — multi-tenant auth + per-workspace state.
+#
+# Auth is OPT-IN: set AURORA_AUTH_REQUIRED=1 to enforce it. Default is
+# unchanged (no auth) so single-user local installs keep working as-is.
+# When enforced, every protected endpoint resolves a WorkspaceContext
+# from the Authorization / X-Aurora-Token / ?token= bearer; usage gets
+# logged per-workspace for downstream billing.
+#
+# We register a before_request hook that stamps the current request
+# with its workspace context (via flask.g) and records usage. Endpoints
+# can then read ``g.aurora_workspace`` to route reads/writes through
+# the right workspace directory.
+# ---------------------------------------------------------------------------
+try:
+    from flask import g as _flask_g
+    from fantasyai.aurora.auth import (
+        auth_required as _auth_required,
+        record_usage as _record_usage,
+        AuthError as _AuthError,
+        DEFAULT_WORKSPACE as _DEFAULT_WORKSPACE,
+    )
+    _AUTH_AVAILABLE = True
+except Exception:
+    _AUTH_AVAILABLE = False
+
+
+# Endpoints that never need auth (health probe, the frontend HTML).
+_AUTH_BYPASS_PATHS = {
+    "/", "/api/health", "/api/llm/status",
+}
+
+
+@app.before_request
+def _aurora_auth_before_request():
+    """Stamp the request with its workspace context + record usage.
+
+    Failing-closed semantics: when AURORA_AUTH_REQUIRED=1 and the
+    request can't be authenticated, return 401 BEFORE any handler
+    runs. When auth is optional, the handler still gets a default
+    workspace context so downstream code can use ``g.aurora_workspace``
+    unconditionally.
+    """
+    if not _AUTH_AVAILABLE:
+        return None
+    # Skip auth for the home page + healthcheck + static assets.
+    if request.path in _AUTH_BYPASS_PATHS:
+        return None
+    if request.path.startswith("/static/"):
+        return None
+    try:
+        ctx = _auth_required(request)
+    except _AuthError as e:
+        return jsonify({
+            "ok": False,
+            "error": str(e),
+            "code": "auth_required",
+        }), getattr(e, "http_status", 401)
+    _flask_g.aurora_workspace = ctx
+    # Best-effort usage log. Failures are silent inside record_usage.
+    _record_usage(
+        ctx.workspace_id,
+        request.path,
+        method=request.method,
+        kind="request",
+        meta={"authenticated": ctx.authenticated},
+    )
+    return None
+
+
+def _current_workspace_id() -> str:
+    """Helper for endpoints that need to scope reads/writes to a
+    workspace. Always returns a valid id (falls back to DEFAULT)."""
+    try:
+        ctx = getattr(_flask_g, "aurora_workspace", None)
+        if ctx is not None:
+            return ctx.workspace_id
+    except Exception:
+        pass
+    return _DEFAULT_WORKSPACE if _AUTH_AVAILABLE else "default"
+
+
+@app.route("/api/auth/whoami")
+def api_auth_whoami():
+    """Return the current request's workspace identity.
+
+    Useful for the frontend to know "am I in a per-tenant deploy?
+    which workspace?". When auth is disabled, returns the default
+    workspace context with ``authenticated: false``.
+    """
+    if not _AUTH_AVAILABLE:
+        return jsonify({
+            "ok": True,
+            "auth_available": False,
+            "workspace_id": "default",
+            "authenticated": False,
+            "auth_required": False,
+        })
+    ctx = getattr(_flask_g, "aurora_workspace", None)
+    return jsonify({
+        "ok": True,
+        "auth_available": True,
+        "workspace_id":  ctx.workspace_id if ctx else _DEFAULT_WORKSPACE,
+        "label":         ctx.label if ctx else None,
+        "token_id":      ctx.token_id if ctx else None,
+        "authenticated": bool(ctx and ctx.authenticated),
+        "auth_required": os.environ.get(
+            "AURORA_AUTH_REQUIRED", ""
+        ).strip().lower() in ("1", "true", "yes"),
+    })
+
+
+@app.route("/api/auth/usage")
+def api_auth_usage():
+    """Return the usage summary for the current workspace.
+
+    Phase 2 surfaces this for the workspace itself; Phase 3 will add
+    cross-workspace admin views. Sensitive data (token, label) is
+    never returned via this endpoint.
+    """
+    if not _AUTH_AVAILABLE:
+        return jsonify({"ok": False, "error": "auth module unavailable"}), 200
+    from fantasyai.aurora.auth.usage import summarize_usage
+    wid = _current_workspace_id()
+    since_arg = request.args.get("since_ts")
+    since_ts = None
+    if since_arg:
+        try:
+            since_ts = float(since_arg)
+        except Exception:
+            since_ts = None
+    summary = summarize_usage(wid, since_ts=since_ts)
+    summary["workspace_id"] = wid
+    return jsonify({"ok": True, **summary})
+
+
 @app.route("/")
 def index():
     """Serve the frontend HTML with no-cache headers.
@@ -901,6 +1037,23 @@ def api_stream_start():
         file_glob=file_glob,
         poll_interval_s=poll_interval,
     )
+
+    # v1.2 Stream 1.4 Phase 2: opt-in Decision Contracts auto-fire.
+    # When fire_contracts=True, every genuinely-new finding (post
+    # dedupe) is evaluated against every loaded contract, and matching
+    # contracts fire their actions (webhook / slack / etc).
+    fire_contracts = bool(body.get("fire_contracts", False))
+    contracts_attached = False
+    if fire_contracts:
+        try:
+            from fantasyai.aurora.streaming import make_bridge
+            _STREAM_RUNNER.attach_contracts_bridge(make_bridge())
+            contracts_attached = True
+        except Exception:
+            # Bridge attachment is best-effort. Streaming still works
+            # without it; we just won't auto-fire contracts.
+            contracts_attached = False
+
     _STREAM_RUNNER.start()
     return jsonify({
         "ok": True,
@@ -908,6 +1061,7 @@ def api_stream_start():
         "file_glob": file_glob,
         "poll_interval_s": poll_interval,
         "max_rows": max_rows,
+        "contracts_attached": contracts_attached,
     })
 
 
@@ -931,6 +1085,10 @@ def api_stream_status():
         window_rows = int(len(r.window)) if r.window is not None else 0
     except Exception:
         window_rows = 0
+    try:
+        dedupe_size = int(r.dedupe_size())
+    except Exception:
+        dedupe_size = 0
     return jsonify({
         "ok": True,
         "running": bool(r.is_running),
@@ -946,6 +1104,9 @@ def api_stream_status():
         "last_severity_rollup": r.result.last_severity_rollup,
         "errors": r.result.errors[-5:],
         "subscriber_count": _STREAM_BUS.subscriber_count() if _STREAM_BUS else 0,
+        # Phase 2: per-finding dedupe + contracts bridge visibility.
+        "dedupe_size": dedupe_size,
+        "contracts_attached": bool(getattr(r, "_contracts_bridge", None)),
     })
 
 
