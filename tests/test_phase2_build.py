@@ -69,6 +69,50 @@ class TestScaffolding:
         # Phase 2 must NOT replace index.html in production — Flask owns it.
         assert "publicDir: false" in text
 
+    def test_vite_config_uses_esm_portable_dirname(self):
+        """Regression test: vite.config.ts must NOT rely on the
+        CommonJS-only `__dirname` global directly. ESM modules need
+        either `fileURLToPath(import.meta.url)` or `import.meta.dirname`.
+
+        Without this guard, `npm run build` fails with TS2304 errors
+        ('Cannot find name __dirname') even when @types/node is installed.
+        """
+        text = (FRONTEND / "vite.config.ts").read_text(encoding="utf-8")
+        # Either we use the canonical ESM pattern...
+        canonical = (
+            "fileURLToPath" in text and "import.meta.url" in text
+        )
+        # ...or the newer Node 22+ helper.
+        modern = "import.meta.dirname" in text
+        assert canonical or modern, (
+            "vite.config.ts must derive __dirname via "
+            "fileURLToPath(import.meta.url) or import.meta.dirname — "
+            "raw __dirname is CommonJS-only and breaks `tsc --noEmit`"
+        )
+
+    def test_package_json_has_types_node(self):
+        """vite.config.ts imports 'node:path' + 'node:url'; @types/node
+        is required for `tsc --noEmit` to succeed."""
+        f = FRONTEND / "package.json"
+        pkg = json.loads(f.read_text(encoding="utf-8"))
+        dev = pkg.get("devDependencies") or {}
+        assert "@types/node" in dev, (
+            "package.json missing @types/node — required for the Node "
+            "stdlib imports in vite.config.ts"
+        )
+
+    def test_tsconfig_includes_node_types(self):
+        """tsconfig.json must explicitly include node types so the
+        Vite config sees `fileURLToPath`, `import.meta`, etc."""
+        text = (FRONTEND / "tsconfig.json").read_text(encoding="utf-8")
+        # We accept either `"types": ["node"]` OR an empty types array
+        # IF the typeRoots already cover node — but the simpler path
+        # (and what we ship) is the explicit "types": ["node"].
+        assert '"types": ["node"]' in text, (
+            'tsconfig.json should declare `"types": ["node"]` so '
+            'vite.config.ts can resolve node:* imports'
+        )
+
     def test_tsconfig_exists_and_strict(self):
         # tsconfig.json is JSONC (JSON-with-comments). Rather than ship
         # a JSONC parser, we verify the load-bearing fields by string

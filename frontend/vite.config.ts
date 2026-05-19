@@ -17,7 +17,13 @@
  * choose to do Phase 3.
  */
 import { defineConfig } from 'vite';
-import { resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// ESM-portable __dirname derivation. `node:url`+`fileURLToPath` is the
+// canonical pattern for ESM Vite configs in 2026 — works on Node 18+
+// and matches what `vite create-app` scaffolds out of the box.
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig(({ mode }) => ({
   // The frontend root lives in ./frontend; this config sits there too.

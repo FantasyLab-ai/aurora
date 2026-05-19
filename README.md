@@ -87,6 +87,34 @@ python studio_api.py
 
 Open <http://127.0.0.1:8000>. Click **▶ Try a demo** for a 10-second smoke test, or drop your own CSV / Parquet / JSON / XLSX.
 
+### Optional: enhanced frontend build (v0.10 Phase 2)
+
+Aurora ships a working frontend out of the box — the pure-Python install above is all you need. The optional Phase 2 build adds a Vite + TypeScript layer with typed API helpers, hardened Server-Sent Events, and a Nanostores-backed state model. It runs **side-by-side** with the legacy frontend and is fully non-breaking — skip it entirely if you don't care.
+
+Requirements: Node 18+ and npm.
+
+```bash
+cd frontend
+npm install              # one-time — installs Vite, TypeScript, @types/node, Nanostores
+npm run build            # type-checks + bundles to frontend/dist/aurora.js + .css
+cd ..
+python studio_api.py     # restart the Studio; the bundle auto-loads
+```
+
+After the build, open the Studio and check DevTools console — you'll see `⚡ Aurora 0.10.0+phase2 loaded` and `window.Aurora.api`, `window.Aurora.store`, `window.Aurora.stream` become available for any custom panel work.
+
+For development with hot-reload, run Flask + Vite side-by-side (two terminals):
+
+```bash
+# Terminal 1
+python studio_api.py                    # Flask on :8000
+
+# Terminal 2
+cd frontend && npm run dev              # Vite on :5173 with HMR + Flask proxy
+```
+
+Then open <http://127.0.0.1:5173>. Edits to `frontend/src/` hot-reload. Full guide: [docs/frontend-build.md](docs/frontend-build.md).
+
 > **Status:** v1.1 shipped (May 2026). v1.2 substantially shipped (streaming, cloud, Jupyter, contracts actions, runs library, MCP HTTP). v2.0 actively shipping on `main` (causal do-calculus, multi-dataset joins, Plugin SDK, custom KB ingestion, bundle attestation, KB marketplace, Kafka + Postgres CDC connectors, GPU embeddings). 599 tests passing locally; ~625 in CI. Real users running it on real data.
 
 ### Run it in Docker (BYO-LLM)

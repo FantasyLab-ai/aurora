@@ -7,6 +7,10 @@
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "useDefineForClassFields": true,
 
+    /* Pull in Node type defs so vite.config.ts can use `node:path` +
+       `node:url` + import.meta. Pulled from @types/node devDependency. */
+    "types": ["node"],
+
     /* Pragmatic strictness — strict where it helps, lenient where the
        legacy DOM-mutation code interfaces. We'll tighten further once
        more of the codebase is migrated. */
