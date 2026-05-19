@@ -31,6 +31,7 @@ from fantasyai.aurora.math.methods import (
     fit_emd,
     fit_kalman,
     fit_spectral_entropy,
+    run_extended_methods,
 )
 
 
@@ -341,3 +342,79 @@ class TestSpectralEntropy:
         df = pd.DataFrame({"x": [1.0, 2.0, 3.0]})
         f = fit_spectral_entropy(df, target_col="x")
         assert f["evidence"]["status"] == "skipped"
+
+
+# ===========================================================================
+# Extended-methods orchestrator (integration into the runner pipeline)
+# ===========================================================================
+
+class TestExtendedRunner:
+
+    def test_runs_all_7_methods(self):
+        """Orchestrator returns one finding per registered method."""
+        rng = np.random.default_rng(0)
+        # Build a DataFrame that triggers fit for most methods.
+        df = pd.DataFrame({
+            "x": np.cumsum(rng.standard_normal(150)),
+            "y": np.cumsum(rng.standard_normal(150)),
+            "z": rng.standard_normal(150),
+        })
+        result = run_extended_methods(df)
+        # Each of the 7 methods produces at least one finding.
+        assert result["n_methods_run"] == 7
+        assert result["n_findings"] >= 7
+        # per_method dict has an entry for each.
+        assert set(result["per_method"].keys()) >= {
+            "var", "dtw", "bocpd", "robust_pca", "emd", "kalman",
+            "spectral_entropy",
+        }
+
+    def test_findings_in_aurora_shape(self):
+        """Every finding the runner emits must have Aurora's standard keys."""
+        rng = np.random.default_rng(0)
+        df = pd.DataFrame({
+            "a": rng.standard_normal(100),
+            "b": rng.standard_normal(100),
+        })
+        result = run_extended_methods(df)
+        required = {"severity", "confidence", "title", "description",
+                     "method", "claim_id", "fabricated"}
+        for f in result["findings"]:
+            assert isinstance(f, dict)
+            missing = required - set(f.keys())
+            assert not missing, f"finding missing keys: {missing}; {f.get('method')}"
+            assert f["fabricated"] is False
+
+    def test_orchestrator_continues_on_method_failure(self):
+        """If one method skips (e.g., single-column df), the others still run."""
+        df = pd.DataFrame({"only": np.arange(50.0)})
+        result = run_extended_methods(df)
+        statuses = {name: m["status"] for name, m in result["per_method"].items()}
+        # Some will be skipped (VAR needs ≥2 cols); the runner kept going.
+        assert "skipped" in statuses.values()
+
+    def test_enabled_methods_filter(self):
+        """Passing enabled_methods limits which methods run."""
+        rng = np.random.default_rng(0)
+        df = pd.DataFrame({"x": rng.standard_normal(100)})
+        result = run_extended_methods(df, enabled_methods=["kalman", "spectral_entropy"])
+        assert result["n_methods_run"] == 2
+        assert set(result["per_method"].keys()) == {"kalman", "spectral_entropy"}
+
+    def test_claim_ids_are_unique(self):
+        """The orchestrator hands each method a different claim_seq so
+        downstream consumers can de-duplicate cleanly."""
+        rng = np.random.default_rng(0)
+        df = pd.DataFrame({
+            "a": rng.standard_normal(100),
+            "b": rng.standard_normal(100),
+        })
+        result = run_extended_methods(df)
+        # Non-skipped findings carry the seq number in claim_id.
+        # Even if some methods skip and produce the same -skipped suffix
+        # the OTHER methods should each get a unique id.
+        seq_based = [f for f in result["findings"]
+                     if "-skipped" not in f.get("claim_id", "")
+                     and "-failed-" not in f.get("claim_id", "")]
+        ids = [f["claim_id"] for f in seq_based]
+        assert len(ids) == len(set(ids)), "claim_ids should be unique"

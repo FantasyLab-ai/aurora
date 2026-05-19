@@ -1,0 +1,49 @@
+# Aurora — local docker-compose.
+#
+# One command to run hosted Aurora:
+#
+#     docker compose up
+#
+# Then open http://localhost:8000.
+#
+# This file is intentionally minimal — just Aurora itself. For
+# production (multi-tenant cloud), you'd add: Postgres, Redis, a
+# reverse proxy (Caddy or nginx), a worker pool, a billing service.
+# Phase 1 of the Aurora Cloud roadmap = this file. Phase 2/3 build
+# on top.
+#
+# To run with a specific LLM provider, set AURORA_LLM_PROVIDER in your
+# .env file (or `export AURORA_LLM_PROVIDER=anthropic` before
+# `docker compose up`). See docs/cloud-deploy.md for credentials.
+
+services:
+  aurora:
+    build: .
+    image: aurora-studio:local
+    container_name: aurora-studio
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persistent state — KB, run_dirs, learning store. The bind-mount
+      # to ./aurora-data lets you inspect / back up locally.
+      - ./aurora-data:/var/aurora
+      # Operator-owned config — LLM credentials, custom settings.
+      # Keep this directory OUT of version control (already in
+      # .gitignore via aurora-config/).
+      - ./aurora-config:/etc/aurora
+    environment:
+      # LLM provider config — pick one of: ollama / anthropic / openai / gemini / none.
+      # Override at runtime: `AURORA_LLM_PROVIDER=anthropic docker compose up`
+      AURORA_LLM_PROVIDER: "${AURORA_LLM_PROVIDER:-none}"
+      # Provider-specific credentials. Only the one matching your
+      # AURORA_LLM_PROVIDER needs to be set.
+      ANTHROPIC_API_KEY:    "${ANTHROPIC_API_KEY:-}"
+      OPENAI_API_KEY:       "${OPENAI_API_KEY:-}"
+      GEMINI_API_KEY:       "${GEMINI_API_KEY:-}"
+      OLLAMA_BASE_URL:      "${OLLAMA_BASE_URL:-http://host.docker.internal:11434}"
+      OLLAMA_MODEL:         "${OLLAMA_MODEL:-gemma3:12b}"
+      # KB auto-bootstrap on first start (ingests the 59 seed entries).
+      AURORA_NO_KB_BOOTSTRAP: "${AURORA_NO_KB_BOOTSTRAP:-0}"
+      # Pack auto-download (4 domain packs from R2/HF as needed).
+      AURORA_NO_PACK_AUTODOWNLOAD: "${AURORA_NO_PACK_AUTODOWNLOAD:-0}"

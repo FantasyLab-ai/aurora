@@ -39,6 +39,7 @@ from typing import Any, Dict, Optional
 
 from flask import (
     Flask, abort, jsonify as _flask_jsonify, request, send_file, send_from_directory,
+    Response,
 )
 from flask_cors import CORS  # type: ignore
 from werkzeug.utils import secure_filename
@@ -837,6 +838,159 @@ def api_preflight():
             if result.irregular_sampling is not None else None
         ),
     })
+
+
+# ---------------------------------------------------------------------------
+# Streaming mode endpoints (Stream 1.4 Phase 1)
+# ---------------------------------------------------------------------------
+# Process-global singleton — one runner + one bus per Studio process.
+# Holding these as globals is fine for v1; a multi-tenant cloud version
+# would scope them per user.
+_STREAM_RUNNER = None  # type: ignore
+_STREAM_BUS = None     # type: ignore
+
+
+def _stream_runner_lazy():
+    """Construct (and remember) the IncrementalRunner + bus on demand."""
+    global _STREAM_RUNNER, _STREAM_BUS
+    if _STREAM_RUNNER is not None:
+        return _STREAM_RUNNER, _STREAM_BUS
+    from fantasyai.aurora.streaming import (
+        IncrementalRunner, StreamEventBus, RollingWindowState,
+    )
+    _STREAM_BUS = StreamEventBus()
+    _STREAM_RUNNER = None  # we'll start it when /api/stream/start is called
+    return _STREAM_RUNNER, _STREAM_BUS
+
+
+@app.route("/api/stream/start", methods=["POST"])
+def api_stream_start():
+    """Start the streaming runner watching a directory for new files."""
+    global _STREAM_RUNNER, _STREAM_BUS
+    body = request.get_json(silent=True) or {}
+    raw_path = body.get("path") or request.args.get("path")
+    if not raw_path:
+        return jsonify({"ok": False, "error": "path required"}), 400
+    try:
+        path = _safe_path(Path(raw_path))
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+
+    try:
+        from fantasyai.aurora.streaming import (
+            IncrementalRunner, StreamEventBus, RollingWindowState,
+        )
+    except Exception as e:
+        return jsonify({
+            "ok": False, "error": f"streaming module unavailable: {e}",
+        }), 200
+
+    if _STREAM_RUNNER and _STREAM_RUNNER.is_running:
+        _STREAM_RUNNER.stop()
+    if _STREAM_BUS is None:
+        _STREAM_BUS = StreamEventBus()
+
+    max_rows = int(body.get("max_rows", 10000))
+    poll_interval = float(body.get("poll_interval_s", 2.0))
+    file_glob = str(body.get("file_glob", "*.csv"))
+
+    _STREAM_RUNNER = IncrementalRunner(
+        data_path=path,
+        event_bus=_STREAM_BUS,
+        window=RollingWindowState(max_rows=max_rows),
+        file_glob=file_glob,
+        poll_interval_s=poll_interval,
+    )
+    _STREAM_RUNNER.start()
+    return jsonify({
+        "ok": True,
+        "watching": str(path),
+        "file_glob": file_glob,
+        "poll_interval_s": poll_interval,
+        "max_rows": max_rows,
+    })
+
+
+@app.route("/api/stream/stop", methods=["POST"])
+def api_stream_stop():
+    """Stop the streaming runner."""
+    global _STREAM_RUNNER
+    if _STREAM_RUNNER and _STREAM_RUNNER.is_running:
+        _STREAM_RUNNER.stop()
+        return jsonify({"ok": True, "status": "stopped"})
+    return jsonify({"ok": True, "status": "not_running"})
+
+
+@app.route("/api/stream/status")
+def api_stream_status():
+    """Report what the streaming runner is doing."""
+    if _STREAM_RUNNER is None:
+        return jsonify({"ok": True, "running": False})
+    r = _STREAM_RUNNER
+    return jsonify({
+        "ok": True,
+        "running": bool(r.is_running),
+        "data_path": str(r.data_path),
+        "run_count": r.result.run_count,
+        "last_run_at": r.result.last_run_at,
+        "last_findings_count": r.result.last_findings_count,
+        "last_severity_rollup": r.result.last_severity_rollup,
+        "errors": r.result.errors[-5:],
+        "subscriber_count": _STREAM_BUS.subscriber_count() if _STREAM_BUS else 0,
+    })
+
+
+@app.route("/api/stream/events")
+def api_stream_events():
+    """Server-Sent Events stream. Clients connect with EventSource and
+    receive JSON-encoded events as they're published."""
+    global _STREAM_BUS
+    import json as _json
+    if _STREAM_BUS is None:
+        # Lazy-init the bus so /api/stream/events works even before
+        # /api/stream/start was called (useful for clients waiting
+        # to subscribe ahead of time).
+        from fantasyai.aurora.streaming import StreamEventBus
+        _STREAM_BUS = StreamEventBus()
+
+    bus = _STREAM_BUS
+    q = bus.subscribe()
+
+    def gen():
+        try:
+            for ev in bus.iterate(q, timeout_s=30.0):
+                data = {
+                    "kind": ev.kind,
+                    "payload": ev.payload,
+                    "timestamp": ev.timestamp,
+                    "source": ev.source,
+                }
+                yield f"event: {ev.kind}\ndata: {_json.dumps(data)}\n\n"
+        except GeneratorExit:
+            pass
+        finally:
+            bus.unsubscribe(q)
+
+    return Response(gen(), mimetype="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",  # disable nginx buffering
+    })
+
+
+@app.route("/api/llm/status")
+def api_llm_status():
+    """Report the currently-configured LLM provider + its public
+    (credential-free) metadata. Used by the Studio's settings panel
+    and by users debugging "why isn't synthesis working?"."""
+    try:
+        from fantasyai.aurora.llm import get_provider_info
+        info = get_provider_info()
+        return jsonify({"ok": True, "provider": info}), 200
+    except Exception as e:
+        return jsonify({
+            "ok": False,
+            "error": f"{type(e).__name__}: {e}",
+        }), 200
 
 
 @app.route("/api/runs")

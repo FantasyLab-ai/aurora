@@ -38,6 +38,7 @@ from .robust_pca import fit_robust_pca, ROBUST_PCA_KB_CITATIONS
 from .emd import fit_emd, EMD_KB_CITATIONS
 from .kalman import fit_kalman, KALMAN_KB_CITATIONS
 from .spectral_entropy import fit_spectral_entropy, SPECTRAL_ENTROPY_KB_CITATIONS
+from .extended_runner import run_extended_methods
 
 __all__ = [
     # Methods shipped in v1.2 (Stream 1.2 of the 12-month plan).
@@ -57,4 +58,6 @@ __all__ = [
     "EMD_KB_CITATIONS",
     "KALMAN_KB_CITATIONS",
     "SPECTRAL_ENTROPY_KB_CITATIONS",
+    # Orchestrator that runs all of the above on one DataFrame.
+    "run_extended_methods",
 ]

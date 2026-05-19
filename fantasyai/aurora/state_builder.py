@@ -1679,6 +1679,19 @@ def build_state(run_dir: Path) -> Dict[str, Any]:
     findings      = _build_findings(anomalies, forecast, regimes, causal, physics,
                                     motifs, report, orchestrator)
 
+    # v1.2 Stream 1.2: merge findings from the extended-methods stack
+    # (VAR, DTW, BOCPD, Robust PCA, EMD, Kalman, Spectral Entropy).
+    # The runner script writes extended_methods.json; each entry is
+    # ALREADY in Aurora finding shape so we just append.
+    try:
+        ext_doc = _read_json(run_dir / "extended_methods.json") or {}
+        ext_findings = ext_doc.get("findings") if isinstance(ext_doc, dict) else None
+        if isinstance(ext_findings, list):
+            findings.extend([f for f in ext_findings if isinstance(f, dict)])
+    except Exception:
+        # Extended methods are additive — never block the rest of state assembly.
+        pass
+
     # W10: KB grounding — attempt to attach a citation chip to each finding.
     # Failures are silent (KB is best-effort enrichment, never blocking).
     try:

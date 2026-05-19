@@ -76,6 +76,12 @@ tmp/
 # ---- Decision-contract output (per-user audit logs) ----
 contracts_output/
 
+# ---- Aurora Cloud Phase 1 — bind-mounted persistence ----
+# These two dirs live alongside docker-compose.yml and hold the
+# container's persistent state. Never publish them.
+aurora-data/
+aurora-config/
+
 # ---- IDE / OS ----
 .vscode/
 .idea/

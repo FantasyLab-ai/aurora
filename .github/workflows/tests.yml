@@ -70,6 +70,8 @@ jobs:
             tests/test_preflight.py \
             tests/test_aurora_jupyter.py \
             tests/test_new_methods.py \
+            tests/test_llm_providers.py \
+            tests/test_streaming.py \
             tests/test_coupled_systems.py
 
       - name: Import sanity (every public module loads cleanly)

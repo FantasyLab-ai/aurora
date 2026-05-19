@@ -907,6 +907,24 @@ def _main() -> None:
 
     _write_json(run_dir / "deep_math.json", deep_out)
 
+    # v1.2 Stream 1.2: run the extended-methods stack (VAR, DTW, BOCPD,
+    # Robust PCA, EMD, Kalman, Spectral Entropy). Each runs
+    # independently; failures are recorded as honest "skipped/failed"
+    # findings rather than crashing the whole run.
+    extended_out: Dict[str, Any] = {"findings": [], "per_method": {}}
+    try:
+        from fantasyai.aurora.math.methods import run_extended_methods
+        ext = run_extended_methods(df_deep)
+        extended_out = ext
+    except Exception as e:
+        extended_out = {
+            "error": f"extended_methods_failed:{type(e).__name__}:{e}",
+            "trace": traceback.format_exc()[:8000],
+            "findings": [],
+            "per_method": {},
+        }
+    _write_json(run_dir / "extended_methods.json", extended_out)
+
     # Optional LLM narrative
     if args.also_llm:
         provider = os.environ.get("AURORA_LLM_PROVIDER", "").strip().lower()

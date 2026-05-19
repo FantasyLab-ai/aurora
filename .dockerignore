@@ -1,0 +1,54 @@
+# Aurora — Docker build context exclusions.
+# Keep the build context small + reproducible.
+
+# Python ephemera
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtualenvs (the container builds its own)
+.venv/
+venv/
+.venv_*/
+**/.venv/
+
+# Local data (the container persists to /var/aurora via volume mount)
+data/uploads/
+outputs/
+.aurora/
+**/.aurora/
+aurora-data/
+aurora-config/
+
+# Claude Code working state
+.claude/
+
+# Backups + scratch
+_backups_*/
+*.bak
+SCRATCH.md
+TODO_PRIVATE.md
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Git + CI metadata (no need in the image)
+.git/
+.github/
+
+# Extension scaffolds — they're separate publishables, not in the
+# Studio container.
+extensions/
+
+# Test fixtures + screenshots used in docs (not needed at runtime)
+docs/captures/
+docs/screenshots/
