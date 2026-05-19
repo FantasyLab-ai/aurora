@@ -1,13 +1,17 @@
 # Aurora method coverage — new methods (v1.2)
 
-Aurora's analytical method library grew from 17 to 20 in v1.2, with
-three new methods that round out specific weak spots:
+Aurora's analytical method library grew from 17 to **24** in v1.2 with
+seven new methods that round out specific weak spots:
 
 | Method | Module | When to use |
 |---|---|---|
 | **VAR** (Vector Autoregression) | `fantasyai.aurora.math.methods.var` | Multivariate forecasting + cross-variable coupling. The natural generalisation of AR(1) when you have ≥2 numeric columns and care about how they feed back on each other. |
 | **DTW** (Dynamic Time Warping) | `fantasyai.aurora.math.methods.dtw` | Shape-similarity between sequences allowing elastic time alignment. Use when two series are the same shape at different speeds. |
 | **BOCPD** (Bayesian Online Change-Point Detection) | `fantasyai.aurora.math.methods.bocpd` | Streaming-friendly change-point detection. The natural complement to PELT (which runs in batch); BOCPD updates point-by-point. |
+| **Robust PCA** (Low-rank + sparse decomposition) | `fantasyai.aurora.math.methods.robust_pca` | When classical PCA gets ruined by structured outliers. Decomposes X = L + S where L is low-rank and S is sparse — the sparse component IS the anomaly mask. |
+| **EMD** (Empirical Mode Decomposition) | `fantasyai.aurora.math.methods.emd` | Adaptive decomposition of non-stationary signals into Intrinsic Mode Functions. Where wavelets use fixed bands, EMD finds the bands automatically — better for signals with frequency drift. |
+| **Kalman Filter** + RTS Smoother | `fantasyai.aurora.math.methods.kalman` | State-space denoising for noisy time series. Smooths past observations, propagates state through missing values, and forecasts with calibrated uncertainty. |
+| **Spectral Entropy** | `fantasyai.aurora.math.methods.spectral_entropy` | Single-number summary of how *concentrated* a signal's energy is in frequency space. Triangulates with HMM/PELT for regime detection via a different mathematical route. |
 
 All three follow Aurora's standard contract:
 
@@ -87,16 +91,21 @@ Tunables:
 
 **Citation:** Adams & MacKay (2007).
 
-## Roadmap — remaining methods
+## Roadmap status
 
-Stream 1.2 in the 12-month plan calls for 5-8 methods. The three above
-shipped; remaining candidates for future sessions:
+Stream 1.2 in the 12-month plan called for 5-8 methods. **We shipped
+7** in v1.2, all in-tree with no new dependencies:
 
-| Method | Status | Why deferred |
-|---|---|---|
-| Empirical Mode Decomposition (PyEMD) | Q1 next | Adds PyEMD dependency — needs runtime-dep review |
-| Robust PCA | Q1 next | Multiple library options (Implementations: alibi-detect, custom). Design choice deferred |
-| Bayesian Structural Time Series | Q2 | Needs Stan binding or pmdarima — heavier dependency |
+| Method | Status |
+|---|---|
+| VAR | ✅ shipped |
+| DTW | ✅ shipped |
+| BOCPD | ✅ shipped |
+| Robust PCA | ✅ shipped (Inexact ALM, pure NumPy) |
+| EMD | ✅ shipped (pure NumPy + scipy.interpolate) |
+| Kalman Filter (+ RTS) | ✅ shipped (pure NumPy) |
+| Spectral Entropy | ✅ shipped (pure NumPy FFT) |
+| Bayesian Structural Time Series | Q2 — needs Stan binding or pmdarima |
 
 Each lands as its own self-contained file under
 `fantasyai/aurora/math/methods/`, follows the same contract (skip

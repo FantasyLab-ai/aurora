@@ -966,6 +966,69 @@
   }
   .run-indicator .ri-trust.has-fab .rt-num { color: var(--crit); }
   .run-indicator .ri-trust.has-fab .rt-lbl { color: rgba(255, 85, 119, 0.85); }
+
+  /* v1.2 STREAM 1.1d: data-quality pill — sibling of the fabricated
+     pill. Mint when preflight finds nothing concerning, amber when
+     there are warnings, crit when schema is meaningfully broken. */
+  .run-indicator .ri-trust.ri-data { margin-left: 6px; }
+  .run-indicator .ri-trust.ri-data.is-warn {
+    background: rgba(255, 184, 74, 0.10);
+    border-color: rgba(255, 184, 74, 0.45);
+  }
+  .run-indicator .ri-trust.ri-data.is-warn .rt-num,
+  .run-indicator .ri-trust.ri-data.is-warn .rt-lbl { color: var(--amber, #ffb84a); }
+  .run-indicator .ri-trust.ri-data.is-crit {
+    background: rgba(255, 85, 119, 0.10);
+    border-color: rgba(255, 85, 119, 0.45);
+  }
+  .run-indicator .ri-trust.ri-data.is-crit .rt-num,
+  .run-indicator .ri-trust.ri-data.is-crit .rt-lbl { color: var(--crit); }
+
+  /* Data-quality expandable panel. Slides in beneath the run banner. */
+  .data-quality-panel {
+    margin: 8px 0 10px;
+    padding: 10px 14px;
+    background: rgba(124, 92, 255, 0.06);
+    border: 1px solid rgba(124, 92, 255, 0.25);
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+  .data-quality-panel .dqp-head {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 8px;
+  }
+  .data-quality-panel .dqp-title {
+    font-weight: 700; font-size: 10px; letter-spacing: 1.5px;
+    color: var(--violet, #a59cff);
+  }
+  .data-quality-panel .dqp-sub {
+    color: var(--ink-faint); font-size: 11px;
+    flex: 1;
+  }
+  .data-quality-panel .dqp-close {
+    background: transparent; border: 0; color: var(--ink-faint);
+    cursor: pointer; font-size: 16px; padding: 0 6px;
+  }
+  .data-quality-panel .dqp-close:hover { color: var(--ink); }
+  .data-quality-panel .dqp-body { line-height: 1.5; }
+  .data-quality-panel .dqp-finding {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 4px 0; border-top: 1px solid rgba(255,255,255,0.05);
+  }
+  .data-quality-panel .dqp-finding:first-child { border-top: 0; }
+  .data-quality-panel .dqp-sev {
+    text-transform: uppercase; font-weight: 600;
+    font-size: 9px; letter-spacing: 1.2px;
+    padding: 1px 6px; border-radius: 2px;
+    min-width: 38px; text-align: center;
+  }
+  .data-quality-panel .dqp-sev.crit { color: var(--crit); background: rgba(255,85,119,0.12); }
+  .data-quality-panel .dqp-sev.warn { color: var(--amber, #ffb84a); background: rgba(255,184,74,0.12); }
+  .data-quality-panel .dqp-sev.info { color: var(--cyan); background: rgba(86,205,255,0.12); }
+  .data-quality-panel .dqp-text { flex: 1; }
+  .data-quality-panel .dqp-title-line { color: var(--ink); }
+  .data-quality-panel .dqp-desc-line { color: var(--ink-faint); font-size: 11px; margin-top: 2px; }
   .run-indicator .ri-status.running { color: var(--cyan); }
   .run-indicator .ri-status.failed  { color: var(--crit, #ff5577); }
   .run-indicator .ri-status.cancelled { color: var(--ink-faint); }
@@ -5965,6 +6028,33 @@
           <span class="rt-num" id="riTrustNum">0</span>
           <span class="rt-lbl">fabricated</span>
         </span>
+        <!-- v1.2 STREAM 1.1d: data-quality lens. Sits next to the
+             fabricated chip so the two trust signals are together —
+             "the synthesis didn't lie" + "the data was clean enough
+             to trust the synthesis." Click to open the data-quality
+             panel below the cube. -->
+        <span class="ri-trust ri-data" id="riDataQuality"
+              title="Aurora's preflight ran schema validation, missingness pattern detection, and sampling-regularity checks on this dataset. Click to see details."
+              style="cursor:pointer;display:none;"
+              onclick="(window.__toggleDataQualityPanel || function(){})();">
+          <span class="rt-num" id="riDataQualityIcon">✓</span>
+          <span class="rt-lbl" id="riDataQualityLbl">data ok</span>
+        </span>
+      </div>
+      <!-- v1.2 STREAM 1.1d: expandable data-quality findings panel.
+           Renders below the run indicator's identity lines, above the
+           dataset-lens. Default hidden; pill click toggles. -->
+      <div id="dataQualityPanel" class="data-quality-panel" style="display:none;">
+        <div class="dqp-head">
+          <span class="dqp-title">DATA QUALITY</span>
+          <span class="dqp-sub" id="dqpSummary"></span>
+          <button class="dqp-close" type="button"
+                  onclick="(window.__toggleDataQualityPanel || function(){})();"
+                  aria-label="Close data quality panel">×</button>
+        </div>
+        <div class="dqp-body" id="dqpBody">
+          <em style="opacity:.7">Loading data quality findings…</em>
+        </div>
       </div>
       <div class="ri-line ri-dataset">
         <span id="riDatasetName">—</span>
@@ -9005,6 +9095,16 @@
       if (fabricated > 0) trustChip.classList.add('has-fab');
       else trustChip.classList.remove('has-fab');
     }
+
+    // v1.2 STREAM 1.1d: kick off preflight fetch + render the
+    // data-quality pill. Idempotent — fetches per-run but uses a
+    // cache so flicking between tabs doesn't re-request. Errors
+    // fail silent (the pill just stays hidden).
+    try {
+      if (typeof window.__refreshDataQuality === 'function') {
+        window.__refreshDataQuality();
+      }
+    } catch (_) { /* never let DQ break the main render */ }
 
     if (dsName) dsName.textContent = meta.dataset_name || '(unknown)';
     if (dsSize) {
@@ -15514,6 +15614,153 @@
       }
     }
   });
+
+  // -----------------------------------------------------------------
+  // v1.2 STREAM 1.1d: Data-quality pill + panel.
+  //
+  // Calls /api/preflight, renders a chip near the fabricated pill,
+  // and opens an expandable panel with full findings on click. The
+  // pill is the "7th lens" in spirit — gives at-a-glance signal
+  // about whether the user's data is clean enough to trust the
+  // analysis, without stealing a cube face from the analytical view.
+  // -----------------------------------------------------------------
+  (function dataQualityController(){
+    let lastFetchKey = '';
+    let cachedSummary = null;
+    let cachedFindings = [];
+
+    window.__refreshDataQuality = async function refreshDataQuality() {
+      try {
+        // Cheap dedup: skip the fetch if the URL/state didn't change.
+        const cacheKey = String(window.location.pathname);
+        if (cacheKey === lastFetchKey && cachedSummary) {
+          renderPill(cachedSummary);
+          return;
+        }
+        const resp = await fetch('/api/preflight', {
+          headers: { 'Accept': 'application/json' },
+        });
+        const j = await resp.json();
+        lastFetchKey = cacheKey;
+        if (!j || !j.ok) {
+          // Hide pill if there's no result (e.g., no run yet).
+          const pill = document.getElementById('riDataQuality');
+          if (pill) pill.style.display = 'none';
+          return;
+        }
+        cachedSummary = j.summary || {};
+        cachedFindings = j.findings || [];
+        renderPill(cachedSummary);
+        // If panel is open, refresh its body too.
+        const panel = document.getElementById('dataQualityPanel');
+        if (panel && panel.style.display !== 'none') {
+          renderPanel();
+        }
+      } catch (e) {
+        // Silent — DQ is best-effort, never blocks the run banner.
+      }
+    };
+
+    window.__toggleDataQualityPanel = function toggleDataQualityPanel() {
+      const panel = document.getElementById('dataQualityPanel');
+      if (!panel) return;
+      if (panel.style.display === 'none' || !panel.style.display) {
+        panel.style.display = 'block';
+        renderPanel();
+      } else {
+        panel.style.display = 'none';
+      }
+    };
+
+    function renderPill(summary) {
+      const pill = document.getElementById('riDataQuality');
+      const icon = document.getElementById('riDataQualityIcon');
+      const lbl  = document.getElementById('riDataQualityLbl');
+      if (!pill || !icon || !lbl) return;
+      const bySev = (summary && summary.by_severity) || {};
+      const crit = bySev.crit || 0;
+      const warn = bySev.warn || 0;
+      const total = summary && summary.total_findings || 0;
+
+      pill.classList.remove('is-warn', 'is-crit');
+      if (crit > 0) {
+        pill.classList.add('is-crit');
+        icon.textContent = '⚠';
+        lbl.textContent = (crit + warn) + ' issue' + ((crit + warn) === 1 ? '' : 's');
+      } else if (warn > 0) {
+        pill.classList.add('is-warn');
+        icon.textContent = '⚠';
+        lbl.textContent = warn + ' issue' + (warn === 1 ? '' : 's');
+      } else if (total > 0) {
+        // Info-level only — preflight ran, found minor stuff, all fine.
+        icon.textContent = '✓';
+        lbl.textContent = 'data clean';
+      } else {
+        // No findings at all — pristine data.
+        icon.textContent = '✓';
+        lbl.textContent = 'data clean';
+      }
+      pill.style.display = 'inline-flex';
+    }
+
+    function renderPanel() {
+      const body = document.getElementById('dqpBody');
+      const subEl = document.getElementById('dqpSummary');
+      if (!body) return;
+      const summary = cachedSummary || {};
+      const findings = cachedFindings || [];
+
+      if (subEl) {
+        const cols = summary.schema_columns_checked || 0;
+        const sev = summary.by_severity || {};
+        const pieces = [];
+        if (cols) pieces.push(cols + ' column' + (cols === 1 ? '' : 's') + ' checked');
+        if (sev.crit) pieces.push(sev.crit + ' critical');
+        if (sev.warn) pieces.push(sev.warn + ' warn');
+        if (sev.info) pieces.push(sev.info + ' info');
+        subEl.textContent = pieces.join(' · ') || 'no findings';
+      }
+
+      if (!findings.length) {
+        body.innerHTML = '<em style="opacity:.7">Aurora ran schema validation, ' +
+                          'missingness pattern detection, and sampling-regularity ' +
+                          'checks. No issues found — this data is clean.</em>';
+        return;
+      }
+      const rows = findings.slice(0, 20).map(f => {
+        const sev = String(f.severity || 'info').toLowerCase();
+        const title = escapeHtml(f.title || '(untitled)');
+        const desc  = escapeHtml(f.description || '');
+        return '<div class="dqp-finding">' +
+               '<span class="dqp-sev ' + sev + '">' + sev + '</span>' +
+               '<div class="dqp-text">' +
+               '<div class="dqp-title-line">' + title + '</div>' +
+               (desc ? '<div class="dqp-desc-line">' + desc + '</div>' : '') +
+               '</div></div>';
+      }).join('');
+      const extra = findings.length > 20
+        ? '<div style="margin-top:6px; color:var(--ink-faint); font-size:11px;">' +
+          '… plus ' + (findings.length - 20) + ' more findings.</div>'
+        : '';
+      body.innerHTML = rows + extra;
+    }
+
+    function escapeHtml(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    // First-load fetch in case state is already there before the
+    // run-indicator's __refreshDataQuality fires.
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      setTimeout(window.__refreshDataQuality, 500);
+    } else {
+      window.addEventListener('DOMContentLoaded', () => {
+        setTimeout(window.__refreshDataQuality, 500);
+      });
+    }
+  })();
 </script>
 
 </body>

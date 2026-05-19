@@ -34,13 +34,27 @@ from __future__ import annotations
 from .var import fit_var, VAR_KB_CITATIONS
 from .dtw import fit_dtw, dtw_distance, DTW_KB_CITATIONS
 from .bocpd import fit_bocpd, BOCPD_KB_CITATIONS
+from .robust_pca import fit_robust_pca, ROBUST_PCA_KB_CITATIONS
+from .emd import fit_emd, EMD_KB_CITATIONS
+from .kalman import fit_kalman, KALMAN_KB_CITATIONS
+from .spectral_entropy import fit_spectral_entropy, SPECTRAL_ENTROPY_KB_CITATIONS
 
 __all__ = [
+    # Methods shipped in v1.2 (Stream 1.2 of the 12-month plan).
     "fit_var",
     "fit_dtw",
     "dtw_distance",
     "fit_bocpd",
+    "fit_robust_pca",
+    "fit_emd",
+    "fit_kalman",
+    "fit_spectral_entropy",
+    # Citation lists (used by the RAG layer + research kit).
     "VAR_KB_CITATIONS",
     "DTW_KB_CITATIONS",
     "BOCPD_KB_CITATIONS",
+    "ROBUST_PCA_KB_CITATIONS",
+    "EMD_KB_CITATIONS",
+    "KALMAN_KB_CITATIONS",
+    "SPECTRAL_ENTROPY_KB_CITATIONS",
 ]

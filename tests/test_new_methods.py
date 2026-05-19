@@ -27,6 +27,10 @@ from fantasyai.aurora.math.methods import (
     fit_dtw,
     dtw_distance,
     fit_bocpd,
+    fit_robust_pca,
+    fit_emd,
+    fit_kalman,
+    fit_spectral_entropy,
 )
 
 
@@ -171,3 +175,169 @@ class TestBOCPD:
         # Either picks the variable column OR honestly skips
         assert f["method"] == "bocpd"
         assert f["evidence"]["status"] in ("fit", "skipped")
+
+
+# ===========================================================================
+# Robust PCA
+# ===========================================================================
+
+class TestRobustPCA:
+
+    def test_robust_pca_recovers_low_rank_plus_outliers(self):
+        """Construct a deliberately low-rank matrix + a few outlier
+        cells. Robust PCA should classify those rows as outliers."""
+        rng = np.random.default_rng(0)
+        n, p = 80, 5
+        # Low-rank structure: rank-2 outer product.
+        u = rng.standard_normal((n, 2))
+        v = rng.standard_normal((2, p))
+        X = u @ v
+        # Inject outliers on a few rows.
+        outlier_rows = [10, 25, 50]
+        for i in outlier_rows:
+            X[i] += rng.standard_normal(p) * 20.0  # large spike
+        df = pd.DataFrame(X, columns=[f"c{i}" for i in range(p)])
+        f = fit_robust_pca(df)
+        assert f["method"] == "robust_pca"
+        assert f["evidence"]["status"] == "fit"
+        flagged = {item["row_idx"] for item in f["evidence"]["top_outlier_rows"]}
+        # We should flag at least 2 of the 3 injected outliers.
+        assert len(flagged & set(outlier_rows)) >= 2
+
+    def test_robust_pca_skips_single_column(self):
+        df = pd.DataFrame({"only_one": np.arange(50.0)})
+        f = fit_robust_pca(df)
+        assert f["evidence"]["status"] == "skipped"
+
+    def test_robust_pca_returns_aurora_shape(self):
+        rng = np.random.default_rng(0)
+        df = pd.DataFrame(rng.standard_normal((40, 3)),
+                            columns=["a", "b", "c"])
+        f = fit_robust_pca(df)
+        for k in ("severity", "confidence", "title", "method", "claim_id",
+                   "fabricated"):
+            assert k in f
+        assert f["fabricated"] is False
+
+
+# ===========================================================================
+# EMD
+# ===========================================================================
+
+class TestEMD:
+
+    def test_emd_decomposes_composite_signal(self):
+        """A signal that's the sum of a slow trend + a fast oscillation
+        should decompose into ≥1 IMF + residual."""
+        t = np.linspace(0, 10, 500)
+        fast = np.sin(2 * np.pi * 5 * t)
+        slow = 0.5 * t  # linear trend
+        x = fast + slow
+        df = pd.DataFrame({"sig": x})
+        f = fit_emd(df, target_col="sig", max_imfs=3)
+        assert f["method"] == "emd"
+        assert f["evidence"]["status"] == "fit"
+        assert f["evidence"]["n_imfs"] >= 1
+
+    def test_emd_skips_short_series(self):
+        df = pd.DataFrame({"x": [1.0, 2.0, 3.0]})
+        f = fit_emd(df, target_col="x")
+        assert f["evidence"]["status"] == "skipped"
+
+    def test_emd_auto_picks_target(self):
+        df = pd.DataFrame({
+            "constant": [1.0] * 200,
+            "sin": np.sin(np.linspace(0, 10, 200)),
+        })
+        f = fit_emd(df)
+        assert f["method"] == "emd"
+        # Should pick the variable column.
+        if f["evidence"]["status"] == "fit":
+            assert f["evidence"]["target_col"] == "sin"
+
+
+# ===========================================================================
+# Kalman Filter
+# ===========================================================================
+
+class TestKalman:
+
+    def test_kalman_smooths_noisy_random_walk(self):
+        """A noisy random walk should be denoised — smoothed series
+        should have lower variance than the raw observations."""
+        rng = np.random.default_rng(0)
+        # Latent random walk + observation noise.
+        x = np.cumsum(rng.standard_normal(200) * 0.1)
+        y = x + rng.standard_normal(200) * 1.0
+        df = pd.DataFrame({"obs": y})
+        f = fit_kalman(df, target_col="obs")
+        assert f["method"] == "kalman"
+        assert f["evidence"]["status"] == "fit"
+        # Noise reduction should be positive (smoother strictly less noisy).
+        assert f["evidence"]["noise_reduction_fraction"] > 0.0
+
+    def test_kalman_forecast_has_widening_CI(self):
+        """Kalman forecast variance should monotonically increase with
+        horizon — that's the basic correctness check on the math."""
+        rng = np.random.default_rng(0)
+        df = pd.DataFrame({"x": rng.standard_normal(100)})
+        f = fit_kalman(df, target_col="x", forecast_horizon=10)
+        assert f["evidence"]["status"] == "fit"
+        forecast = f["evidence"]["forecast"]
+        # CI widths must be non-decreasing.
+        widths = [
+            step["ci_high"] - step["ci_low"] for step in forecast
+        ]
+        for i in range(1, len(widths)):
+            assert widths[i] >= widths[i - 1] - 1e-9, \
+                f"CI shrank at step {i}: {widths[i]} < {widths[i-1]}"
+
+    def test_kalman_handles_missing_observations(self):
+        """NaN observations should pass through cleanly."""
+        rng = np.random.default_rng(0)
+        x = rng.standard_normal(100)
+        x[20:30] = np.nan
+        df = pd.DataFrame({"x": x})
+        f = fit_kalman(df, target_col="x")
+        assert f["evidence"]["status"] == "fit"
+
+
+# ===========================================================================
+# Spectral Entropy
+# ===========================================================================
+
+class TestSpectralEntropy:
+
+    def test_pure_tone_has_low_entropy(self):
+        """sin wave → spectrum concentrated at one frequency → low entropy."""
+        t = np.linspace(0, 10, 1000)
+        x = np.sin(2 * np.pi * 5 * t)
+        df = pd.DataFrame({"sig": x})
+        f = fit_spectral_entropy(df, target_col="sig")
+        assert f["method"] == "spectral_entropy"
+        assert f["evidence"]["status"] == "fit"
+        h = f["evidence"]["global_spectral_entropy"]
+        assert h < 0.5, f"pure tone should be low entropy, got {h}"
+
+    def test_white_noise_has_high_entropy(self):
+        """White noise → uniform spectrum → entropy near 1."""
+        rng = np.random.default_rng(0)
+        df = pd.DataFrame({"noise": rng.standard_normal(1000)})
+        f = fit_spectral_entropy(df, target_col="noise")
+        h = f["evidence"]["global_spectral_entropy"]
+        assert h > 0.7, f"white noise should be high entropy, got {h}"
+
+    def test_windowed_mode_returns_windows(self):
+        t = np.linspace(0, 10, 500)
+        x = np.sin(2 * np.pi * 5 * t)
+        df = pd.DataFrame({"sig": x})
+        f = fit_spectral_entropy(df, target_col="sig", window_size=64,
+                                   window_step=32)
+        assert len(f["evidence"]["window_results"]) > 0
+        for w in f["evidence"]["window_results"]:
+            assert 0.0 <= w["spectral_entropy"] <= 1.0
+
+    def test_skips_short_series(self):
+        df = pd.DataFrame({"x": [1.0, 2.0, 3.0]})
+        f = fit_spectral_entropy(df, target_col="x")
+        assert f["evidence"]["status"] == "skipped"
