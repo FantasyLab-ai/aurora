@@ -5584,9 +5584,15 @@
          are installed. -->
     <div class="v20-wrap" style="position:relative; margin-right:6px;">
       <button id="v20ToggleBtn" class="btn"
-              title="v2.0: causal · KB ingest · attestation · marketplace · connectors · compute"
-              aria-haspopup="dialog">
-        <span style="color:var(--ink-faint);">v2.0</span>
+              title="v2.0 LAB — Causal do() · KB ingestion · Bundle attestation · KB marketplace · Streaming connectors · Compute device. Click to explore."
+              aria-haspopup="dialog"
+              style="position:relative; border-color:var(--cyan); background:linear-gradient(90deg, rgba(110,231,255,0.10), rgba(124,92,255,0.10));">
+        <span style="color:var(--cyan); font-weight:600; letter-spacing:1px;">⚡ v2.0 LAB</span>
+        <span style="display:inline-block; margin-left:6px; padding:0 5px;
+                       background:var(--cyan); color:#000;
+                       font-size:8px; font-weight:700; letter-spacing:1px;
+                       text-transform:uppercase; border-radius:1px;
+                       vertical-align:1px;">NEW · 6</span>
       </button>
       <div id="v20Popover" style="display:none; position:absolute;
            top:100%; right:0; margin-top:6px; z-index:10000;
@@ -6754,6 +6760,15 @@
             <button id="whatifRunBtn">RUN</button>
           </div>
           <div id="whatifResult" style="display:none; margin-top:8px;"></div>
+          <!-- Q2.0 Stream A — every WHAT-IF call now also runs the new
+               do-calculus engine on the side. The causal verdict
+               appears below the simulator output. For a direct view of
+               the do() engine alone, click into the v2.0 LAB chip. -->
+          <div style="margin-top:8px; padding-top:6px; border-top:1px dashed var(--ink-faint);
+                       font-size:9px; color:var(--ink-faint); letter-spacing:1px; text-transform:uppercase;">
+            ⚡ powered by do-calculus + backdoor adjustment ·
+            <a href="#" id="whatifOpenLab" style="color:var(--cyan);">open the v2.0 LAB for the full DAG view →</a>
+          </div>
         </div>
 
         <div class="intel-panel physics">
@@ -14606,6 +14621,42 @@
         (ident.caveats || []).map(c => `<li>${fmt.esc(c)}</li>`).join('') + '</ul>'
       : '';
 
+    // Q2.0 Stream A: render the new do-calculus block alongside the
+    // legacy simulator output. When the backdoor identification fires,
+    // this is the structurally-correct causal answer; the legacy
+    // simulator stays for the trajectory + threshold UX.
+    let causalHtml = '';
+    const c = j.causal;
+    if (c && c.ok !== false) {
+      if (c.identifiable === false) {
+        causalHtml = `
+          <div style="margin-top:10px; padding:8px 10px; background:rgba(255,213,74,0.08);
+               border-left:2px solid #ffd54a; font-size:10px;">
+            <div style="color:#ffd54a; text-transform:uppercase; letter-spacing:1.2px; font-size:9px; margin-bottom:4px;">⚠ causal verdict — not identifiable from current DAG</div>
+            <div style="color:var(--ink-dim);">${fmt.esc(c.unidentifiable_reason || 'effect not identifiable')}</div>
+          </div>`;
+      } else if (c.effect_estimate != null) {
+        const beta = (+c.effect_estimate);
+        const se = c.standard_error;
+        const adjSet = (c.adjustment_set || []).join(', ') || '(empty — no adjustment needed)';
+        const sign = beta >= 0 ? '+' : '';
+        const seStr = se != null ? ` ± ${(+se).toFixed(3)}` : '';
+        causalHtml = `
+          <div style="margin-top:10px; padding:8px 10px; background:rgba(110,231,255,0.06);
+               border-left:2px solid var(--cyan); font-size:10px;">
+            <div style="color:var(--cyan); text-transform:uppercase; letter-spacing:1.2px; font-size:9px; margin-bottom:4px;">do() causal verdict — backdoor adjustment</div>
+            <div style="font-family:'VT323',monospace; font-size:16px; color:var(--cyan); line-height:1.2;">
+              do(${fmt.esc(c.treatment)}=x) → ${fmt.esc(c.outcome)}:  β = ${sign}${beta.toFixed(4)}${seStr}
+            </div>
+            <div style="color:var(--ink-dim); margin-top:4px;">adjusted on: <b>${fmt.esc(adjSet)}</b> · n = ${c.n_obs || '?'} · method: ${fmt.esc(c.method || '?')}</div>
+            ${(c.assumptions || []).length ? (
+              '<div style="color:var(--ink-faint); text-transform:uppercase; letter-spacing:1px; font-size:9px; margin-top:6px;">assumptions:</div><ul style="margin:2px 0 0 16px; color:var(--ink-dim);">' +
+              c.assumptions.map(a => `<li>${fmt.esc(a)}</li>`).join('') + '</ul>'
+            ) : ''}
+          </div>`;
+      }
+    }
+
     return `<div style="background:rgba(124,92,255,0.08);border-left:2px solid var(--violet);padding:8px 10px;border-radius:1px;font-size:11px;">
       <div style="color:var(--ink-faint);font-size:9px;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:4px;">parsed: <span style="color:var(--violet)">${fmt.esc(intervention.variable || '?')} ${intervention.kind === 'set' ? '=' : 'Δ'} ${intervention.value != null ? (intervention.value >= 0 ? '+' : '') + intervention.value : ''}</span> · parser: ${fmt.esc(j.parser_used || '?')}</div>
       <div style="font-family:'VT323',monospace;font-size:18px;color:var(--violet-bright);line-height:1.2;">
@@ -14615,6 +14666,7 @@
       ${svg}
       <div style="font-size:9px;color:var(--ink-faint);margin-top:6px;text-transform:uppercase;letter-spacing:1px;">method: ${fmt.esc(j.method || '?')} · approach: ${fmt.esc(ident.approach || '?')}</div>
       ${caveatsHtml}
+      ${causalHtml}
     </div>`;
   }
 
@@ -14647,6 +14699,18 @@
       runWhatif();
     }
   });
+
+  // Q2.0 Stream A: link from the legacy WHAT-IF panel into the new
+  // v2.0 LAB so users find the dedicated causal surface. Clicks
+  // through to the LAB's Causal tab.
+  const openLabLink = document.getElementById('whatifOpenLab');
+  if (openLabLink) {
+    openLabLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      const labBtn = document.getElementById('v20ToggleBtn');
+      if (labBtn) labBtn.click();
+    });
+  }
 
   // ============================================================
   // SYMBOLIC DISCOVERY — discover novel equations + conservation laws

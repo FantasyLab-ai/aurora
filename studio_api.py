@@ -4001,6 +4001,65 @@ def api_whatif():
         "intervention": spec.to_dict(),
     }
     response.update(result)   # adds: identifiable, identifiability, trajectory, delta_target, method, headline
+
+    # Q2.0 Stream A integration: also run the new do-calculus engine
+    # alongside the legacy what-if simulator. When the parsed
+    # intervention has a clean (variable, value) shape, we treat the
+    # variable as treatment + the run's target as outcome and ask the
+    # backdoor-adjustment estimator for the causal effect. The result
+    # ships in `response["causal"]` so the frontend can render it.
+    try:
+        from fantasyai.aurora.causal import (
+            load_dag_from_system_model, do_query,
+        )
+        # Resolve the target column from the run meta.
+        target_col = None
+        try:
+            meta = json.loads((rd / "_RUN_META.json").read_text(encoding="utf-8"))
+            target_col = meta.get("target_col")
+        except Exception:
+            pass
+        if target_col and spec.variable and spec.variable != target_col:
+            # Build state to get the system_model; load the dataset.
+            try:
+                state = build_state(rd) if _HAVE_STATE else None
+            except Exception:
+                state = None
+            sm = (state or {}).get("system_model") or {}
+            dag = load_dag_from_system_model(sm)
+            # Load the dataset.
+            df_for_causal = None
+            ds_path = (meta or {}).get("dataset_path")
+            if ds_path and Path(ds_path).exists():
+                try:
+                    import pandas as pd
+                    df_for_causal = pd.read_csv(ds_path)
+                except Exception:
+                    df_for_causal = None
+            if df_for_causal is not None:
+                # For "delta" interventions, intervention_value is the
+                # observed mean + the delta. For "set" interventions
+                # it's the literal value.
+                iv = None
+                try:
+                    if spec.kind == "set":
+                        iv = float(spec.value)
+                    else:
+                        col_mean = float(df_for_causal[spec.variable].mean())
+                        iv = col_mean + float(spec.value)
+                except Exception:
+                    iv = None
+                do_res = do_query(
+                    df_for_causal, dag,
+                    treatment=spec.variable,
+                    outcome=target_col,
+                    intervention_value=iv,
+                )
+                response["causal"] = do_res.to_dict()
+    except Exception:
+        # Causal integration is additive — never block the legacy what-if.
+        pass
+
     return jsonify(response)
 
 

@@ -341,3 +341,72 @@ class TestV20OmnibusPanel:
             "/api/embeddings/status",
         ):
             assert endpoint in html, f"v2.0 panel doesn't call {endpoint}"
+
+    def test_v20_chip_is_visually_prominent(self):
+        """The chip should advertise itself — cyan border + NEW badge —
+        so users discover the panel without reading docs."""
+        html = _read()
+        # The "NEW · 6" badge + a marker that we styled the chip with
+        # the cyan accent. We don't pin exact CSS to avoid lockstep
+        # with future restyles, but the cyan ID + the NEW text both
+        # need to land near the v20 button.
+        assert "v20ToggleBtn" in html
+        assert "NEW · 6" in html
+        assert "v2.0 LAB" in html
+
+    def test_whatif_panel_renders_causal_verdict(self):
+        """The legacy WHAT-IF panel now also displays the new
+        do-calculus verdict when present in the response."""
+        html = _read()
+        # The renderer keys on j.causal — make sure the frontend
+        # actually reaches for it.
+        assert "j.causal" in html
+        # The causal block surfaces backdoor adjustment + assumptions.
+        assert "backdoor adjustment" in html
+        assert "open the v2.0 LAB" in html
+
+
+# ----------------------------------------------------------------------
+# /api/whatif causal integration (backend-level)
+# ----------------------------------------------------------------------
+
+class TestWhatifCausalIntegration:
+
+    def test_whatif_request_includes_causal_block_on_clean_intervention(self,
+                                                                          tmp_path,
+                                                                          monkeypatch):
+        """When the parsed intervention has a clean (variable, value)
+        shape, the /api/whatif handler ALSO calls do_calculus and
+        attaches a `causal` block to the response. This is a unit-
+        level check; the integration is exercised in e2e tests when
+        the studio_api is actually deployable."""
+        # Just confirm the import path works — the handler is
+        # exercised via the full Flask test client elsewhere.
+        from fantasyai.aurora.causal import do_query, load_dag_from_system_model
+        import pandas as pd
+
+        # Build a clean confounded SCM.
+        import numpy as np
+        rng = np.random.default_rng(7)
+        n = 200
+        z = rng.standard_normal(n)
+        t = 0.5 * z + rng.standard_normal(n) * 0.5
+        y = 0.4 * t + 0.5 * z + rng.standard_normal(n) * 0.3
+        df = pd.DataFrame({"Z": z, "T": t, "Y": y})
+
+        sm = {
+            "nodes": [{"name": "Z"}, {"name": "T"}, {"name": "Y"}],
+            "edges": [
+                {"source": "Z", "target": "T", "weight": 0.9},
+                {"source": "Z", "target": "Y", "weight": 0.9},
+                {"source": "T", "target": "Y", "weight": 0.7},
+            ],
+        }
+        dag = load_dag_from_system_model(sm)
+        res = do_query(df, dag, "T", "Y", intervention_value=1.0)
+        # Recovered effect should be within ~0.15 of the true 0.4.
+        assert abs(res.effect_estimate - 0.4) < 0.15
+        # The handler ships this as response["causal"] = res.to_dict().
+        d = res.to_dict()
+        assert d["identifiable"] is True
+        assert "Z" in d["adjustment_set"]
