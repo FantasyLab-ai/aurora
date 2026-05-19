@@ -67,6 +67,7 @@ jobs:
             tests/test_explainers.py \
             tests/test_kb_brief5.py \
             tests/test_kb_packs.py \
+            tests/test_preflight.py \
             tests/test_coupled_systems.py
 
       - name: Import sanity (every public module loads cleanly)
