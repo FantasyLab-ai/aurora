@@ -554,6 +554,18 @@ def api_state():
             "reason": f"state assembly failed: {type(e).__name__}: {e}",
         }), 200
 
+    # KB packs: lazily auto-install any domain pack that matches this
+    # run's detected domain. Non-blocking — spawns a daemon thread per
+    # pack. Idempotent — skipped if already installed. Opt-out via
+    # AURORA_NO_PACK_AUTODOWNLOAD=1. Failures log to stderr only.
+    try:
+        from fantasyai.aurora.knowledge_bank.packs import maybe_autoinstall
+        maybe_autoinstall(state)
+    except Exception:
+        # KB-pack auto-install is best-effort; never block the state
+        # response on its failure.
+        pass
+
     # Domain mode (W8): re-skin terminology + reorder priors per the active domain.
     domain_arg = request.args.get("domain")
     if domain_arg and _HAVE_DOMAINS:

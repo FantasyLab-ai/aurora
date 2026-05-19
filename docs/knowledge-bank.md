@@ -11,14 +11,17 @@ The knowledge bank is per-user state, stored in:
 
 If you need to relocate it (e.g., shared network drive in a regulated environment), set `AURORA_KB_PATH` to an absolute path before starting Aurora.
 
-## Two distribution forms
+## Three distribution forms
 
 | Form | Size | How to get it |
 |---|---|---|
-| **Seed bank** | ~50 MB | Ships in `fantasyai/aurora/knowledge_bank/seed/` in the repo; covers demo datasets + foundational methods |
-| **Full bank** | ~2 GB | Hosted on Hugging Face; download via `python scripts/download_knowledge_bank.py` |
+| **Seed bank (in repo)** | ~5-10 MB | Ships in `fantasyai/aurora/knowledge_bank/ingest/sources/seed.py` as Python code; covers every analytical method with hand-curated cited entries. Auto-loaded on first server start. |
+| **Domain packs (lazy download)** | 50-500 MB each | Per-domain packs (finance, industrial, climate, biomedical, …) downloaded on demand the first time Aurora analyses data in that domain. Served by Cloudflare R2 with a HuggingFace mirror. See [docs/kb-packs.md](kb-packs.md). |
+| **Federated bank** (roadmap) | varies | Opt-in user contributions flow back into a shared bank that Aurora can pull updates from. v2.0+ feature. |
 
-After the full bank is downloaded once, Aurora has zero network dependencies.
+The seed gives every install working synthesis on day one. Packs grow coverage to specific domains without forcing huge first-run downloads. **Most users only need 1-2 packs for their use case** — a finance analyst pulls the finance pack, a climate researcher pulls the climate pack, neither needs the others.
+
+After the seed + your needed packs are installed once, Aurora has zero network dependencies. Set `AURORA_NO_PACK_AUTODOWNLOAD=1` to opt out of pack downloads entirely (the seed alone is enough for most analytical paths — only the *citation richness* of synthesis improves with the packs).
 
 ## Schema
 

@@ -65,7 +65,8 @@ jobs:
             tests/test_v5_polish.py \
             tests/test_atom_1_1_top_n.py \
             tests/test_explainers.py \
-            tests/test_kb_brief5.py
+            tests/test_kb_brief5.py \
+            tests/test_kb_packs.py
 
       - name: Smoke-test runner module loads
         # Verifies scripts.run_aurora_with_steps_1_4 boots — catches ImportErrors.
