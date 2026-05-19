@@ -577,3 +577,14 @@ class Bundle:
             return float(c) if c is not None else None
         except Exception:
             return None
+
+    # ---- Notebook rendering ----------------------------------------
+    def _repr_html_(self) -> str:
+        """Jupyter renders the bundle as a metadata + integrity card
+        rather than the default object repr. Implementation in
+        .jupyter to keep this file focused on bundle mechanics."""
+        try:
+            from .jupyter import render_bundle_html
+            return render_bundle_html(self)
+        except Exception as e:
+            return f"<i>Bundle — _repr_html_ failed: {type(e).__name__}: {e}</i>"

@@ -39,6 +39,14 @@ from .bundle import (
 )
 from .findings import Findings, Finding, ForecastView, SystemModelView
 from .runner import run, RunResult
+from .notebook_export import (
+    export_notebook,
+    read_export,
+    ExportInfo,
+    NotebookExportError,
+    EXPORT_SCHEMA_VERSION,
+    EXPORT_EXTENSION,
+)
 
 __all__ = [
     "Bundle",
@@ -55,6 +63,13 @@ __all__ = [
     "SystemModelView",
     "run",
     "RunResult",
+    # Jupyter / notebook ergonomics
+    "export_notebook",
+    "read_export",
+    "ExportInfo",
+    "NotebookExportError",
+    "EXPORT_SCHEMA_VERSION",
+    "EXPORT_EXTENSION",
 ]
 
 __version__ = "1.0.0"

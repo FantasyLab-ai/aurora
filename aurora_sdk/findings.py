@@ -58,6 +58,19 @@ class Findings:
         """Return a plain ``list`` copy of the underlying dicts."""
         return list(self._items)
 
+    # ---- Notebook rendering ----------------------------------------
+    def _repr_html_(self) -> str:
+        """Jupyter sees this and renders a sortable-looking findings
+        table instead of ``<aurora_sdk.Findings object at 0x...>``.
+
+        Implementation in .jupyter so this file stays focused on the
+        filter-chain mechanics."""
+        try:
+            from .jupyter import render_findings_html
+            return render_findings_html(self._items)
+        except Exception as e:
+            return f"<i>Findings — _repr_html_ failed: {type(e).__name__}: {e}</i>"
+
     # ---- filters (return new Findings objects) ----------------------
 
     def critical(self) -> "Findings":

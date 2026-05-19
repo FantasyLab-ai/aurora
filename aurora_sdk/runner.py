@@ -66,6 +66,18 @@ class RunResult:
     def confidence(self) -> Optional[float]:
         return self.bundle.confidence
 
+    # ---- Notebook rendering --------------------------------------------
+    # Jupyter calls _repr_html_ when an object is the last expression in
+    # a cell. Returning HTML here turns the default ugly repr into a
+    # readable summary card. Implementation lives in .jupyter to keep
+    # the runner module focused on the pipeline.
+    def _repr_html_(self) -> str:
+        try:
+            from .jupyter import render_runresult_html
+            return render_runresult_html(self)
+        except Exception as e:
+            return f"<i>Aurora RunResult — _repr_html_ failed: {type(e).__name__}: {e}</i>"
+
 
 def _resolve_path(path: Union[str, Path]) -> Path:
     """Resolve a user-supplied path to an absolute Path. No traversal
@@ -75,34 +87,52 @@ def _resolve_path(path: Union[str, Path]) -> Path:
     return p
 
 
-def run(path: Union[str, Path],
+def run(data,
         *,
         depth: str = "auto",
         seed: Optional[str] = None,
         output_root: Optional[Union[str, Path]] = None,
         rebuild: bool = False,
+        dataset_name: Optional[str] = None,
         ) -> RunResult:
     """Run Aurora end-to-end on a dataset and return a RunResult.
 
     Args:
-        path:   one of:
-                  - a CSV/TSV/etc dataset file
+        data:   one of:
+                  - a ``pandas.DataFrame`` — Aurora writes it to a temp
+                    CSV in ``output_root`` (or a system temp dir) and
+                    runs the standard pipeline on that file. The temp
+                    CSV is preserved alongside the run_dir for
+                    reproducibility — Aurora's bundle hashes the
+                    written CSV, not the in-memory DataFrame, so the
+                    audit trail remains intact.
+                  - a CSV/TSV/etc dataset file path (``str`` or ``Path``)
                   - an existing Aurora run_dir
-                  - an existing ``.aurora.json`` bundle
+                  - an existing ``.aurora.json`` bundle path
         depth:  "auto" | "quick" | "standard" | "full" — only consulted
-                when path is a fresh dataset (must invoke the pipeline).
+                when input is a fresh dataset (must invoke the pipeline).
         seed:   optional focus seed (the user's "what do you want to know?"
                 question). Aurora sorts findings around this when set.
         output_root: where new run_dirs should be created. Defaults to
                 Aurora's ``outputs/aurora_dataset_runs`` under cwd.
-        rebuild: if True and path is a run_dir, re-build state (don't
+        rebuild: if True and input is a run_dir, re-build state (don't
                  reuse any cached artifacts).
+        dataset_name: when ``data`` is a DataFrame, the basename used
+                for the written CSV. Defaults to ``aurora_df_<ts>.csv``.
+                Useful for keeping the audit trail named meaningfully
+                ("nvda_2024_intraday.csv" vs. "aurora_df_20260519.csv").
     """
     if depth not in _VALID_TIERS:
         raise ValueError(
             f"depth must be one of {sorted(_VALID_TIERS)}; got {depth!r}"
         )
-    p = _resolve_path(path)
+
+    # DataFrame input: write to a CSV, then fall through to the regular
+    # file-path code path. This keeps the analytical pipeline single-
+    # source — there is one and only one way Aurora reads data.
+    data = _materialise_dataframe(data, dataset_name=dataset_name,
+                                    output_root=output_root)
+    p = _resolve_path(data)
     if not p.exists():
         raise FileNotFoundError(f"path does not exist: {p}")
 
@@ -402,3 +432,62 @@ def _extract_run_dir_from_stdout(stdout: str) -> Optional[Path]:
         return None
     p = Path(rd)
     return p if p.exists() else None
+
+
+# ---------------------------------------------------------------------------
+# DataFrame → temp CSV materialisation (Jupyter / notebook ergonomics)
+# ---------------------------------------------------------------------------
+
+def _materialise_dataframe(
+    data,
+    *,
+    dataset_name: Optional[str] = None,
+    output_root: Optional[Union[str, Path]] = None,
+):
+    """Detect whether ``data`` is a pandas DataFrame and, if so, write
+    it to a CSV that Aurora's pipeline can consume.
+
+    Behavior:
+      * If ``data`` is anything except a DataFrame, return it unchanged.
+      * If ``data`` is a DataFrame, write it to
+        ``<output_root>/_uploads/<name>.csv`` (creating the dir if
+        needed) and return that Path. The CSV is preserved — Aurora's
+        bundle hashes the CSV bytes, so the audit trail stays intact.
+
+    We deliberately *don't* use ``tempfile.NamedTemporaryFile``: temp
+    files on Windows can get GC'd before the subprocess pipeline reads
+    them, and using the real outputs path means notebook users can see
+    "ah, that's the CSV Aurora analysed" alongside the run_dir.
+    """
+    # Duck-type DataFrame detection so we don't import pandas at module
+    # load (heavy import). The cheapest check is `hasattr(data, 'to_csv')`
+    # which DataFrame has but a Path / str does not.
+    if isinstance(data, (str, Path)):
+        return data
+    if not hasattr(data, "to_csv") or not hasattr(data, "columns"):
+        return data
+
+    # It's a DataFrame. Pick a stable destination.
+    import time as _time
+    if output_root:
+        upload_dir = Path(output_root).resolve() / "_uploads"
+    else:
+        upload_dir = Path("outputs").resolve() / "aurora_dataset_runs" / "_uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    if not dataset_name:
+        dataset_name = f"aurora_df_{_time.strftime('%Y%m%d_%H%M%S')}.csv"
+    if not dataset_name.lower().endswith(".csv"):
+        dataset_name = dataset_name + ".csv"
+
+    out_csv = upload_dir / dataset_name
+    # Always overwrite: a notebook user re-running the cell expects
+    # their latest DataFrame to be analysed, not a stale one.
+    try:
+        data.to_csv(out_csv, index=False, encoding="utf-8")
+    except Exception as e:
+        raise RuntimeError(
+            f"could not write DataFrame to CSV at {out_csv}: "
+            f"{type(e).__name__}: {e}"
+        ) from e
+    return out_csv

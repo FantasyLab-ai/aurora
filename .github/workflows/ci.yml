@@ -67,7 +67,8 @@ jobs:
             tests/test_explainers.py \
             tests/test_kb_brief5.py \
             tests/test_kb_packs.py \
-            tests/test_preflight.py
+            tests/test_preflight.py \
+            tests/test_aurora_jupyter.py
 
       - name: Smoke-test runner module loads
         # Verifies scripts.run_aurora_with_steps_1_4 boots — catches ImportErrors.
