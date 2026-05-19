@@ -72,6 +72,7 @@ jobs:
             tests/test_new_methods.py \
             tests/test_llm_providers.py \
             tests/test_streaming.py \
+            tests/test_v1_2_frontend_wiring.py \
             tests/test_coupled_systems.py
 
       - name: Import sanity (every public module loads cleanly)

@@ -1181,6 +1181,140 @@ def _build_overview(structure: Dict, anomalies: List[Dict],
 # Findings — synthesized from artifacts + report.events
 # ----------------------------------------------------------------------
 
+# ----------------------------------------------------------------------
+# Extended methods (v1.2 Stream 1.2) — VAR, DTW, BOCPD, Robust PCA, EMD,
+# Kalman, Spectral Entropy. Each method's runner writes an Aurora-shaped
+# finding; we expose them here as per-method tile data the frontend can
+# render in the ADVANCED METHODS grid.
+# ----------------------------------------------------------------------
+
+# Display labels for the 7 v1.2 extended methods. Kept here (not in the
+# frontend) so the labels stay in lockstep with the backend method names.
+EXTENDED_METHOD_LABELS = {
+    "var":              "VAR · multivariate",
+    "dtw":              "DTW · pattern match",
+    "bocpd":            "BOCPD · change points",
+    "robust_pca":       "Robust PCA · L+S",
+    "emd":              "EMD · intrinsic modes",
+    "kalman":           "Kalman · state filter",
+    "spectral_entropy": "Spectral entropy",
+}
+
+# Canonical ordering for the frontend grid (matches the v1.2 brief).
+EXTENDED_METHOD_ORDER = [
+    "var", "dtw", "bocpd", "robust_pca",
+    "emd", "kalman", "spectral_entropy",
+]
+
+
+def _build_extended_methods(ext_doc: Optional[Dict]) -> Dict[str, Any]:
+    """Project ``extended_methods.json`` into per-method tile data.
+
+    The runner script writes ``extended_methods.json`` with shape::
+
+        {"findings": [<Aurora finding>, ...],
+         "per_method": {"var": {"status": "fit", "elapsed_s": 1.23}, ...},
+         "n_methods_run": 7,
+         "n_findings": 7}
+
+    Frontend wants one entry per method with the headline number already
+    extracted (so it can render the tile without re-parsing the
+    description text). We pull that from each finding's ``evidence`` block.
+    """
+    if not isinstance(ext_doc, dict):
+        return _none_unavail("extended_methods.json malformed")
+    findings = ext_doc.get("findings") or []
+    per_method_raw = ext_doc.get("per_method") or {}
+    if not isinstance(findings, list):
+        findings = []
+
+    # Index findings by method name. Each method emits exactly one
+    # finding per run (fit / skipped / failed), so the lookup is 1:1.
+    findings_by_method: Dict[str, Dict[str, Any]] = {}
+    for f in findings:
+        if not isinstance(f, dict):
+            continue
+        m = str(f.get("method") or "").lower()
+        if m and m not in findings_by_method:
+            findings_by_method[m] = f
+
+    per_method: Dict[str, Dict[str, Any]] = {}
+    n_fit = 0
+    for name in EXTENDED_METHOD_ORDER:
+        f = findings_by_method.get(name) or {}
+        ev = f.get("evidence") or {}
+        meta = per_method_raw.get(name) or {}
+        status = str(ev.get("status") or meta.get("status") or "missing").lower()
+        if status == "fit":
+            n_fit += 1
+        per_method[name] = {
+            "label":        EXTENDED_METHOD_LABELS.get(name, name),
+            "method":       name,
+            "status":       status,
+            "title":        f.get("title") or "",
+            "description":  f.get("description") or "",
+            "severity":     f.get("severity") or "info",
+            "confidence":   f.get("confidence"),
+            "claim_id":     f.get("claim_id"),
+            "elapsed_s":    meta.get("elapsed_s"),
+            "error":        meta.get("error"),
+            # Pass through the structured evidence dict so the frontend
+            # can render method-specific headline numbers without
+            # re-parsing prose. Truncated to a safe subset for size.
+            "evidence":     _trim_evidence(ev),
+        }
+    return {
+        "available":      bool(findings),
+        "n_methods_run":  int(ext_doc.get("n_methods_run") or len(EXTENDED_METHOD_ORDER)),
+        "n_findings":     int(ext_doc.get("n_findings") or len(findings)),
+        "n_fit":          n_fit,
+        "per_method":     per_method,
+        "order":          list(EXTENDED_METHOD_ORDER),
+    }
+
+
+# Evidence blobs can be large (e.g., full IMF arrays from EMD). The
+# frontend only needs the scalar headline + a few small lists, so we
+# keep a per-key whitelist and truncate the rest.
+_EVIDENCE_SAFE_KEYS = {
+    # universal
+    "status", "reason", "error", "n_obs", "n_vars", "elapsed_s", "target_col",
+    # var
+    "chosen_lag", "target_cols", "top_cross_coupling",
+    "forecast_horizon", "forecast_summary",
+    # dtw
+    "window", "most_similar", "most_dissimilar",
+    # bocpd
+    "threshold", "hazard", "change_points",
+    # robust_pca
+    "low_rank_estimate", "n_outlier_rows", "lam_used",
+    "iterations", "converged", "top_outlier_rows",
+    # emd
+    "n_imfs", "sift_iterations", "imf_stats", "residual_range",
+    # kalman
+    "noise_reduction_fraction", "forecast",
+    # spectral_entropy
+    "global_spectral_entropy", "regime_class",
+    "window_results", "biggest_window_jump",
+}
+
+
+def _trim_evidence(ev: Any) -> Dict[str, Any]:
+    """Keep only the whitelisted, JSON-serializable subset of evidence."""
+    if not isinstance(ev, dict):
+        return {}
+    out: Dict[str, Any] = {}
+    for k, v in ev.items():
+        if k not in _EVIDENCE_SAFE_KEYS:
+            continue
+        # Drop pathologically-large lists (defensive).
+        if isinstance(v, list) and len(v) > 64:
+            out[k] = v[:64]
+        else:
+            out[k] = v
+    return out
+
+
 def _build_findings(anomalies: List[Dict], forecast: Dict, regimes: List[Dict],
                     causal: Dict, physics: Dict, motifs: List[Dict],
                     report: Optional[Dict],
@@ -1683,11 +1817,14 @@ def build_state(run_dir: Path) -> Dict[str, Any]:
     # (VAR, DTW, BOCPD, Robust PCA, EMD, Kalman, Spectral Entropy).
     # The runner script writes extended_methods.json; each entry is
     # ALREADY in Aurora finding shape so we just append.
+    extended_methods_state: Dict[str, Any] = _none_unavail("extended_methods.json missing")
     try:
         ext_doc = _read_json(run_dir / "extended_methods.json") or {}
         ext_findings = ext_doc.get("findings") if isinstance(ext_doc, dict) else None
         if isinstance(ext_findings, list):
             findings.extend([f for f in ext_findings if isinstance(f, dict)])
+        # Build a per-method dict the frontend can render as method tiles.
+        extended_methods_state = _build_extended_methods(ext_doc)
     except Exception:
         # Extended methods are additive — never block the rest of state assembly.
         pass
@@ -1745,6 +1882,11 @@ def build_state(run_dir: Path) -> Dict[str, Any]:
         "copilot":  copilot,
         "plots":    (plots or {}).get("plots", []) if isinstance(plots, dict) else [],
         "provenance_available": has_ledger,
+        # v1.2 Stream 1.2: per-method state for the 7 new extended methods
+        # (VAR / DTW / BOCPD / Robust PCA / EMD / Kalman / Spectral Entropy).
+        # The frontend renders one tile per method in the ADVANCED METHODS
+        # grid, pulling its headline from this block.
+        "extended_methods": extended_methods_state,
     }
 
     # ---- Hardening sprint Problem 3: run_meta block. Always present on

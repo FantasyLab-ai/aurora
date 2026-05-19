@@ -927,10 +927,19 @@ def api_stream_status():
     if _STREAM_RUNNER is None:
         return jsonify({"ok": True, "running": False})
     r = _STREAM_RUNNER
+    try:
+        window_rows = int(len(r.window)) if r.window is not None else 0
+    except Exception:
+        window_rows = 0
     return jsonify({
         "ok": True,
         "running": bool(r.is_running),
+        # Frontend reads `path` for display; keep `data_path` as an
+        # alias for backward compat with anything that already grew
+        # against this endpoint.
+        "path": str(r.data_path),
         "data_path": str(r.data_path),
+        "window_rows": window_rows,
         "run_count": r.result.run_count,
         "last_run_at": r.result.last_run_at,
         "last_findings_count": r.result.last_findings_count,

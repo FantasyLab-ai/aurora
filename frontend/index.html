@@ -5487,6 +5487,61 @@
              style="margin-right: 6px;">
       <span id="seedInputToggleLbl">✎ FOCUS</span>
     </button>
+    <!-- v1.2 Stream 1.4 Phase 1: STREAMING control — start/stop continuous
+         mode that watches a directory and re-analyses as new data arrives.
+         The button reflects status (idle / watching / firing); clicking
+         opens the popover where the user configures the watch path. -->
+    <div class="stream-wrap" style="position:relative; margin-right:6px;">
+      <button id="streamToggleBtn" class="btn"
+              title="Streaming / continuous mode (v1.2). Aurora watches a directory and re-runs analysis as new data arrives."
+              aria-haspopup="dialog">
+        <span id="streamToggleIcon" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--ink-faint); margin-right:6px; vertical-align:middle;"></span>
+        <span id="streamToggleLbl">STREAMING · OFF</span>
+      </button>
+      <div id="streamPopover" class="stream-popover" style="display:none;
+           position:absolute; top:100%; right:0; margin-top:6px; z-index:10000;
+           min-width:340px; max-width:420px; padding:14px;
+           background:var(--bg-deep); border:1px solid var(--mint);
+           font-family:'JetBrains Mono', monospace; font-size:11px;
+           color:var(--ink); box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+          <span style="font-weight:700; color:var(--mint); letter-spacing:1px;">STREAMING / CONTINUOUS MODE</span>
+          <button id="streamPopClose" type="button" style="background:none; border:0; color:var(--ink-faint); cursor:pointer; font-size:14px;">✕</button>
+        </div>
+        <div style="opacity:.7; line-height:1.45; margin-bottom:10px;">
+          Aurora polls the path, picks up new rows, advances a rolling window, and re-runs the extended-methods stack. Live events stream to subscribers via Server-Sent Events.
+        </div>
+        <label style="display:block; margin-bottom:6px;">
+          <div style="color:var(--ink-faint); margin-bottom:3px;">WATCH PATH (directory or single file)</div>
+          <input type="text" id="streamPathInput"
+                  placeholder="/data/incoming/"
+                  style="width:100%; padding:6px 8px; background:var(--bg-deepest); border:1px solid var(--ink-faint); color:var(--ink); font-family:inherit;">
+        </label>
+        <label style="display:block; margin-bottom:6px;">
+          <div style="color:var(--ink-faint); margin-bottom:3px;">FILE GLOB</div>
+          <input type="text" id="streamGlobInput" value="*.csv"
+                  style="width:100%; padding:6px 8px; background:var(--bg-deepest); border:1px solid var(--ink-faint); color:var(--ink); font-family:inherit;">
+        </label>
+        <label style="display:block; margin-bottom:10px;">
+          <div style="color:var(--ink-faint); margin-bottom:3px;">POLL INTERVAL (s)</div>
+          <input type="number" id="streamPollInput" value="2.0" min="0.5" step="0.5"
+                  style="width:100%; padding:6px 8px; background:var(--bg-deepest); border:1px solid var(--ink-faint); color:var(--ink); font-family:inherit;">
+        </label>
+        <div style="display:flex; gap:8px; margin-bottom:10px;">
+          <button id="streamStartBtn" class="btn primary" style="flex:1;">▶ START</button>
+          <button id="streamStopBtn" class="btn warn" style="flex:1;" disabled>✗ STOP</button>
+        </div>
+        <div id="streamStatusBox" style="padding:8px; background:var(--bg-deepest);
+             border-left:2px solid var(--ink-faint); font-size:10px; line-height:1.5;">
+          <div><span style="color:var(--ink-faint);">status:</span> <span id="streamStatusState">idle</span></div>
+          <div><span style="color:var(--ink-faint);">events received:</span> <span id="streamEventCount">0</span></div>
+          <div><span style="color:var(--ink-faint);">last event:</span> <span id="streamLastEvent">—</span></div>
+        </div>
+        <div style="margin-top:10px; padding-top:8px; border-top:1px solid var(--ink-faint); opacity:.6; font-size:10px;">
+          See <a href="https://github.com/FantasyLab-ai/aurora/blob/main/docs/streaming.md" target="_blank" rel="noopener" style="color:var(--mint);">docs/streaming.md</a> for programmatic ingestion + integration patterns.
+        </div>
+      </div>
+    </div>
     <button id="runAnalysisBtn" class="btn primary">▶ RUN ANALYSIS</button>
 
     <!-- Seed-input popover (anchored to the toggle button) -->
@@ -11952,6 +12007,103 @@
       </div>`);
     }
 
+    // ---------------------------------------------------------------
+    // v1.2 Stream 1.2: the 7 extended methods (VAR, DTW, BOCPD,
+    // Robust PCA, EMD, Kalman, Spectral Entropy). Each renders ONE
+    // tile, even when the method skipped — so the user always sees
+    // "did Aurora run VAR on my data, and what did it find?" without
+    // having to dig through findings.
+    // ---------------------------------------------------------------
+    const ext = state && state.extended_methods;
+    if (ext && ext.available && ext.per_method) {
+      const order = ext.order || ['var','dtw','bocpd','robust_pca','emd','kalman','spectral_entropy'];
+      for (const name of order) {
+        const m = ext.per_method[name];
+        if (!m) continue;
+        const status = (m.status || 'missing').toLowerCase();
+        // Map evidence → headline + detail per method type.
+        const ev = m.evidence || {};
+        let headline = '';
+        let detail   = '';
+        if (status === 'fit') {
+          if (name === 'var') {
+            const tc = ev.top_cross_coupling || {};
+            headline = `VAR(<b>${ev.chosen_lag}</b>) on <b>${ev.n_vars}</b> vars · ${ev.n_obs} obs`;
+            if (tc.from_col && tc.to_col) {
+              const coeff = (tc.coefficient_lag1 != null)
+                ? ((tc.coefficient_lag1 >= 0 ? '+' : '') + (+tc.coefficient_lag1).toFixed(3))
+                : '?';
+              detail = `strongest coupling: ${fmt.esc(tc.from_col)} → ${fmt.esc(tc.to_col)} (β=${coeff})`;
+            }
+          } else if (name === 'dtw') {
+            const sim  = (ev.most_similar  || [])[0];
+            headline = sim
+              ? `most similar: <b>${fmt.esc(sim.col_a)} ↔ ${fmt.esc(sim.col_b)}</b> (d=${(+sim.distance).toFixed(3)})`
+              : `${ev.n_obs} obs · window ${ev.window}`;
+            const dis = (ev.most_dissimilar || [])[0];
+            if (dis) detail = `most divergent: ${fmt.esc(dis.col_a)} ↔ ${fmt.esc(dis.col_b)} (d=${(+dis.distance).toFixed(3)})`;
+          } else if (name === 'bocpd') {
+            const cps = ev.change_points || [];
+            headline = `<b>${cps.length}</b> change point${cps.length === 1 ? '' : 's'} in <b>${fmt.esc(ev.target_col || '?')}</b>`;
+            if (cps.length) {
+              const top = cps[0];
+              detail = `top at row ${top.row_idx} (posterior=${(+top.posterior_at_r0).toFixed(2)})`;
+            }
+          } else if (name === 'robust_pca') {
+            headline = `low-rank <b>${ev.low_rank_estimate}</b> · sparse outlier rows <b>${ev.n_outlier_rows}</b>`;
+            detail = `λ=${(+ev.lam_used).toFixed(4)} · ${ev.iterations} iters · converged ${ev.converged ? 'yes' : 'no'}`;
+          } else if (name === 'emd') {
+            headline = `<b>${ev.n_imfs}</b> IMFs decomposed on <b>${fmt.esc(ev.target_col || '?')}</b>`;
+            const stats = ev.imf_stats || [];
+            if (stats.length) {
+              const sumE = stats.reduce((a, s) => a + (+s.energy || 0), 0);
+              const dom  = stats[0];
+              if (dom && sumE > 0) {
+                detail = `dominant IMF ${dom.imf_index}: ${((+dom.energy / sumE) * 100).toFixed(0)}% energy · period ~${(+dom.estimated_period_samples).toFixed(1)} samples`;
+              }
+            }
+          } else if (name === 'kalman') {
+            const nr = (+ev.noise_reduction_fraction);
+            headline = `noise reduction <b>${(nr * 100).toFixed(0)}%</b> on <b>${fmt.esc(ev.target_col || '?')}</b>`;
+            detail = `${ev.n_obs} obs · ${ev.forecast_horizon}-step forecast`;
+          } else if (name === 'spectral_entropy') {
+            const h = (+ev.global_spectral_entropy);
+            const reg = (ev.regime_class || '').toLowerCase();
+            headline = `H = <b>${h.toFixed(3)}</b> · regime: <b>${fmt.esc(reg || '?')}</b>`;
+            const jump = ev.biggest_window_jump || {};
+            if (jump.delta_h != null) {
+              detail = `biggest jump ΔH=${(+jump.delta_h).toFixed(2)} at window ${jump.window_idx}`;
+            }
+          }
+        }
+        const statusLabel = status === 'fit'      ? 'ran'
+                         : status === 'skipped'  ? 'skipped'
+                         : status === 'failed'   ? 'failed'
+                         : status === 'missing'  ? 'pending'
+                         : status;
+        const statusCls   = status === 'fit'      ? 'ok'
+                         : status === 'failed'   ? 'warn'
+                         : 'skipped';
+        const skippedCls  = (status === 'fit') ? '' : ' skipped';
+        const fallbackHl  = status === 'failed'
+                          ? `<span class="adv-detail" style="color:var(--ink-faint);">${fmt.esc(m.error || 'method crashed')}</span>`
+                          : (status === 'skipped'
+                            ? `<span class="adv-detail" style="color:var(--ink-faint);">${fmt.esc(ev.reason || m.description || 'not applicable on this dataset')}</span>`
+                            : (status === 'missing'
+                              ? `<span class="adv-detail" style="color:var(--ink-faint);">awaiting next run</span>`
+                              : ''));
+        cards.push(`<div class="adv-card${skippedCls}" title="v1.2 extended method">
+          <div class="adv-head">
+            <span class="adv-method">${fmt.esc(m.label || name)}</span>
+            <span class="adv-status ${statusCls}">${statusLabel}</span>
+          </div>
+          ${headline ? `<div class="adv-headline">${headline}</div>` : ''}
+          ${detail   ? `<div class="adv-detail">${detail}</div>`     : ''}
+          ${(!headline && !detail) ? fallbackHl : ''}
+        </div>`);
+      }
+    }
+
     // Methods that ran the gate but didn't trigger findings — show as
     // dimmed cards with the skip reason.
     if (adv && adv.steps) {
@@ -15628,38 +15780,80 @@
     let lastFetchKey = '';
     let cachedSummary = null;
     let cachedFindings = [];
+    let inFlight = false;
 
-    window.__refreshDataQuality = async function refreshDataQuality() {
+    function currentRunKey() {
+      // Cache key must change when the run changes — use the run_id the
+      // page already tracks so re-runs trigger a refetch. Falls back to
+      // run_dir if run_id isn't populated yet.
+      return String((window.__auroraRunId
+                     || window.__auroraRunDir
+                     || window.location.pathname) || '');
+    }
+
+    window.__refreshDataQuality = async function refreshDataQuality(opts) {
+      opts = opts || {};
+      if (inFlight && !opts.force) return;
       try {
-        // Cheap dedup: skip the fetch if the URL/state didn't change.
-        const cacheKey = String(window.location.pathname);
-        if (cacheKey === lastFetchKey && cachedSummary) {
-          renderPill(cachedSummary);
+        const cacheKey = currentRunKey();
+        if (!opts.force && cacheKey === lastFetchKey && cachedSummary) {
+          renderPill(cachedSummary, 'cached');
           return;
         }
+        // Show "checking…" state immediately so the pill is never invisible
+        // once the page has any run loaded.
+        showPending();
+        inFlight = true;
         const resp = await fetch('/api/preflight', {
           headers: { 'Accept': 'application/json' },
         });
         const j = await resp.json();
         lastFetchKey = cacheKey;
         if (!j || !j.ok) {
-          // Hide pill if there's no result (e.g., no run yet).
-          const pill = document.getElementById('riDataQuality');
-          if (pill) pill.style.display = 'none';
+          // Preflight couldn't run (no dataset, no run, etc.) — show a
+          // neutral "unknown" pill instead of hiding so the user knows
+          // the data-quality lens exists and why it has no answer yet.
+          showUnknown((j && j.error) || 'preflight not yet available for this run');
           return;
         }
         cachedSummary = j.summary || {};
         cachedFindings = j.findings || [];
-        renderPill(cachedSummary);
+        renderPill(cachedSummary, 'fresh');
         // If panel is open, refresh its body too.
         const panel = document.getElementById('dataQualityPanel');
         if (panel && panel.style.display !== 'none') {
           renderPanel();
         }
       } catch (e) {
-        // Silent — DQ is best-effort, never blocks the run banner.
+        showUnknown('preflight request failed');
+      } finally {
+        inFlight = false;
       }
     };
+
+    function showPending() {
+      const pill = document.getElementById('riDataQuality');
+      const icon = document.getElementById('riDataQualityIcon');
+      const lbl  = document.getElementById('riDataQualityLbl');
+      if (!pill || !icon || !lbl) return;
+      pill.classList.remove('is-warn', 'is-crit');
+      icon.textContent = '…';
+      lbl.textContent = 'checking data';
+      pill.style.display = 'inline-flex';
+      pill.title = 'Preflight running…';
+    }
+
+    function showUnknown(reason) {
+      const pill = document.getElementById('riDataQuality');
+      const icon = document.getElementById('riDataQualityIcon');
+      const lbl  = document.getElementById('riDataQualityLbl');
+      if (!pill || !icon || !lbl) return;
+      pill.classList.remove('is-warn', 'is-crit');
+      icon.textContent = '?';
+      lbl.textContent = 'data: not yet checked';
+      pill.style.display = 'inline-flex';
+      pill.title = 'Aurora preflight not yet available for this run — click for details. ' + (reason || '');
+    }
 
     window.__toggleDataQualityPanel = function toggleDataQualityPanel() {
       const panel = document.getElementById('dataQualityPanel');
@@ -15672,7 +15866,7 @@
       }
     };
 
-    function renderPill(summary) {
+    function renderPill(summary, source) {
       const pill = document.getElementById('riDataQuality');
       const icon = document.getElementById('riDataQualityIcon');
       const lbl  = document.getElementById('riDataQualityLbl');
@@ -15701,6 +15895,8 @@
         lbl.textContent = 'data clean';
       }
       pill.style.display = 'inline-flex';
+      pill.title = "Aurora's preflight ran schema validation, missingness pattern detection, and sampling-regularity checks on this dataset. Click to see details."
+                  + (source === 'cached' ? ' (cached)' : '');
     }
 
     function renderPanel() {
@@ -15761,6 +15957,169 @@
       });
     }
   })();
+</script>
+
+<!-- =================================================================== -->
+<!-- v1.2 Stream 1.4 Phase 1 — streaming / continuous-mode controller.   -->
+<!--                                                                     -->
+<!-- Wires the STREAMING button + popover to the backend endpoints       -->
+<!-- /api/stream/start, /stop, /status, /events (SSE). Live event count   -->
+<!-- + last-event tag update in place as the bus fires. Graceful when    -->
+<!-- the backend doesn't have the streaming module enabled.              -->
+<!-- =================================================================== -->
+<script>
+(function streamingController(){
+  const btn        = document.getElementById('streamToggleBtn');
+  const icon       = document.getElementById('streamToggleIcon');
+  const lbl        = document.getElementById('streamToggleLbl');
+  const pop        = document.getElementById('streamPopover');
+  const closeBtn   = document.getElementById('streamPopClose');
+  const pathInp    = document.getElementById('streamPathInput');
+  const globInp    = document.getElementById('streamGlobInput');
+  const pollInp    = document.getElementById('streamPollInput');
+  const startBtn   = document.getElementById('streamStartBtn');
+  const stopBtn    = document.getElementById('streamStopBtn');
+  const stateEl    = document.getElementById('streamStatusState');
+  const countEl    = document.getElementById('streamEventCount');
+  const lastEl     = document.getElementById('streamLastEvent');
+  if (!btn || !pop) return;
+
+  let eventSource = null;
+  let eventCount  = 0;
+  let pollTimer   = null;
+
+  function show(open) {
+    pop.style.display = open ? 'block' : 'none';
+  }
+  function setIndicator(state) {
+    // state: idle | watching | firing | error
+    const color = state === 'watching' ? 'var(--mint)'
+                : state === 'firing'   ? '#ffd54a'
+                : state === 'error'    ? '#ff7676'
+                : 'var(--ink-faint)';
+    icon.style.background = color;
+    lbl.textContent = 'STREAMING · ' + state.toUpperCase();
+  }
+
+  btn.addEventListener('click', () => {
+    show(pop.style.display === 'none' || !pop.style.display);
+    if (pop.style.display !== 'none') refreshStatus();
+  });
+  if (closeBtn) closeBtn.addEventListener('click', () => show(false));
+  document.addEventListener('click', (e) => {
+    if (pop.style.display === 'none') return;
+    if (pop.contains(e.target) || btn.contains(e.target)) return;
+    show(false);
+  });
+
+  async function refreshStatus() {
+    try {
+      const r = await fetch('/api/stream/status');
+      if (!r.ok) throw new Error('status ' + r.status);
+      const j = await r.json();
+      if (j.error && /unavailable|not found/i.test(j.error)) {
+        stateEl.textContent = 'unavailable (server build lacks streaming module)';
+        setIndicator('error');
+        startBtn.disabled = true;
+        stopBtn.disabled = true;
+        return;
+      }
+      const running = !!j.running;
+      stateEl.textContent = running
+        ? `watching ${j.path || ''} · ${j.window_rows || 0} rows in window`
+        : 'idle';
+      startBtn.disabled = running;
+      stopBtn.disabled  = !running;
+      setIndicator(running ? 'watching' : 'idle');
+      if (running && !eventSource) connectSSE();
+    } catch (e) {
+      stateEl.textContent = 'unable to reach /api/stream/status';
+      setIndicator('error');
+    }
+  }
+
+  startBtn.addEventListener('click', async () => {
+    const path = (pathInp.value || '').trim();
+    if (!path) { pathInp.focus(); return; }
+    startBtn.disabled = true;
+    try {
+      const r = await fetch('/api/stream/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: path,
+          file_glob: (globInp.value || '*.csv').trim(),
+          poll_interval_s: parseFloat(pollInp.value || '2.0'),
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok || j.error) {
+        stateEl.textContent = 'start failed: ' + (j.error || r.status);
+        setIndicator('error');
+        startBtn.disabled = false;
+        return;
+      }
+      connectSSE();
+      refreshStatus();
+    } catch (e) {
+      stateEl.textContent = 'start request failed';
+      setIndicator('error');
+      startBtn.disabled = false;
+    }
+  });
+
+  stopBtn.addEventListener('click', async () => {
+    stopBtn.disabled = true;
+    try {
+      await fetch('/api/stream/stop', { method: 'POST' });
+    } catch (e) { /* ignore */ }
+    disconnectSSE();
+    refreshStatus();
+  });
+
+  function connectSSE() {
+    if (eventSource) return;
+    try {
+      eventSource = new EventSource('/api/stream/events');
+    } catch (e) {
+      eventSource = null;
+      return;
+    }
+    const onEvent = (kind, e) => {
+      eventCount += 1;
+      countEl.textContent = String(eventCount);
+      try {
+        const data = JSON.parse(e.data || '{}');
+        const stamp = new Date().toLocaleTimeString();
+        lastEl.textContent = `${kind} @ ${stamp}`;
+        if (kind === 'new_finding' || kind === 'regime_changed') {
+          setIndicator('firing');
+          // Reset to "watching" after a brief flash so the user sees the pulse.
+          setTimeout(() => setIndicator('watching'), 1200);
+          // Lightweight notification — surface the existing in-app toast if we have one.
+          if (typeof window.__toast === 'function') {
+            window.__toast(`Streaming: ${kind} (${data.source || ''})`);
+          }
+        }
+      } catch (_) {}
+    };
+    eventSource.addEventListener('window_advanced', e => onEvent('window_advanced', e));
+    eventSource.addEventListener('new_finding',    e => onEvent('new_finding',    e));
+    eventSource.addEventListener('regime_changed', e => onEvent('regime_changed', e));
+    eventSource.addEventListener('heartbeat',      e => onEvent('heartbeat',      e));
+    eventSource.onerror = () => { /* keep retrying — browser does this for us */ };
+  }
+  function disconnectSSE() {
+    if (!eventSource) return;
+    try { eventSource.close(); } catch (_) {}
+    eventSource = null;
+  }
+
+  // Initial status probe.
+  setTimeout(refreshStatus, 600);
+  // Periodic re-probe (keeps the button label honest if the runner stops itself).
+  pollTimer = setInterval(refreshStatus, 8000);
+})();
 </script>
 
 </body>
