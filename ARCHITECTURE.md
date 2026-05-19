@@ -242,6 +242,56 @@ Generates a publication-ready directory from any Aurora Bundle:
 
 Designed for academic users: every method gets a plain-English description and a canonical citation. The kit's `replication.json` carries the dataset SHA-256 + Aurora version, so reviewers can verify the analysis byte-for-byte.
 
+## Post-launch additions (v1.2 work landing on `main`)
+
+The v1.1 substrate above is stable. The v1.2 sprint added five new subsystems that share the same glass-box principles + bundle format.
+
+### Streaming / continuous mode (`fantasyai/aurora/streaming/`)
+
+Watches a directory for new files (or accepts programmatic DataFrame ingestion), maintains a rolling window over the most-recent N rows, re-runs the analytical pipeline as data arrives, and publishes events through an in-process event bus that the Studio + any SSE client consumes.
+
+Phase 2 adds a **per-finding dedupe store** (bounded LRU of finding-identity hashes — method + title + severity + key evidence fields) so the bus only fires `new_finding` when something genuinely changed across polls. An opt-in **Decision Contracts bridge** evaluates loaded contracts against streaming findings; matching contracts fire their actions in real time. Both surface in the Studio's STREAMING popover.
+
+### Aurora Cloud (`fantasyai/aurora/llm/` + `fantasyai/aurora/auth/`)
+
+Phase 1 packages Aurora into a Docker image with bind-mounted persistence + an **`LLM` provider abstraction** (Anthropic / OpenAI / Gemini / Ollama / OpenAI-compatible) so a single image runs anywhere with BYO credentials.
+
+Phase 2 layers **multi-tenant auth** on top:
+- Bearer-token resolution from env vars (`AURORA_TOKEN_<workspace>`) or a JSON token file
+- A `before_request` hook stamps every request with a `WorkspaceContext` and records usage to per-workspace `usage.jsonl`
+- Per-workspace data isolation under `$AURORA_DATA_ROOT/workspaces/<id>/{runs,kb,contracts,uploads}/` with strict path-injection guards
+- Workspace identity chip in the Studio toolbar (hidden in single-tenant deploys; preserves Phase 1 UX)
+
+Set `AURORA_AUTH_REQUIRED=1` to enforce; default is unchanged (no auth, single workspace).
+
+### Composable findings (`fantasyai/aurora/composable/`)
+
+After a run finishes, the **extractor** pulls a compact prior pack (physics best-fit law + regime structure + baseline range + anomaly z-floors). The **applier** consumes that pack on the next run and tags aligned findings with a `prior_source` decoration (`matches` / `drifts` / `novel`).
+
+The state_builder exposes `state["composed_from"]`; the frontend renders a colour-coded PRIOR badge on tagged findings + an INHERIT picker chip in the toolbar. `/api/run` accepts `inherit_from` and the runner stages the source pack into the new run dir.
+
+### Multi-dataset joins (`fantasyai/aurora/joins/`)
+
+Pure read computation over two finished runs. Surfaces shared keys (with overlap-quality %), schema compatibility (cadence, row-count ratio), cross-correlation hints (mined from per-run anomaly attribution), and **inheritance candidates** — A's physics law or regime K suggested for B and vice versa.
+
+Endpoint: `/api/joins/analyze`. Frontend: `JOIN RUNS` popover with two run selectors.
+
+### Plugin SDK (`fantasyai/aurora/plugins/`)
+
+Third-party Python packages register methods via the standard `aurora_plugins` entry-point group. The registry validates each emitted finding against the same contract built-ins use (`fabricated=True` is hard-refused), catches plugin crashes, and emits synthetic "plugin crashed" findings on failure — so a buggy plugin can never silently corrupt results.
+
+Plugin findings flow into the bundle alongside the built-in 24+ methods. The Studio's PLUGINS chip shows the loaded count + per-plugin status (loaded / import_error / contract_error) + last-run telemetry.
+
+See [docs/plugins.md](docs/plugins.md) for the authoring guide.
+
+### 7 new analytical methods
+
+VAR, DTW, BOCPD, Robust PCA, EMD, Kalman, and Spectral Entropy each live under `fantasyai/aurora/math/methods/`. They share a common shape (function takes a DataFrame, returns an Aurora-shaped finding with `evidence.status in {fit, skipped, failed}`) so the same `extended_runner` orchestrates them. Findings flow through state_builder into a dedicated 7-tile section of the Studio's ADVANCED METHODS grid.
+
+### Preflight data-quality (`fantasyai/aurora/preflight/`)
+
+Schema validation + missingness pattern detection (MCAR vs MAR vs blocky) + irregular-sampling check. Runs before any analysis can be queried. The Studio surfaces the result as a **`data ok / N issues` pill** next to the `0 fabricated` chip — the seventh-lens-by-spirit signal.
+
 ## Performance
 
 Aurora is optimised for the workstation, not the datacenter:
@@ -307,9 +357,16 @@ For deployment in regulated environments (healthcare, finance, defense), see [do
 - [README.md](README.md) — Project overview
 - [docs/concepts.md](docs/concepts.md) — Conceptual foundations (glass-box, RAG, tiers)
 - [docs/methods.md](docs/methods.md) — Each analytical method explained
+- [docs/new-methods.md](docs/new-methods.md) — The 7 v1.2 extended methods
 - [docs/knowledge-bank.md](docs/knowledge-bank.md) — Knowledge bank schema and contribution
+- [docs/kb-packs.md](docs/kb-packs.md) — Knowledge-bank pack format + distribution
 - [docs/sdk.md](docs/sdk.md) — Python SDK reference
+- [docs/jupyter.md](docs/jupyter.md) — Notebook SDK surface
 - [docs/mcp.md](docs/mcp.md) — MCP server setup for Claude / Cursor / agents
 - [docs/decision-contracts.md](docs/decision-contracts.md) — Contracts schema + actions
 - [docs/research-kit.md](docs/research-kit.md) — Research Kit + Zenodo workflow
+- [docs/streaming.md](docs/streaming.md) — Streaming / continuous mode (Phase 1 + 2)
+- [docs/cloud-deploy.md](docs/cloud-deploy.md) — Aurora Cloud self-host + multi-tenant auth
+- [docs/plugins.md](docs/plugins.md) — Plugin SDK authoring + contract + lifecycle
+- [docs/preflight.md](docs/preflight.md) — Data-quality preflight lens
 - [ROADMAP.md](ROADMAP.md) — What's coming next
