@@ -37,6 +37,94 @@ Debugging (list tools without running the protocol):
 python -m aurora_mcp.server --list-tools
 ```
 
+## HTTP transport (v1.2) — for remote agents
+
+The default transport is **stdio**: the client launches the server as a subprocess and they speak JSON-RPC over pipes. That's perfect for desktop clients (Claude Desktop, Cursor, Claude Code) but doesn't work when your agent can't subprocess locally — cloud-hosted agents, browser-based agents, ChatGPT custom actions, or a shared team Aurora deployment.
+
+v1.2 ships an **optional HTTP transport** that exposes the same TOOLS surface as JSON-over-HTTP:
+
+```
+GET  /mcp/v1/initialize            → version + tools_count + max_response_bytes
+GET  /mcp/v1/tools                 → list of tool schemas
+POST /mcp/v1/tools/<name>          → call tool with JSON args, get JSON back
+GET  /mcp/v1/allowed_roots         → current path allowlist
+POST /mcp/v1/allowed_roots         → update path allowlist
+```
+
+Two deployment modes:
+
+### Mounted inside Aurora Studio (recommended)
+
+When you run `python studio_api.py`, the MCP HTTP blueprint is auto-mounted at `/mcp/v1/*`. This inherits the Studio's auth middleware automatically:
+
+```bash
+# Single-tenant: no auth needed
+curl http://localhost:8000/mcp/v1/tools
+
+# Multi-tenant: pass the workspace token
+curl -H 'Authorization: Bearer alice-tok' \
+     http://localhost:8000/mcp/v1/tools
+```
+
+Each tool call gets workspace-scoped through the Studio's `before_request` hook, and the call is recorded in the tenant's `usage.jsonl`. See [docs/cloud-deploy.md](cloud-deploy.md) for the auth setup.
+
+Check status via `/api/mcp/status`:
+
+```bash
+$ curl http://localhost:8000/api/mcp/status
+{
+  "ok": true,
+  "http_mounted": true,
+  "endpoint": "/mcp/v1",
+  "stdio_supported": true,
+  "tools_count": 7,
+  "allowed_roots": ["/Users/you/data"]
+}
+```
+
+### Standalone HTTP server
+
+For deployments that don't need the full Studio surface, run the standalone server:
+
+```bash
+AURORA_MCP_HTTP_TOKEN='your-secret-token' \
+python -m aurora_mcp.http_server --port 8765 --allow-root ./data
+```
+
+Then call:
+
+```bash
+curl -H 'Authorization: Bearer your-secret-token' \
+     http://localhost:8765/mcp/v1/tools
+```
+
+Without `AURORA_MCP_HTTP_TOKEN`, the standalone server runs unauthenticated — fine for a localhost-only dev box, **not** for any deployment exposed beyond `127.0.0.1`.
+
+### Calling a tool over HTTP
+
+```bash
+curl -X POST http://localhost:8000/mcp/v1/tools/aurora_findings \
+  -H 'Content-Type: application/json' \
+  -d '{"severity": "crit", "limit": 5}'
+```
+
+Response:
+
+```json
+{
+  "findings": [...],
+  "n_returned": 3,
+  "_mcp_meta": {"elapsed_s": 0.045}
+}
+```
+
+### Contract guarantees (same as stdio)
+
+- **Tools never raise across the boundary.** A crashing tool returns 200 + `{"error_kind": "tool_crash", "error": "..."}`.
+- **Output cap.** Responses larger than `MAX_RESPONSE_BYTES` (default 2 MB, override via `AURORA_MCP_MAX_RESPONSE_BYTES`) get replaced with `{"error_kind": "response_too_large", ...}`.
+- **Path allowlist.** Same `set_allowed_roots()` enforcement as the stdio transport. Use `--allow-root` (standalone) or POST `/mcp/v1/allowed_roots` (mounted).
+- **No telemetry, no phone-home.** The HTTP transport is just a JSON shim over the existing tool functions.
+
 ## Claude Desktop configuration
 
 Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):

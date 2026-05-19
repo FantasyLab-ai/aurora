@@ -389,6 +389,27 @@ CORS(app)  # permissive by default; tighten via env when deploying.
 
 
 # ---------------------------------------------------------------------------
+# v1.2-F: MCP HTTP transport — optional, mounted at /mcp/v1/*
+#
+# When the aurora_mcp package is importable, register its HTTP blueprint
+# so remote agents (cloud-hosted, browser-based, ChatGPT custom actions,
+# etc.) can call Aurora's MCP tools over HTTP/JSON without needing to
+# subprocess the stdio server.
+#
+# Auth: the blueprint runs *under* the Studio's `before_request` middleware,
+# so `AURORA_AUTH_REQUIRED=1` automatically gates the MCP HTTP surface
+# too. No separate token gate needed when mounted here (the standalone
+# server has its own AURORA_MCP_HTTP_TOKEN gate for that case).
+# ---------------------------------------------------------------------------
+try:
+    from aurora_mcp.http_server import make_blueprint as _mcp_make_bp
+    app.register_blueprint(_mcp_make_bp(), url_prefix="/mcp/v1")
+    _MCP_HTTP_MOUNTED = True
+except Exception:
+    _MCP_HTTP_MOUNTED = False
+
+
+# ---------------------------------------------------------------------------
 # v1.2 Stream 2.4 Phase 2 — multi-tenant auth + per-workspace state.
 #
 # Auth is OPT-IN: set AURORA_AUTH_REQUIRED=1 to enforce it. Default is
@@ -416,8 +437,12 @@ except Exception:
 
 
 # Endpoints that never need auth (health probe, the frontend HTML).
+# v1.2-F: MCP /initialize is also unauth'd so agents can discover the
+# transport + version + max-response-bytes BEFORE they have a token —
+# the actual tool calls still go through the auth gate.
 _AUTH_BYPASS_PATHS = {
     "/", "/api/health", "/api/llm/status",
+    "/mcp/v1/initialize",
 }
 
 
@@ -468,6 +493,26 @@ def _current_workspace_id() -> str:
     except Exception:
         pass
     return _DEFAULT_WORKSPACE if _AUTH_AVAILABLE else "default"
+
+
+@app.route("/api/mcp/status")
+def api_mcp_status():
+    """v1.2-F: report whether the MCP HTTP transport is mounted."""
+    try:
+        from aurora_mcp.tools import TOOL_SCHEMAS, get_allowed_roots
+        tools_count = len(TOOL_SCHEMAS)
+        roots = get_allowed_roots()
+    except Exception:
+        tools_count = 0
+        roots = []
+    return jsonify({
+        "ok":              True,
+        "http_mounted":    bool(_MCP_HTTP_MOUNTED),
+        "endpoint":        "/mcp/v1" if _MCP_HTTP_MOUNTED else None,
+        "stdio_supported": True,
+        "tools_count":     tools_count,
+        "allowed_roots":   [str(p) for p in roots],
+    })
 
 
 @app.route("/api/auth/whoami")
@@ -1168,7 +1213,133 @@ def api_runs():
     if not _HAVE_STATE:
         return jsonify({"ok": False, "runs": [],
                         "reason": _STATE_IMPORT_ERROR}), 200
-    return jsonify({"ok": True, "runs": list_runs(DEFAULT_OUTPUTS)})
+    runs = list_runs(DEFAULT_OUTPUTS) or []
+    # v1.2-E: annotate each run with a ``pinned`` boolean so the UI can
+    # render the pinned subset at the top without a separate fetch.
+    try:
+        from fantasyai.aurora.runs_library import list_pinned_runs
+        wid = _current_workspace_id() if _AUTH_AVAILABLE else None
+        pinned_ids = {str(p.get("run_id")) for p in list_pinned_runs(wid)}
+        for r in runs:
+            r["pinned"] = (r.get("run_id") in pinned_ids)
+    except Exception:
+        pass
+    return jsonify({"ok": True, "runs": runs})
+
+
+# ---------------------------------------------------------------------------
+# v1.2-E: Runs Library — pin / unpin / compare / share
+# ---------------------------------------------------------------------------
+
+@app.route("/api/runs/pinned")
+def api_runs_pinned():
+    """Return the pinned-runs list for the current workspace."""
+    try:
+        from fantasyai.aurora.runs_library import list_pinned_runs
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"runs_library unavailable: {e}"}), 200
+    wid = _current_workspace_id() if _AUTH_AVAILABLE else None
+    return jsonify({"ok": True, "pinned": list_pinned_runs(wid)})
+
+
+@app.route("/api/runs/pin", methods=["POST"])
+def api_runs_pin():
+    """Pin a run. Body: ``{"run_id": "...", "note": "..."}``.
+
+    Idempotent — re-pinning refreshes ``pinned_at`` and updates the note.
+    """
+    try:
+        from fantasyai.aurora.runs_library import pin_run
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"runs_library unavailable: {e}"}), 200
+    body = request.get_json(silent=True) or {}
+    run_id = body.get("run_id")
+    note = body.get("note")
+    if not run_id or not isinstance(run_id, str):
+        return jsonify({"ok": False, "error": "run_id required"}), 400
+    wid = _current_workspace_id() if _AUTH_AVAILABLE else None
+    try:
+        entry = pin_run(run_id, workspace_id=wid, note=note)
+        return jsonify({"ok": True, "entry": entry})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/runs/unpin", methods=["POST"])
+def api_runs_unpin():
+    """Unpin a run. Body: ``{"run_id": "..."}``."""
+    try:
+        from fantasyai.aurora.runs_library import unpin_run
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"runs_library unavailable: {e}"}), 200
+    body = request.get_json(silent=True) or {}
+    run_id = body.get("run_id")
+    if not run_id or not isinstance(run_id, str):
+        return jsonify({"ok": False, "error": "run_id required"}), 400
+    wid = _current_workspace_id() if _AUTH_AVAILABLE else None
+    changed = unpin_run(run_id, workspace_id=wid)
+    return jsonify({"ok": True, "changed": changed})
+
+
+@app.route("/api/runs/compare", methods=["GET", "POST"])
+def api_runs_compare():
+    """A/B compare two runs.
+
+    Inputs (GET query OR POST body): ``run_a_dir`` + ``run_b_dir``.
+
+    Returns the ``RunComparison.to_dict()`` shape: per-run summary,
+    delta block, new/disappeared findings, and (when datasets differ)
+    an embedded join report from the multi-dataset joiner.
+    """
+    try:
+        from fantasyai.aurora.runs_library import compare_runs
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"runs_library unavailable: {e}"}), 200
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        a = body.get("run_a_dir") or body.get("run_a")
+        b = body.get("run_b_dir") or body.get("run_b")
+    else:
+        a = request.args.get("run_a_dir") or request.args.get("run_a")
+        b = request.args.get("run_b_dir") or request.args.get("run_b")
+    if not a or not b:
+        return jsonify({"ok": False, "error": "run_a_dir + run_b_dir required"}), 400
+    try:
+        pa = _safe_path(Path(a))
+        pb = _safe_path(Path(b))
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    report = compare_runs(pa, pb)
+    return jsonify(report.to_dict())
+
+
+@app.route("/api/runs/share", methods=["POST"])
+def api_runs_share():
+    """Export a run's Aurora Bundle to a portable file.
+
+    Body: ``{"run_dir": "...", "note": "..."}``.
+
+    Returns the local path of the exported ``.aurora.json``. Aurora
+    Cloud Phase 3 will add a ``public_url`` field when the cloud
+    control plane lights up; the local-export path stays available
+    either way.
+    """
+    try:
+        from fantasyai.aurora.runs_library import share_run_bundle
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"runs_library unavailable: {e}"}), 200
+    body = request.get_json(silent=True) or {}
+    rd_arg = body.get("run_dir")
+    note = body.get("note")
+    if not rd_arg:
+        return jsonify({"ok": False, "error": "run_dir required"}), 400
+    try:
+        rd = _safe_path(Path(rd_arg))
+    except ValueError as e:
+        return jsonify({"ok": False, "error": str(e)}), 400
+    wid = _current_workspace_id() if _AUTH_AVAILABLE else None
+    info = share_run_bundle(rd, workspace_id=wid, note=note)
+    return jsonify(info.to_dict())
 
 
 # ---------------------------------------------------------------------------

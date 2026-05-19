@@ -270,3 +270,38 @@ class TestQ3FrontendSurfaces:
         # backend can stage the prior pack on the new run dir.
         assert "inherit_from" in html
         assert "__auroraInheritFrom" in html
+
+
+# ----------------------------------------------------------------------
+# v1.2 batch D/E surfaces: Runs Library
+# ----------------------------------------------------------------------
+
+class TestV12DEFFrontendSurfaces:
+
+    def test_runs_library_panel_present(self):
+        html = _read()
+        assert 'id="runsToggleBtn"' in html
+        assert 'id="runsPopover"' in html
+        assert 'id="runsList"' in html
+        assert "runsLibraryController" in html
+
+    def test_runs_library_actions_wired(self):
+        html = _read()
+        # pin / unpin URLs are built dynamically as '/api/runs/' + act,
+        # so we check the base path + both action names are present in
+        # the controller. compare + share are called as full literals.
+        assert "/api/runs/' + act" in html or "/api/runs/${act}" in html
+        assert "'pin'" in html or "data-act=\"pin\"" in html
+        assert "'unpin'" in html or "data-act=\"unpin\"" in html
+        for endpoint in ("/api/runs/compare", "/api/runs/share"):
+            assert endpoint in html, (
+                f"runs library doesn't call {endpoint}"
+            )
+
+    def test_runs_library_compare_renders_delta_block(self):
+        html = _read()
+        # Confidence delta, new vs disappeared findings — all surfaced.
+        assert "confidence_delta" in html
+        assert "new_findings" in html
+        assert "disappeared_findings" in html
+        assert "physics_law_changed" in html

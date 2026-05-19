@@ -5573,6 +5573,45 @@
         </div>
       </div>
     </div>
+    <!-- v1.2-E: Runs Library — the long-deferred Sessions panel.
+         Lists recent runs (pinned first), lets the user load, pin/unpin,
+         A/B compare two runs (uses the Q3 joins infrastructure), and
+         export a run as a portable Aurora Bundle for sharing. -->
+    <div class="runs-wrap" style="position:relative; margin-right:6px;">
+      <button id="runsToggleBtn" class="btn"
+              title="Runs library — pinned + recent runs with compare + share."
+              aria-haspopup="dialog">
+        <span style="color:var(--ink-faint);">runs:</span>
+        <b id="runsToggleLbl">0</b>
+      </button>
+      <div id="runsPopover" class="runs-popover" style="display:none;
+           position:absolute; top:100%; right:0; margin-top:6px; z-index:10000;
+           min-width:480px; max-width:580px; padding:14px;
+           background:var(--bg-deep); border:1px solid var(--mint);
+           font-family:'JetBrains Mono', monospace; font-size:11px;
+           color:var(--ink); box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+          <span style="font-weight:700; color:var(--mint); letter-spacing:1px;">RUNS LIBRARY</span>
+          <button id="runsPopClose" type="button" style="background:none; border:0; color:var(--ink-faint); cursor:pointer; font-size:14px;">✕</button>
+        </div>
+        <div style="opacity:.7; line-height:1.45; margin-bottom:10px;">
+          Pinned runs stay on top across sessions. Pick two to A/B compare (delta + new vs disappeared findings + schema compat when datasets differ). Share → portable <code>.aurora.json</code> export.
+        </div>
+        <div id="runsCompareBar" style="display:none; padding:6px 8px; margin-bottom:8px;
+             background:rgba(110,231,255,0.06); border-left:2px solid var(--cyan);">
+          <b>A/B compare:</b> <span id="runsCompareSelectedCount">0</span> / 2 selected
+          · <a href="#" id="runsCompareRunBtn" style="color:var(--mint);">compute</a>
+          · <a href="#" id="runsCompareClearBtn" style="color:var(--ink-faint);">clear</a>
+        </div>
+        <ul id="runsList" style="list-style:none; padding:0; margin:0;
+            max-height:320px; overflow:auto; font-size:10px; line-height:1.5;">
+          <li id="runsListEmpty" style="color:var(--ink-faint); padding:4px 0;">loading…</li>
+        </ul>
+        <div id="runsCompareReport" style="margin-top:10px; padding:8px; display:none;
+             background:var(--bg-deepest); border-left:2px solid var(--mint);
+             font-size:10px; line-height:1.55; max-height:300px; overflow:auto;"></div>
+      </div>
+    </div>
     <!-- Q3 Stream C: Plugin SDK panel. Lists third-party Aurora plugins
          registered via the ``aurora_plugins`` entry point group, with
          their load status + last-run telemetry. Helps the user see
@@ -16352,6 +16391,270 @@
   setTimeout(refreshStatus, 600);
   // Periodic re-probe (keeps the button label honest if the runner stops itself).
   pollTimer = setInterval(refreshStatus, 8000);
+})();
+</script>
+
+<!-- =================================================================== -->
+<!-- v1.2-E — Runs Library controller.                                   -->
+<!--                                                                     -->
+<!-- Lists pinned + recent runs, supports pin/unpin, A/B compare of two  -->
+<!-- selected runs (via /api/runs/compare), and share-as-bundle export.  -->
+<!-- =================================================================== -->
+<script>
+(function runsLibraryController(){
+  const btn      = document.getElementById('runsToggleBtn');
+  const lbl      = document.getElementById('runsToggleLbl');
+  const pop      = document.getElementById('runsPopover');
+  const closeBtn = document.getElementById('runsPopClose');
+  const listEl   = document.getElementById('runsList');
+  const compareBar = document.getElementById('runsCompareBar');
+  const compareCountEl = document.getElementById('runsCompareSelectedCount');
+  const compareRunBtn  = document.getElementById('runsCompareRunBtn');
+  const compareClearBtn= document.getElementById('runsCompareClearBtn');
+  const compareReport  = document.getElementById('runsCompareReport');
+  if (!btn || !pop || !listEl) return;
+
+  let selected = [];   // up to 2 run_dir strings selected for A/B compare
+
+  function show(open) { pop.style.display = open ? 'block' : 'none'; }
+  btn.addEventListener('click', () => {
+    const open = pop.style.display === 'none' || !pop.style.display;
+    show(open);
+    if (open) refresh();
+  });
+  if (closeBtn) closeBtn.addEventListener('click', () => show(false));
+  document.addEventListener('click', (e) => {
+    if (pop.style.display === 'none') return;
+    if (pop.contains(e.target) || btn.contains(e.target)) return;
+    show(false);
+  });
+
+  function updateCompareBar() {
+    compareCountEl.textContent = String(selected.length);
+    compareBar.style.display = selected.length > 0 ? 'block' : 'none';
+  }
+
+  compareClearBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    selected = [];
+    compareReport.style.display = 'none';
+    refresh();
+  });
+
+  compareRunBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    if (selected.length !== 2) {
+      compareReport.innerHTML = '<div style="color:#ffd54a;">select exactly 2 runs first</div>';
+      compareReport.style.display = 'block';
+      return;
+    }
+    compareReport.innerHTML = '<div style="color:var(--ink-faint);">computing A/B compare…</div>';
+    compareReport.style.display = 'block';
+    try {
+      const url = '/api/runs/compare?run_a_dir=' + encodeURIComponent(selected[0])
+                  + '&run_b_dir=' + encodeURIComponent(selected[1]);
+      const r = await fetch(url);
+      const j = await r.json();
+      if (!j.ok) {
+        compareReport.innerHTML = '<div style="color:#ff9aa2;">compare failed: ' +
+                                   escapeHtml(j.error || (j.warnings||[]).join('; ')) + '</div>';
+        return;
+      }
+      renderCompare(j);
+    } catch (e) {
+      compareReport.innerHTML = '<div style="color:#ff9aa2;">request failed</div>';
+    }
+  });
+
+  function renderCompare(j) {
+    const sa = j.summary_a || {};
+    const sb = j.summary_b || {};
+    const d  = j.delta || {};
+    const sameDs = j.same_dataset
+      ? '<span style="color:var(--mint);">same dataset</span>'
+      : '<span style="color:#ffd54a;">DIFFERENT datasets</span>';
+    const confDelta = d.confidence_delta;
+    const confColor = confDelta == null ? 'var(--ink-faint)'
+                    : (confDelta >= 0 ? 'var(--mint)' : '#ff9aa2');
+    const fabDelta = d.fabricated_delta;
+    const fabColor = (fabDelta || 0) === 0 ? 'var(--mint)' : '#ff7676';
+    let html = '<div style="font-size:9px; color:var(--ink-faint); letter-spacing:1px; text-transform:uppercase; margin-bottom:4px;">SUMMARY</div>';
+    html += '<table style="width:100%; border-collapse:collapse;">' +
+             '<tr><td style="padding:2px 6px; color:var(--ink-faint);">dataset</td>' +
+              '<td>' + escapeHtml(String(sa.dataset || '—')) + '</td>' +
+              '<td>' + escapeHtml(String(sb.dataset || '—')) + '</td></tr>' +
+             '<tr><td style="padding:2px 6px; color:var(--ink-faint);">confidence</td>' +
+              '<td>' + fmtConf(sa.confidence) + '</td>' +
+              '<td>' + fmtConf(sb.confidence) +
+                (confDelta != null
+                  ? ' <span style="color:' + confColor + ';">(' +
+                    (confDelta >= 0 ? '+' : '') + confDelta.toFixed(2) + ')</span>'
+                  : '') + '</td></tr>' +
+             '<tr><td style="padding:2px 6px; color:var(--ink-faint);">anomalies</td>' +
+              '<td>' + (sa.n_anomalies || 0) + '</td>' +
+              '<td>' + (sb.n_anomalies || 0) +
+                ' <span style="color:var(--ink-faint);">(' +
+                ((d.n_anomalies_delta || 0) >= 0 ? '+' : '') +
+                (d.n_anomalies_delta || 0) + ')</span>' +
+              '</td></tr>' +
+             '<tr><td style="padding:2px 6px; color:var(--ink-faint);">fabricated</td>' +
+              '<td>' + (sa.fabricated || 0) + '</td>' +
+              '<td style="color:' + fabColor + ';">' +
+                (sb.fabricated || 0) +
+              '</td></tr>' +
+             '<tr><td style="padding:2px 6px; color:var(--ink-faint);">physics law</td>' +
+              '<td>' + escapeHtml(String(sa.physics_law || '—')) + '</td>' +
+              '<td>' + escapeHtml(String(sb.physics_law || '—')) +
+                (d.physics_law_changed
+                  ? ' <span style="color:#ffd54a;">(changed)</span>' : '') +
+              '</td></tr>' +
+             '<tr><td style="padding:2px 6px; color:var(--ink-faint);">HMM K</td>' +
+              '<td>' + (sa.hmm_k != null ? sa.hmm_k : '—') + '</td>' +
+              '<td>' + (sb.hmm_k != null ? sb.hmm_k : '—') + '</td></tr>' +
+             '</table>';
+    html += '<div style="margin-top:8px;">' + sameDs +
+             ' · <b>' + (j.shared_findings_n || 0) + '</b> shared findings' +
+             ' · <span style="color:var(--mint);">+' + (j.new_findings || []).length + ' new</span>' +
+             ' · <span style="color:#ff9aa2;">−' + (j.disappeared_findings || []).length + ' gone</span>' +
+             '</div>';
+    if ((j.warnings || []).length) {
+      html += '<div style="margin-top:6px; padding:6px; border-left:2px solid #ffd54a; background:rgba(255,213,74,0.06);">' +
+              (j.warnings || []).map(w => '<div>⚠ ' + escapeHtml(w) + '</div>').join('') +
+              '</div>';
+    }
+    compareReport.innerHTML = html;
+  }
+  function fmtConf(c) {
+    return c == null ? '—' : (c * 100).toFixed(0) + '%';
+  }
+
+  async function refresh() {
+    try {
+      const r = await fetch('/api/runs');
+      const j = await r.json();
+      const runs = (j && j.runs) || [];
+      lbl.textContent = String(runs.length);
+      if (!runs.length) {
+        listEl.innerHTML = '<li style="color:var(--ink-faint); padding:4px 0;">— no runs yet —</li>';
+        return;
+      }
+      // Sort: pinned first, then newest by mtime.
+      runs.sort((a, b) => {
+        if (a.pinned && !b.pinned) return -1;
+        if (!a.pinned && b.pinned) return  1;
+        return (b.mtime || 0) - (a.mtime || 0);
+      });
+      listEl.innerHTML = '';
+      runs.slice(0, 50).forEach(r => renderRunItem(r));
+      updateCompareBar();
+    } catch (e) {
+      listEl.innerHTML = '<li style="color:#ff9aa2;">unable to load runs</li>';
+    }
+  }
+
+  function renderRunItem(r) {
+    const pinned = !!r.pinned;
+    const isSelected = selected.indexOf(r.run_dir) >= 0;
+    const li = document.createElement('li');
+    li.style.cssText = 'padding:6px 8px; margin-bottom:3px; background:' +
+                        (isSelected ? 'rgba(110,231,255,0.10)' : 'var(--bg-deepest)') +
+                        '; border-left:2px solid ' +
+                        (pinned ? 'var(--mint)' : 'var(--ink-faint)') + ';';
+    const dataset = r.dataset || r.run_id || '?';
+    const conf = r.confidence != null ? (r.confidence * 100).toFixed(0) + '%' : '—';
+    const when = r.mtime ? new Date(r.mtime * 1000).toLocaleString() : '—';
+    li.innerHTML =
+      '<div style="display:flex; justify-content:space-between; gap:8px; align-items:flex-start;">' +
+        '<div style="flex:1; min-width:0;">' +
+          '<b>' + escapeHtml(dataset) + '</b>' +
+          (pinned ? ' <span style="color:var(--mint);" title="pinned">★</span>' : '') +
+          '<div style="color:var(--ink-faint); margin-top:2px;">' +
+            'run ' + escapeHtml(String(r.run_id || '?').slice(0, 36)) +
+            ' · conf <b>' + conf + '</b>' +
+          '</div>' +
+          '<div style="color:var(--ink-faint); font-size:9px;">' + escapeHtml(when) + '</div>' +
+        '</div>' +
+        '<div style="display:flex; flex-direction:column; gap:3px; align-items:flex-end;">' +
+          '<a href="#" class="rl-act" data-act="select" data-dir="' + escapeHtml(r.run_dir) + '" style="color:' +
+            (isSelected ? 'var(--cyan)' : 'var(--ink)') +
+            '; font-size:9px; letter-spacing:1px;">' +
+            (isSelected ? '✓ A/B' : '+ A/B') + '</a>' +
+          '<a href="#" class="rl-act" data-act="' + (pinned ? 'unpin' : 'pin') +
+            '" data-runid="' + escapeHtml(r.run_id) + '" style="color:' +
+            (pinned ? '#ff9aa2' : 'var(--mint)') +
+            '; font-size:9px; letter-spacing:1px;">' +
+            (pinned ? 'unpin' : 'pin') + '</a>' +
+          '<a href="#" class="rl-act" data-act="share" data-dir="' + escapeHtml(r.run_dir) +
+            '" style="color:var(--ink-dim); font-size:9px; letter-spacing:1px;">share</a>' +
+          '<a href="#" class="rl-act" data-act="load" data-dir="' + escapeHtml(r.run_dir) +
+            '" style="color:var(--cyan); font-size:9px; letter-spacing:1px;">load</a>' +
+        '</div>' +
+      '</div>';
+    li.querySelectorAll('.rl-act').forEach(a => {
+      a.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const act = a.getAttribute('data-act');
+        const dir = a.getAttribute('data-dir');
+        const rid = a.getAttribute('data-runid');
+        if (act === 'select') {
+          if (selected.indexOf(dir) >= 0) {
+            selected = selected.filter(x => x !== dir);
+          } else {
+            if (selected.length >= 2) selected.shift();
+            selected.push(dir);
+          }
+          refresh();
+        } else if (act === 'pin' || act === 'unpin') {
+          try {
+            await fetch('/api/runs/' + act, {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({run_id: rid}),
+            });
+            refresh();
+          } catch (e) { /* silent */ }
+        } else if (act === 'share') {
+          try {
+            const r = await fetch('/api/runs/share', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({run_dir: dir}),
+            });
+            const j = await r.json();
+            if (j.ok) {
+              alert('Bundle exported to:\n' + j.local_path +
+                    '\n\nSize: ' + (j.n_bytes || 0) + ' bytes' +
+                    (j.bundle_hash ? '\nHash: ' + j.bundle_hash.slice(0,16) + '…' : ''));
+            } else {
+              alert('share failed: ' + (j.error || 'unknown'));
+            }
+          } catch (e) {
+            alert('share request failed');
+          }
+        } else if (act === 'load') {
+          // Drive the existing state-loader by setting __auroraRunDir
+          // and triggering refreshState. The existing handlers do the
+          // rest (state fetch, render, scroll).
+          window.__auroraRunDir = dir;
+          if (typeof window.refreshState === 'function') {
+            window.refreshState({run_dir: dir});
+          }
+          show(false);
+        }
+      });
+    });
+    listEl.appendChild(li);
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // Initial probe so the chip shows the count without requiring the
+  // user to open the popover first.
+  setTimeout(refresh, 1000);
 })();
 </script>
 

@@ -75,6 +75,9 @@ jobs:
             tests/test_streaming_phase2.py \
             tests/test_auth_workspaces.py \
             tests/test_q3_composable_joins_plugins.py \
+            tests/test_contract_action_types.py \
+            tests/test_runs_library.py \
+            tests/test_mcp_http_transport.py \
             tests/test_v1_2_frontend_wiring.py
 
       - name: Smoke-test runner module loads

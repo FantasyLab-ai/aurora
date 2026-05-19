@@ -195,6 +195,71 @@ Levels: `debug` | `info` | `warn` | `error` | `critical`. The log line is format
 - 100 MB file size cap; appending to a file larger than this raises rather than silently growing forever
 - Files are append-only; the contract can never read or overwrite existing content
 
+### `slack` — post a formatted Slack message *(v1.2)*
+
+```json
+{
+  "type": "slack",
+  "webhook_url": "https://hooks.slack.com/services/T000/B000/SECRET_TOKEN",
+  "channel":   "#alerts",
+  "username":  "Aurora",
+  "icon_emoji": ":bar_chart:"
+}
+```
+
+Posts a Slack Block Kit message with header + section fields covering the contract id, trigger field+value, run id, and bundle hash. The `text` field doubles as a plaintext fallback for clients that don't render blocks.
+
+**Security:**
+
+- `webhook_url` MUST be `https://` (Slack rejects HTTP anyway); the same SSRF guard the `webhook` action uses applies — the resolved hostname can't be private/loopback unless `AURORA_ALLOW_LOCAL_WEBHOOKS=1` is set
+- `to_dict()` redacts the URL token segment in audit serialisation — your contract definitions on disk still carry the full URL, but logs + UI show `…[redacted]`
+- 1 MB request-body cap (same as `webhook`)
+
+### `discord` — post to a Discord channel webhook *(v1.2)*
+
+```json
+{
+  "type": "discord",
+  "webhook_url": "https://discord.com/api/webhooks/123/SECRET_TOKEN",
+  "username": "Aurora"
+}
+```
+
+Posts a Discord embed with title + 4 fields (contract, trigger, run, bundle hash). Embed colour is amber by default.
+
+**Security:** identical guards to the `slack` action — HTTPS-only, SSRF check, URL redaction in audit output, 1 MB cap.
+
+### `email` — send via SMTP *(v1.2)*
+
+```json
+{
+  "type": "email",
+  "host": "smtp.example.com",
+  "port": 587,
+  "from_addr": "aurora@example.com",
+  "to_addrs":  ["alice@example.com", "bob@example.com"],
+  "subject":   "Aurora alert: {contract_name}",
+  "body_template": "Trigger {trigger_field}={trigger_value} on run {bundle_run_id}\n",
+  "use_tls": true
+}
+```
+
+Credentials come from environment variables — never from the contract document:
+
+```bash
+AURORA_SMTP_USER=...
+AURORA_SMTP_PASS=...
+```
+
+Subject and body templates support these placeholders: `{contract_id}`, `{contract_name}`, `{trigger_field}`, `{trigger_value}`, `{bundle_run_id}`, `{bundle_hash}`, `{fired_at}`. Unknown placeholders fail silently (template returned verbatim).
+
+**Security guards:**
+
+- TLS required: port 587 → STARTTLS, port 465 → SMTPS. Plain SMTP is refused unless `AURORA_ALLOW_PLAINTEXT_SMTP=1` is set (the deliberate-friction opt-in pattern).
+- Recipients capped at 20 per action — refuses to be a spam vector.
+- Subject capped at 256 chars; body capped at 16 KB.
+- Credentials are never logged or echoed in the action's serialisation.
+
 ## Rate limiting
 
 ```json
