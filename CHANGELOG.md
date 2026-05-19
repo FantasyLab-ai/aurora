@@ -2,9 +2,9 @@
 
 All notable changes to Aurora are documented here. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — v1.2 in flight (post-launch work landing continuously on `main`)
+## [Unreleased] — v1.2 substantially shipped + v2.0 actively shipping
 
-The post-launch sprint that turns Aurora from "the substrate is shipped" into "the platform is shipped." Most of the v1.2 ship list is now live; three v2.0 items also landed ahead of schedule (composable findings, multi-dataset joins, Plugin SDK).
+The post-launch sprint that turns Aurora from "the substrate is shipped" into "the platform is shipped." The v1.2 sprint list is mostly live; v2.0 is actively shipping with 9 streams already on `main` (causal inference, multi-dataset joins, composable findings, Plugin SDK, custom KB ingestion, bundle attestation, KB marketplace, Kafka + Postgres CDC streaming connectors, GPU embeddings device selection).
 
 ### Added
 
@@ -98,6 +98,100 @@ All seven are wired into the runner via `extended_runner.py`, persisted as `exte
 - 25 tests
 - **`docs/kb-packs.md`**
 
+#### Decision Contracts — Slack / Discord / Email action types (v1.2)
+
+- **`SlackAction`** — POST to an Incoming Webhook URL. Block-kit payload with header + section fields + plaintext fallback. HTTPS-only. SSRF guard via the same `_is_private_or_local` check the webhook action uses. URL token segment redacted in audit serialisation.
+- **`DiscordAction`** — POST to a Channel Webhook URL. Embed-formatted with title + 4 fields (contract / trigger / run / bundle hash). Same security guards as Slack.
+- **`EmailAction`** — SMTP via stdlib `smtplib`. TLS required (port 587 STARTTLS or 465 SMTPS); plain SMTP refused unless `AURORA_ALLOW_PLAINTEXT_SMTP=1`. Credentials from `AURORA_SMTP_USER` / `AURORA_SMTP_PASS` env vars — never the contract document. Subject + body support templating with safe placeholders. Recipients capped at 20.
+- 20 tests covering formatter shape, URL redaction, SSRF refusal, factory dispatch, SMTP STARTTLS + SMTPS paths, recipient cap, template safety.
+- `docs/decision-contracts.md` updated with full schemas + security guards.
+
+#### Runs Library UI (v1.2)
+
+- **`fantasyai/aurora/runs_library/`** new package:
+  - `pinned.py` — workspace-isolated `pinned_runs.json`; idempotent pin/unpin; 100-run cap.
+  - `compare.py` — `compare_runs(a, b)` produces summary delta + new/disappeared findings using the streaming dedupe hash so identity is consistent across batch + streaming flows. When the runs cover different datasets, embeds the Q3 join report.
+  - `share.py` — exports a portable `.aurora.json` to a workspace-isolated share directory. `public_url` field reserved for Aurora Cloud Phase 3.
+- Endpoints: `/api/runs/{pinned,pin,unpin,compare,share}`. `/api/runs` annotates each entry with `pinned: bool`.
+- Studio **`runs: N`** chip in the top toolbar; popover lists pinned-first with per-row actions (load / pin / unpin / share / select for A/B) + a comparison report panel.
+- 16 tests covering pin roundtrip + idempotency + workspace isolation + cap, compare delta + cross-dataset join attachment + new/disappeared diff, share bundle export.
+- `docs/runs-library.md`.
+
+#### MCP HTTP transport (v1.2)
+
+- **`aurora_mcp/http_server.py`** — Flask blueprint exposing `GET /tools`, `POST /tools/<name>`, `POST /initialize`, `GET/POST /allowed_roots` over JSON. Same contract as stdio: tools never raise across the boundary (crash → 200 + `error_kind: tool_crash`), output capped at `MAX_RESPONSE_BYTES`, path allowlist enforced.
+- Two deployment modes:
+  - Mounted under Studio at `/mcp/v1/*` (auto-mounted when `studio_api.py` boots); inherits Studio's auth middleware.
+  - Standalone (`python -m aurora_mcp.http_server --port 8765`) with optional `AURORA_MCP_HTTP_TOKEN` bearer-token gate.
+- `/api/mcp/status` reports mounted state.
+- 12 tests covering discovery, tool calls, JSON error envelope on crash, oversize truncation, all 3 token-gate paths, `allowed_roots` get/post.
+- `docs/mcp.md` updated with the "HTTP transport (v1.2)" section.
+
+#### Causal inference (v2.0 Stream A)
+
+- **`fantasyai/aurora/causal/`** new package: `dag.py`, `do_calculus.py`, `counterfactual.py`.
+- `CausalDAG` reads the system_model artifact, breaks cycles with `DagCycleWarning`, implements d-separation + backdoor identification.
+- `do_query()` fits a backdoor-adjusted OLS regression. On a synthetic 800-row confounded SCM it recovers true β=0.4 within ~0.05.
+- `counterfactual_query()` does Pearl's three-step recipe via the linear SCM shortcut.
+- The legacy WHAT-IF panel now ALSO calls do_query in the background and renders a "do() causal verdict — backdoor adjustment" block beneath the simulator output. If the effect isn't identifiable, the verdict says so honestly.
+- Endpoints: `/api/causal/{dag,identify,do,counterfactual}`.
+- v2.0 LAB → Causal tab with treatment / outcome / intervention inputs + three action buttons.
+- 12 tests — DAG primitives, cycle-breaking, d-separation, backdoor admissibility, estimation accuracy, counterfactual recipe.
+- `docs/causal-inference.md`.
+
+#### Streaming connectors (v2.0 Stream B)
+
+- **`fantasyai/aurora/streaming/connectors/`** — `StreamingConnector` base class + `KafkaConnector` + `PostgresCDCConnector`. Both deps gated: `kafka-python` and `psycopg` stay optional. `availability()` classmethod reports installed/not-installed + install hint.
+- Postgres CDC uses simple-CDC (numeric id or timestamp watermark) — no logical-replication-slot setup required. Identifier whitelist guards against SQL injection. Watermark persisted per-workspace.
+- Both connectors share batching + ingest path via the base class; config summary redacts credentials.
+- Endpoint: `/api/stream/connectors`.
+- v2.0 LAB → Connectors tab.
+- 14 tests — availability, dep-gating, config validation, identifier guards, password redaction, base-class ingest path.
+
+#### Custom KB ingestion (v2.0 Stream C)
+
+- **`fantasyai/aurora/kb/ingest/`** — `pdf_ingester.py`, `folder_ingester.py`, `storage.py`.
+- PDF extraction uses `pypdf` when installed; falls back to plain-text neighbour files (`paper.txt`) when not. Encrypted PDFs raise a clear error.
+- `ingest_folder()` walks `.pdf` / `.txt` / `.md` files, chunks them at paragraph boundaries (~4000 chars), writes a workspace-isolated `custom_entries.jsonl`. Idempotent — re-ingesting produces stable `seed_id`s.
+- Endpoints: `/api/kb/ingest/{folder,list}`.
+- v2.0 LAB → KB Ingest tab with a folder path input + native folder picker (`<input webkitdirectory>`) + drag-and-drop zone. Honest UX caveat: browsers don't expose absolute folder paths, so the picker seeds the folder name + asks the user to type the absolute path.
+- 7 tests — chunking strategy, text-neighbour fallback, folder walk, idempotency, workspace isolation.
+
+#### Bundle attestation (v2.0 Stream D)
+
+- **`fantasyai/aurora/attestation/`** — `verify.py`, `registry.py`.
+- Three-check rollup: integrity (recomputed content hash) + signature (Ed25519 via the SDK) + signer trust (workspace-isolated registry).
+- `AttestationReport.summary` is True ONLY when all three pass — so a bundle that verifies but whose signer isn't registered yields `summary=False, untrusted_signer=True` (the right answer for "stranger sent you a bundle").
+- Trusted-signer registry per workspace, 32-byte Ed25519 public keys validated at write time.
+- Endpoints: `/api/attest/{verify,signers,signers/remove}`.
+- v2.0 LAB → Attest tab.
+- 9 tests — registry CRUD, key validation, workspace isolation, attestation with/without sig + with/without trust + integrity failures.
+
+#### KB pack marketplace (v2.0 Stream E)
+
+- **`fantasyai/aurora/kb/marketplace.py`** — listing API that reads the bundled manifest + cross-references the local installed-pack registry.
+- Each entry carries `install_state`: `available` / `installed` / `upgrade_available` / `preview` / `failed`.
+- **`preview`** state added for manifest packs whose SHA is `PENDING_FIRST_BUILD` — listed in the manifest as reservation slots but not yet released. Frontend renders them with a disabled install button + warning instead of a silent fail.
+- Real install flow now correctly chains `download_pack → install_pack` with stage-tagged structured errors so the frontend can surface "downloading + verifying SHA-256…" inline status.
+- Endpoints: `/api/kb/marketplace`, `/install`, `/uninstall`.
+- v2.0 LAB → Marketplace tab.
+- 5 tests — listing shape, preview-state detection, install error envelopes.
+
+#### GPU embeddings device gate (v2.0 Stream F)
+
+- **`fantasyai/aurora/embedding_device.py`** — `get_embedding_device()` with `AURORA_EMBEDDINGS_DEVICE` override (cpu / cuda / mps / auto).
+- Auto-detects CUDA → MPS → CPU. Graceful one-shot warning if the requested device isn't actually available. No eager torch import.
+- Endpoint: `/api/embeddings/status`.
+- v2.0 LAB → Compute tab shows preferred + chosen device + torch version + CUDA/MPS availability.
+- 5 tests — explicit cpu, unknown-value fallback, auto resolution, cache + refresh, info-dict shape.
+
+#### v2.0 LAB modal (UX)
+
+- Single discoverability surface for the 9 v2.0 streams.
+- Top-toolbar **`⚡ v2.0 LAB · NEW · 6`** chip with cyan accent + linear gradient background.
+- Opens as a full-screen modal (1100 × 720 max, 92vw × 86vh fluid) with sidebar nav + content area. Two close paths (Escape key, backdrop click); body scroll locked while open; focus auto-jumps to the first input.
+- Six tabs (Causal · KB Ingest · Attest · Marketplace · Connectors · Compute), each with a header + intro paragraph above the controls.
+
 ### Changed
 
 - **`extended_runner`** now also invokes installed plugins after running built-ins; their findings flow into the same `findings` list and per-plugin telemetry surfaces under `result["plugins"]`
@@ -120,7 +214,7 @@ All seven are wired into the runner via `extended_runner.py`, persisted as `exte
 
 ### Tests
 
-- **497 tests passing locally** (~525 in CI, which adds scipy + flask-dependent tests). Baseline at v1.1 launch was 320.
+- **599 tests passing locally** (~625 in CI, which adds scipy + flask-dependent tests). Baseline at v1.1 launch was 320.
 - New test files since launch:
   - `tests/test_preflight.py` (34)
   - `tests/test_kb_packs.py` (25)
@@ -131,12 +225,18 @@ All seven are wired into the runner via `extended_runner.py`, persisted as `exte
   - `tests/test_streaming_phase2.py` (11)
   - `tests/test_auth_workspaces.py` (16)
   - `tests/test_q3_composable_joins_plugins.py` (17)
-  - `tests/test_v1_2_frontend_wiring.py` (18)
+  - `tests/test_contract_action_types.py` (20) — Slack / Discord / Email
+  - `tests/test_runs_library.py` (16) — pin / compare / share
+  - `tests/test_mcp_http_transport.py` (12) — HTTP transport + token gate
+  - `tests/test_q2_causal_inference.py` (12) — do-calculus + counterfactuals
+  - `tests/test_q2_streaming_connectors.py` (14) — Kafka + Postgres CDC
+  - `tests/test_q2_kb_attest_market_embed.py` (24+) — ingestion + attestation + marketplace + embeddings
+  - `tests/test_v1_2_frontend_wiring.py` (35) — full v2.0 LAB modal audit
 
 ### Docs
 
-- **`README.md`** updated for the v1.2 surfaces + new test count + Docker quickstart
-- **`ROADMAP.md`** restructured with explicit `✅ / 🟡 / ⏳` status per item
+- **`README.md`** updated for v1.2 + v2.0 surfaces + Docker quickstart + 599-test badge
+- **`ROADMAP.md`** restructured with explicit `✅ / 🟡 / ⏳` status per item; v2.0 streams promoted to "shipped ahead of schedule"
 - **`docs/streaming.md`** — streaming mode (Phase 1 + 2)
 - **`docs/cloud-deploy.md`** — full Phase 1 + 2 self-host guide
 - **`docs/plugins.md`** — Plugin SDK authoring + contract + lifecycle
@@ -144,6 +244,10 @@ All seven are wired into the runner via `extended_runner.py`, persisted as `exte
 - **`docs/kb-packs.md`** — knowledge bank pack distribution
 - **`docs/jupyter.md`** — notebook SDK surface
 - **`docs/new-methods.md`** — the 7 v1.2 extended methods
+- **`docs/decision-contracts.md`** — extended with Slack / Discord / Email action types + security guards
+- **`docs/mcp.md`** — extended with the HTTP transport section (mounted vs standalone)
+- **`docs/runs-library.md`** — pin / A-B compare / share workflows
+- **`docs/causal-inference.md`** — do-calculus + counterfactual queries reference
 
 ## [1.1.0] — 2026-05-XX
 

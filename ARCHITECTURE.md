@@ -292,6 +292,48 @@ VAR, DTW, BOCPD, Robust PCA, EMD, Kalman, and Spectral Entropy each live under `
 
 Schema validation + missingness pattern detection (MCAR vs MAR vs blocky) + irregular-sampling check. Runs before any analysis can be queried. The Studio surfaces the result as a **`data ok / N issues` pill** next to the `0 fabricated` chip — the seventh-lens-by-spirit signal.
 
+### Decision Contracts: Slack / Discord / Email action types (v1.2)
+
+`fantasyai/aurora/decision_contracts/actions.py` gained three transports beyond the original webhook / log / file: `SlackAction` (Incoming Webhook with block-kit + plaintext fallback), `DiscordAction` (channel webhook with embed), `EmailAction` (stdlib smtplib with TLS-required + recipient cap + env-only credentials). The factory routes by `type`. All three share the SSRF guard the webhook action uses; URL token segments are redacted in audit serialisation.
+
+### Runs Library (`fantasyai/aurora/runs_library/`)
+
+Workspace-isolated `pinned_runs.json` (idempotent pin/unpin, 100-cap), `compare_runs(a, b)` for A/B (reuses the streaming dedupe hash so finding identity is consistent across batch + streaming flows; embeds the Q3 join report when datasets differ), `share_run_bundle()` for portable `.aurora.json` export. Studio surface: `runs: N` chip in the toolbar with a popover for pin / load / share / select-for-AB.
+
+### MCP HTTP transport (`aurora_mcp/http_server.py`)
+
+Optional JSON-over-HTTP shim with the same TOOLS surface + security contract as the stdio server. Mounts inside `studio_api.py` at `/mcp/v1/*` so it inherits the Studio's auth middleware; can also run standalone with `AURORA_MCP_HTTP_TOKEN` bearer-token gate. Tools never raise across the boundary; output capped at `MAX_RESPONSE_BYTES`.
+
+### Causal inference (`fantasyai/aurora/causal/`)
+
+The v1.1 relationships pipeline produces a system_model DAG; this module adds **interventional** queries on top:
+
+- `dag.py` — pure-Python adjacency representation. d-separation via the classic Shachter Bayes-ball algorithm. `backdoor_set(treatment, outcome)` returns a minimal admissible adjustment set, or None when not identifiable.
+- `do_calculus.py` — fits `outcome ~ treatment + Z` via pure-numpy normal-equations OLS. Returns a `DoResult` carrying identifiability status, the adjustment set, the effect estimate + SE, listed assumptions, and (when an intervention value is supplied) a predicted counterfactual outcome.
+- `counterfactual.py` — Pearl's three-step abduction / action / prediction via the linear-SCM shortcut. Returns a `CounterfactualResult` contrasting the observed outcome with the predicted one.
+
+Integration points: the legacy WHAT-IF panel calls `do_query()` alongside its simulator and renders both. Dedicated endpoints at `/api/causal/{dag,identify,do,counterfactual}` back the v2.0 LAB Causal tab.
+
+### Streaming connectors (`fantasyai/aurora/streaming/connectors/`)
+
+Phase 1+2 of streaming ships a file watcher; Phase 3 adds Kafka + Postgres CDC. Both are subclasses of the new `StreamingConnector` base class (thread-managed lifecycle, `_poll_once()` hook, base-class batching + runner.ingest), with `kafka-python` and `psycopg` as **optional** dependencies. `availability()` reports installed/not-installed + install hint. Postgres CDC uses simple-CDC (numeric or timestamp watermark) — no logical-replication-slot setup required — with strict identifier whitelisting for SQL safety. The v2.0 LAB → Connectors tab lists which connectors are available.
+
+### Custom KB ingestion (`fantasyai/aurora/kb/ingest/`)
+
+Walks a folder of PDFs / TXT / MD, extracts text via `pypdf` (with plain-text-neighbour fallback), chunks at paragraph boundaries (~4000 chars), and writes a workspace-isolated `custom_entries.jsonl` the synthesis retriever picks up alongside the canonical KB. Idempotent — stable `seed_id`s prevent dup-ingestion on repeated runs. The v2.0 LAB → KB Ingest tab adds a folder picker (`<input webkitdirectory>`) + drag-and-drop zone; browsers can't expose absolute paths, so the picker seeds the folder name and asks the user to type the path.
+
+### Bundle attestation (`fantasyai/aurora/attestation/`)
+
+Three-check rollup over any Aurora bundle: (1) integrity hash recomputed and compared, (2) Ed25519 signature verified via the SDK, (3) signing public key cross-referenced against the workspace's trusted-signer registry. `AttestationReport.summary` is True ONLY when all three pass — so a bundle that verifies but whose signer isn't registered yields `summary=False, untrusted_signer=True`. The registry is workspace-isolated; adding a signer is an explicit, audited action with strict 32-byte hex validation.
+
+### KB pack marketplace (`fantasyai/aurora/kb/marketplace.py`)
+
+Single read API that combines the bundled manifest with the local installed-pack registry to produce a frontend-ready listing. Each entry's `install_state` is one of `available` / `installed` / `upgrade_available` / `preview` / `failed`. The **`preview`** state is for manifest packs whose SHA is `PENDING_FIRST_BUILD` — reservation slots, not yet hosted. The frontend disables install on preview rows and surfaces a clear "not yet released" note rather than failing silently. Real installs run the full `download_pack → install_pack` chain with stage-tagged structured errors so the UI can report progress inline.
+
+### GPU embeddings device selection (`fantasyai/aurora/embedding_device.py`)
+
+Pure-Python device chooser the sentence-transformer loader consults. `AURORA_EMBEDDINGS_DEVICE` env var overrides (`cpu` / `cuda` / `mps` / `auto`); auto-detect picks CUDA → MPS → CPU. No eager torch import. Graceful CPU fallback with a single one-shot warning when the requested device isn't actually available. Cached after the first call; `reset_embedding_device_cache()` for tests.
+
 ## Performance
 
 Aurora is optimised for the workstation, not the datacenter:
@@ -369,4 +411,6 @@ For deployment in regulated environments (healthcare, finance, defense), see [do
 - [docs/cloud-deploy.md](docs/cloud-deploy.md) — Aurora Cloud self-host + multi-tenant auth
 - [docs/plugins.md](docs/plugins.md) — Plugin SDK authoring + contract + lifecycle
 - [docs/preflight.md](docs/preflight.md) — Data-quality preflight lens
+- [docs/runs-library.md](docs/runs-library.md) — Pin / A-B compare / share workflows
+- [docs/causal-inference.md](docs/causal-inference.md) — do-calculus + counterfactual queries
 - [ROADMAP.md](ROADMAP.md) — What's coming next

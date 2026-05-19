@@ -11,8 +11,8 @@
 
   [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
   [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
-  [![Status](https://img.shields.io/badge/status-v1.2%20active-purple.svg)](#)
-  [![Tests](https://img.shields.io/badge/tests-497%20passing-brightgreen.svg)](#)
+  [![Status](https://img.shields.io/badge/status-v2.0%20active-purple.svg)](#)
+  [![Tests](https://img.shields.io/badge/tests-599%20passing-brightgreen.svg)](#)
   [![Patreon](https://img.shields.io/badge/support-Patreon-f96854.svg)](https://www.patreon.com/c/FantasyLab3DStudio)
 
   [Install](#install) · [See it in action](#see-aurora-in-action) · [Aurora Copilot](#-aurora-copilot--for-humans) · [Aurora Cortex](#%EF%B8%8F-aurora-cortex--for-ai-systems) · [Roadmap](ROADMAP.md) · [FantasyLab.ai](https://fantasylab.ai)
@@ -87,7 +87,7 @@ python studio_api.py
 
 Open <http://127.0.0.1:8000>. Click **▶ Try a demo** for a 10-second smoke test, or drop your own CSV / Parquet / JSON / XLSX.
 
-> **Status:** v1.1 shipped, v1.2 + v2.0 work landing on `main` continuously. 497 tests passing locally (~525 in CI). Real users running it on real data.
+> **Status:** v1.1 shipped (May 2026). v1.2 substantially shipped (streaming, cloud, Jupyter, contracts actions, runs library, MCP HTTP). v2.0 actively shipping on `main` (causal do-calculus, multi-dataset joins, Plugin SDK, custom KB ingestion, bundle attestation, KB marketplace, Kafka + Postgres CDC connectors, GPU embeddings). 599 tests passing locally; ~625 in CI. Real users running it on real data.
 
 ### Run it in Docker (BYO-LLM)
 
@@ -116,9 +116,14 @@ A local quantitative copilot for the work that matters too much to trust to a mo
 - **24+ research-grade methods** — Isolation Forest, robust z-score (Hampel), Granger, HMM Baum-Welch, persistent homology, SINDy, Gaussian processes, mutual information, **VAR**, **DTW**, **BOCPD**, **Robust PCA**, **EMD**, **Kalman**, **Spectral entropy**, and more
 - **Knowledge-grounded synthesis** — every "What This Means" sentence cites a `seed:*` entry in a public, licensed knowledge bank
 - **Preflight data-quality** — schema validation, missingness pattern detection, irregular-sampling check before any analysis runs (the **`data ok / N issues`** chip next to the fabricated counter)
-- **Streaming / continuous mode** — point Aurora at a directory; findings refresh as new data lands. Per-finding dedupe so the bus only fires on genuinely new findings; opt-in Decision Contracts auto-fire bridge
+- **Causal inference (do-calculus)** — Pearl-style backdoor identification + adjustment-OLS estimation. The legacy WHAT-IF panel now ships a "do() causal verdict" beneath every simulator output; the v2.0 LAB has a dedicated full-screen Causal tab for explicit treatment/outcome/intervention queries + counterfactuals
+- **Streaming / continuous mode** — point Aurora at a directory; findings refresh as new data lands. Per-finding dedupe so the bus only fires on genuinely new findings; opt-in Decision Contracts auto-fire bridge. **Kafka + Postgres CDC connectors** for non-file sources (deps gated, listed in the v2.0 LAB → Connectors tab)
 - **Composable findings** — a finished run's fitted physics / regime / baseline becomes a prior for the next run; aligned findings get a **PRIOR** badge
 - **Multi-dataset joins** — pair two finished runs to see shared keys, schema compatibility, and inheritance candidates
+- **Runs Library** — pin runs across sessions, A/B compare any two runs, share runs as portable `.aurora.json` bundles
+- **Custom KB ingestion** — drop a folder of PDFs / TXT / MD; Aurora walks it, extracts text, folds chunks into your workspace KB. Browse-folder UI in the v2.0 LAB
+- **KB pack marketplace** — install curated domain KB packs (Climate / Finance / Biomed / Industrial); preview-state packs labelled honestly
+- **Bundle attestation** — three-check rollup (integrity + Ed25519 signature + trusted-signer registry) on any `.aurora.json`
 - **Honest disclosure** — sampling, timeouts, and skipped methods are surfaced; never silently faked
 
 → See it in action: [`examples/factory-bearing/`](examples/factory-bearing/)
@@ -149,10 +154,14 @@ b.verify()                                  # raises if tampered
 |---|---|---|
 | **Aurora SDK** ([docs](docs/sdk.md)) | Python devs, notebooks, pipelines | `pip install` away from cited, glass-box quantitative reasoning |
 | **Aurora Jupyter** ([docs](docs/jupyter.md)) | Notebook users | `aurora.run(df)` with rich HTML reprs, `to_html_report()` exports |
-| **Aurora MCP** ([docs](docs/mcp.md)) | LLM agents (Claude Desktop, Claude Code, Cursor, custom) | 7 MCP tools your agent calls; path-allowlisted, output-capped, JSON-only |
-| **Decision Contracts** ([docs](docs/decision-contracts.md)) | Automation pipelines | Programmable predicates → webhook / log / file when findings match. SSRF-guarded. Streaming bridge fires contracts on live findings |
-| **Aurora Streaming** ([docs](docs/streaming.md)) | Live data feeds | File-watcher + rolling window + SSE event bus; per-finding dedupe; optional Decision Contracts auto-fire |
+| **Aurora MCP** ([docs](docs/mcp.md)) | LLM agents (Claude Desktop, Claude Code, Cursor, custom) | 7 MCP tools via stdio or HTTP transport; path-allowlisted, output-capped, JSON-only |
+| **Decision Contracts** ([docs](docs/decision-contracts.md)) | Automation pipelines | Programmable predicates → webhook / log / file / **Slack / Discord / email** when findings match. SSRF + recipient-cap guards. Streaming bridge fires contracts on live findings |
+| **Aurora Streaming** ([docs](docs/streaming.md)) | Live data feeds | File-watcher + rolling window + SSE event bus; per-finding dedupe; optional contracts auto-fire. **Kafka + Postgres CDC connectors** (deps gated) |
+| **Aurora Causal** ([docs](docs/causal-inference.md)) | Analysts asking "what if X?" | Pearl do-calculus: backdoor identification + adjustment OLS + counterfactual queries on the run's system_model DAG |
+| **Runs Library** ([docs](docs/runs-library.md)) | Anyone iterating on a dataset | Pin runs across sessions, A/B compare two runs, export portable `.aurora.json` |
 | **Plugin SDK** ([docs](docs/plugins.md)) | Domain specialists | Register third-party methods via the `aurora_plugins` entry-point group; same finding contract as built-ins |
+| **Custom KB ingestion** | Researchers with private libraries | Drop a folder of PDFs / TXT / MD into your workspace KB |
+| **Bundle Attestation** | Anyone consuming a shared `.aurora.json` | Verify integrity + Ed25519 signature + trusted-signer registry in one call |
 | **Aurora Cloud** ([docs](docs/cloud-deploy.md)) | Self-hosted deployments | Docker image, BYO-LLM, multi-tenant auth, per-workspace data isolation, usage logging |
 | **Research Kit** ([docs](docs/research-kit.md)) | Researchers, academics | `methods.md` + `references.bib` + `replication.json` + `.zenodo.json` for DOI minting |
 
@@ -249,27 +258,38 @@ for c in load_contracts():
 
 ---
 
-## What's working today (v1.2 in flight)
+## What's working today
 
-The v1.1 substrate — Bundle Format, SDK, MCP, Decision Contracts, Research Kit, six analytical lenses — is **shipped and stable**. On top of it, the following are landing on `main` continuously as v1.2 progresses:
+The v1.1 substrate — Bundle Format, SDK, MCP, Decision Contracts, Research Kit, six analytical lenses — is **shipped and stable**. The v1.2 sprint is substantially complete; v2.0 work is landing continuously on `main`.
 
 **Analytical methods (17 → 24+):**
 - v1.1: Isolation Forest, Hampel z-score, HMM, mutual information, Granger, wavelet, Lomb-Scargle, Gaussian process, persistent topology, SINDy, multivariate outliers, cluster stability, Bayesian, panel, survival, spatial, network, DiD
 - v1.2 added: **VAR**, **DTW**, **BOCPD**, **Robust PCA**, **EMD**, **Kalman**, **Spectral entropy** — each with skip reasons + glass-box compliance
 
-**New surfaces:**
+**v1.2 surfaces (mostly shipped):**
 - **Streaming / continuous mode** — `/api/stream/start|stop|status|events` with SSE event bus, per-finding dedupe, opt-in Decision Contracts bridge, Live Findings strip in the Studio
-- **Aurora Cloud** — Dockerfile + docker-compose + cloud-deploy guide. Multi-tenant auth + per-workspace data isolation + usage logging behind `AURORA_AUTH_REQUIRED=1`
+- **Aurora Cloud** (Phase 1 + 2) — Docker + docker-compose + cloud-deploy guide. Multi-tenant auth + per-workspace data isolation + usage logging behind `AURORA_AUTH_REQUIRED=1`
 - **BYO-LLM** — pluggable provider abstraction with 5 backends (Anthropic / OpenAI / Gemini / Ollama / OpenAI-compatible)
-- **Composable findings** — extract priors from a finished run, inherit them into the next; aligned findings get a `PRIOR · matches / drifts / novel` badge
-- **Multi-dataset joins** — `/api/joins/analyze` produces shared keys + schema compatibility + cross-correlation hints + inheritance candidates between two finished runs
-- **Plugin SDK** — third-party methods register via `aurora_plugins` entry-point group; same contract as built-ins; failures are isolated
+- **Decision Contracts: Slack / Discord / Email actions** — extend the v1.1 webhook / log / file types. SSRF + recipient caps + URL token redaction
+- **Runs Library UI** — pin / A/B compare (via the joins endpoint) / share-as-bundle, all from a top-toolbar chip
+- **MCP HTTP transport** — `/mcp/v1/*` endpoints for remote agents that can't subprocess locally; standalone server mode with optional token gate
 - **Preflight data-quality** — schema + missingness + irregular-sampling checks. `data ok / N issues` pill alongside the fabricated chip
 - **Jupyter integration** — `aurora.run(df)` with rich HTML reprs, `to_html_report()`, sample notebook
 - **KB pack distribution** — manifest + downloader + 4 starter packs + registry auto-detection
 
+**v2.0 surfaces (shipping, exposed in the ⚡ v2.0 LAB modal):**
+- **Causal inference (do-calculus)** — `fantasyai/aurora/causal/`. Backdoor identification + adjustment-OLS estimation + counterfactual queries. The legacy WHAT-IF panel now also returns a "do() causal verdict" beneath every simulator output
+- **Multi-dataset joins** — `/api/joins/analyze` produces shared keys + schema compatibility + cross-correlation hints + inheritance candidates between two finished runs
+- **Composable findings** — extract priors from a finished run, inherit them into the next; aligned findings get a `PRIOR · matches / drifts / novel` badge
+- **Plugin SDK** — third-party methods register via `aurora_plugins` entry-point group; same contract as built-ins; failures are isolated
+- **Custom KB ingestion** — drop a folder of PDFs / TXT / MD; Aurora walks it and folds chunks into the workspace KB. Folder picker + drag-and-drop in the v2.0 LAB
+- **Bundle attestation** — three-check rollup (integrity + Ed25519 signature + trusted-signer registry) on any `.aurora.json`
+- **KB pack marketplace** — install curated domain KB packs (Climate / Finance / Biomed / Industrial). Preview-state packs honestly labelled "not yet released"
+- **Streaming connectors** — Kafka + Postgres CDC connectors for non-file sources. Deps are gated; the v2.0 LAB → Connectors tab lists install hints
+- **GPU embeddings** — `AURORA_EMBEDDINGS_DEVICE=cuda|mps|auto` env-var device selection with graceful CPU fallback
+
 **Counts:**
-- **497 tests passing** locally; ~525 in CI (scipy + flask-dependent tests run there)
+- **599 tests passing** locally; ~625 in CI (scipy + flask-dependent tests run there)
 - 16 backend modules import cleanly
 - 0 fabricated findings — contractual
 
@@ -280,11 +300,11 @@ Local execution end-to-end. No cloud dependency after initial knowledge bank dow
 Named honestly:
 
 - The knowledge bank ships with a seed set; the full pack is downloaded separately and is still expanding
+- The 4 v2.0 marketplace packs (Climate / Finance / Biomed / Industrial) are **reserved in the manifest but not yet hosted** — SHAs are `PENDING_FIRST_BUILD`. The Studio labels them `PREVIEW` and disables install until the next manifest revision
 - Some advanced methods skip on datasets that lack required structure (no time axis, no entity column) — these skips are correct glass-box behavior; can be confusing without reading the skip reason
 - Per-method timeouts (90 s default) defer some methods on very large datasets; disclosed honestly
 - Mobile / tablet responsiveness still pending
-- Decision Contracts ship with webhook / log / file action types; Slack / Discord / PagerDuty / email actions are queued
-- The Runs Library UI (sessions panel) is still placeholder — backend exists at `/api/runs`
+- Browser security prevents Aurora from reading absolute folder paths from a `<input type="file">` picker; KB ingest seeds the folder name + asks the user to type the absolute path
 
 Build-in-public log: [CHANGELOG.md](CHANGELOG.md).
 
@@ -308,10 +328,10 @@ The roadmap is public. The build is documented on YouTube. Domain experts who co
 
 See [ROADMAP.md](ROADMAP.md) for the full picture. Recent progress:
 
-- **Already shipped post-v1.1:** Streaming Phase 1+2 · Aurora Cloud Phase 1+2 (Docker + BYO-LLM + multi-tenant auth) · 7 new analytical methods · Jupyter integration · KB pack distribution · Preflight data-quality · Composable findings · Multi-dataset joins · Plugin SDK
-- **Still in v1.2 backlog:** Slack/Discord/PagerDuty/email Decision Contract actions, runs library UI, DuckDB ingest, MCP HTTP transport
-- **v2.0 (3–6 months):** Domain knowledge bank pack marketplace, Postgres CDC + Kafka connectors, causal inference (do-calculus), custom KB ingestion (PDFs → KB), GPU embeddings, signed-bundle attestation service
-- **v2.0+ (6–12 months):** Federated knowledge contribution, template marketplace with creator revenue share, Aurora kernels, Aurora-as-CI, Web Component embeds
+- **v1.2 — substantially shipped:** Streaming Phase 1+2 · Aurora Cloud Phase 1+2 (Docker + BYO-LLM + multi-tenant auth) · 7 new analytical methods · Jupyter integration · KB pack distribution · Preflight data-quality · **Slack/Discord/Email contract actions** · **Runs Library UI** · **MCP HTTP transport**
+- **v2.0 — actively shipping on `main`:** Causal inference (do-calculus) · Multi-dataset joins · Composable findings · Plugin SDK · **Custom KB ingestion (PDFs → KB)** · **Bundle attestation service** · **KB pack marketplace (preview)** · **Kafka + Postgres CDC streaming connectors** · **GPU embedding device gate**
+- **v1.2 tail (still open):** Bundle Format v1.1 (signed delta updates) · conversational copilot polish · KB community contribution flow · domain template packs · DuckDB ingest · mobile/tablet responsiveness pass
+- **v2.0+ (6–12 months):** Federated knowledge contribution · marketplace with creator revenue share · Aurora kernels · Aurora-as-CI · Web Component embeds · mobile companion
 
 ---
 
