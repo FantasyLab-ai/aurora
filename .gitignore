@@ -7,6 +7,19 @@ __pycache__/
 .ipynb_checkpoints/
 *.log
 
+# ---- Frontend build (v0.10 Phase 2 — Vite + TypeScript) ----
+# node_modules ships nothing useful to the repo; same for the
+# generated bundle output. The TS source under frontend/src/ IS
+# tracked — only the build artifacts are ignored.
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/*.log
+frontend/npm-debug.log*
+# ESLint cache + Vite cache.
+frontend/.eslintcache
+.vite/
+
 # ---- Virtualenv ----
 .venv/
 venv/

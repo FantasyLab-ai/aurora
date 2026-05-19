@@ -18051,6 +18051,37 @@
   } catch (_) { /* never let detector break boot */ }
 })();
 
+// v0.10 Phase 2 — graceful loader for the optional Vite/TypeScript
+// bundle at /static/dist/aurora.js. If the file is present (i.e.
+// someone ran `npm run build` in frontend/), it mounts as a module
+// and adds the typed `window.Aurora` namespace. If not, we run in
+// pure-legacy mode with no console noise.
+(function loadPhase2Bundle(){
+  try {
+    // HEAD-probe the file. Avoids 404 console warnings when the
+    // bundle isn't built yet (the common case for fresh checkouts).
+    fetch('/static/dist/aurora.js', {method: 'HEAD'})
+      .then(r => {
+        if (!r.ok) return;
+        const s = document.createElement('script');
+        s.type = 'module';
+        s.src = '/static/dist/aurora.js';
+        document.body.appendChild(s);
+        // Also drop the matching CSS if it shipped.
+        fetch('/static/dist/aurora.css', {method: 'HEAD'})
+          .then(rc => {
+            if (!rc.ok) return;
+            const l = document.createElement('link');
+            l.rel = 'stylesheet';
+            l.href = '/static/dist/aurora.css';
+            document.head.appendChild(l);
+          })
+          .catch(() => { /* silent */ });
+      })
+      .catch(() => { /* silent — pure-legacy mode */ });
+  } catch (_) { /* never break boot */ }
+})();
+
 (function cmdkPalette(){
   const overlay = document.getElementById('cmdkOverlay');
   const card    = document.getElementById('cmdkCard');

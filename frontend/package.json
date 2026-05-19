@@ -1,0 +1,23 @@
+{
+  "name": "aurora-studio-frontend",
+  "version": "0.10.0",
+  "private": true,
+  "type": "module",
+  "description": "Aurora Studio frontend build — Vite + TypeScript. Side-by-side with the legacy inline index.html during the Phase 2 migration.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "build:nocheck": "vite build",
+    "preview": "vite preview --port 5173",
+    "typecheck": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,json}\""
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "vite": "^5.4.0",
+    "prettier": "^3.3.0"
+  },
+  "dependencies": {
+    "nanostores": "^0.11.0"
+  }
+}

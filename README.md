@@ -378,7 +378,7 @@ Aurora stands on the shoulders of decades of statistical and analytical research
 - Reverend Thomas Bayes (Bayesian inference)
 - …and the broader open scientific community whose work makes Aurora possible
 
-The Aurora project itself is built by **Brandon Grutkowski** as part of FantasyLab.ai.
+The Aurora project itself is built as part of FantasyLab.ai.
 
 ---
 
