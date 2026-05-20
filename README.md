@@ -89,31 +89,36 @@ Open <http://127.0.0.1:8000>. Click **▶ Try a demo** for a 10-second smoke tes
 
 ### Optional: enhanced frontend build (v0.10 Phase 2)
 
-Aurora ships a working frontend out of the box — the pure-Python install above is all you need. The optional Phase 2 build adds a Vite + TypeScript layer with typed API helpers, hardened Server-Sent Events, and a Nanostores-backed state model. It runs **side-by-side** with the legacy frontend and is fully non-breaking — skip it entirely if you don't care.
+**You do NOT need this to run Aurora.** `python studio_api.py` is the only command required. This section is for developers who want type safety + a Vite hot-reload dev loop for future panel work.
+
+The Phase 2 bundle adds a Vite + TypeScript layer with typed API helpers, hardened Server-Sent Events, and a Nanostores-backed state model. It runs **side-by-side** with the existing frontend and is fully non-breaking — the visible Studio looks identical with or without it.
 
 Requirements: Node 18+ and npm.
 
+**Activation is a one-time build:**
+
 ```bash
 cd frontend
-npm install              # one-time — installs Vite, TypeScript, @types/node, Nanostores
-npm run build            # type-checks + bundles to frontend/dist/aurora.js + .css
+npm install              # installs Vite, TypeScript, @types/node, Nanostores
+npm run build            # produces frontend/dist/aurora.js + aurora.css
 cd ..
-python studio_api.py     # restart the Studio; the bundle auto-loads
 ```
 
-After the build, open the Studio and check DevTools console — you'll see `⚡ Aurora 0.10.0+phase2 loaded` and `window.Aurora.api`, `window.Aurora.store`, `window.Aurora.stream` become available for any custom panel work.
+That's it. The next time anyone loads the Studio (whether Flask was already running or not), the bundle activates automatically — Flask's static route serves the new files, and `index.html` HEAD-probes for them on load. Open DevTools console after a page reload and you'll see `⚡ Aurora 0.10.0+phase2 loaded` plus `window.Aurora.api / .store / .stream` available for custom panel work.
 
-For development with hot-reload, run Flask + Vite side-by-side (two terminals):
+**To turn it back off**: `rm -rf frontend/dist/` (or delete the folder). The page reverts to pure-legacy mode with no console warnings.
+
+**For active TypeScript development with hot-reload** (two terminals):
 
 ```bash
-# Terminal 1
-python studio_api.py                    # Flask on :8000
+# Terminal 1 — Flask backend on :8000
+python studio_api.py
 
-# Terminal 2
-cd frontend && npm run dev              # Vite on :5173 with HMR + Flask proxy
+# Terminal 2 — Vite dev server on :5173 with HMR + Flask proxy
+cd frontend && npm run dev
 ```
 
-Then open <http://127.0.0.1:5173>. Edits to `frontend/src/` hot-reload. Full guide: [docs/frontend-build.md](docs/frontend-build.md).
+Open <http://127.0.0.1:5173> (not :8000). Edits to anything under `frontend/src/` hot-reload instantly. Full guide: [docs/frontend-build.md](docs/frontend-build.md).
 
 > **Status:** v1.1 shipped (May 2026). v1.2 substantially shipped (streaming, cloud, Jupyter, contracts actions, runs library, MCP HTTP). v2.0 actively shipping on `main` (causal do-calculus, multi-dataset joins, Plugin SDK, custom KB ingestion, bundle attestation, KB marketplace, Kafka + Postgres CDC connectors, GPU embeddings). 599 tests passing locally; ~625 in CI. Real users running it on real data.
 
