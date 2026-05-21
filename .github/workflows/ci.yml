@@ -83,6 +83,7 @@ jobs:
             tests/test_q2_kb_attest_market_embed.py \
             tests/test_phase1_polish.py \
             tests/test_phase2_build.py \
+            tests/test_sdk_methods_namespace.py \
             tests/test_v1_2_frontend_wiring.py
 
       - name: Smoke-test runner module loads

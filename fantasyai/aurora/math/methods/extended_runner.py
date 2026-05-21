@@ -74,6 +74,7 @@ def run_extended_methods(
     from .emd import fit_emd
     from .kalman import fit_kalman
     from .spectral_entropy import fit_spectral_entropy
+    from .matrix_profile_method import fit_matrix_profile
 
     # Method registry. Each entry is (name, fit_function, kwargs builder).
     # The kwargs builder pulls per-method args from the caller's params.
@@ -85,6 +86,10 @@ def run_extended_methods(
         ("emd",              fit_emd,              lambda: {"target_col": target_col} if target_col else {}),
         ("kalman",           fit_kalman,           lambda: {"target_col": target_col} if target_col else {}),
         ("spectral_entropy", fit_spectral_entropy, lambda: {"target_col": target_col} if target_col else {}),
+        # v0.10.1: Matrix Profile — the canonical motif/discord
+        # algorithm for time series. Previously orphaned in
+        # fantasyai/aurora/matrix_profile.py; now first-class.
+        ("matrix_profile",   fit_matrix_profile,   lambda: {"target_col": target_col} if target_col else {}),
     ]
 
     if enabled_methods is not None:

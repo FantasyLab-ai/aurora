@@ -67,6 +67,7 @@ Returns a `RunResult` exposing `state`, `bundle`, and helper views.
 | `findings` | `Findings` | Lazy view; equivalent to `bundle.findings()` |
 | `forecast` | `ForecastView` | Lazy view; equivalent to `bundle.forecast()` |
 | `system_model` | `SystemModelView` | Lazy view |
+| **`methods`** | **`MethodsView`** | **Typed accessors for the 12 analytical methods (v0.10.1) — see below** |
 | `fabricated_count` | int | Always 0 by Aurora's contract |
 | `confidence` | float \| None | System-model confidence |
 
@@ -133,6 +134,151 @@ Each "finding" is a plain `dict` — pick the keys you need without learning a c
 | `.entity(entity_id) → dict \| None` | Lookup |
 | `.relationships() → list[dict]` | Topology edges |
 | `.phase_space() → dict \| None` | Phase-space projection |
+
+### `class MethodsView` *(v0.10.1)*
+
+Typed accessors for the analytical methods that fire on every Aurora run. Each accessor returns a frozen dataclass when the method fit successfully on the dataset, or `None` when the method skipped (data shape didn't qualify) or failed.
+
+Access via `result.methods` — never instantiate `MethodsView` directly.
+
+```python
+r = aurora.run("btc_1h.csv")
+
+if var := r.methods.var():
+    print(f"VAR({var.chosen_lag}) on {var.n_vars} vars")
+    if var.top_coupling:
+        print(f"  strongest: {var.top_coupling.from_col} → "
+              f"{var.top_coupling.to_col}  β = {var.top_coupling.coefficient_lag1}")
+
+if mp := r.methods.matrix_profile():
+    print(f"matrix profile window = {mp.window}, "
+          f"{len(mp.motifs)} motifs, {len(mp.discords)} discords")
+    for d in mp.discords[:3]:
+        print(f"  discord at row {d.start} (distance {d.distance:.3f})")
+
+if kf := r.methods.kalman():
+    print(f"kalman noise-reduction {kf.noise_reduction_fraction:.0%}")
+```
+
+#### The 12 first-class accessors
+
+| Accessor | Returns | When it fires |
+|---|---|---|
+| `.var()` | `VarFit \| None` | ≥2 numeric columns, ≥30 obs |
+| `.dtw()` | `DtwFit \| None` | ≥2 numeric columns |
+| `.bocpd()` | `BocpdFit \| None` | univariate target column |
+| `.robust_pca()` | `RobustPcaFit \| None` | ≥2 numeric cols, ≥20 obs |
+| `.emd()` | `EmdFit \| None` | univariate target |
+| `.kalman()` | `KalmanFit \| None` | univariate target |
+| `.spectral_entropy()` | `SpectralEntropyFit \| None` | univariate target, ≥50 obs |
+| **`.matrix_profile()`** | `MatrixProfileFit \| None` | univariate target, ≥30 obs (newly wired in v0.10.1) |
+| `.granger()` | `GrangerFit \| None` | ≥2 time series, ≥30 obs |
+| `.mutual_info()` | `MutualInfoFit \| None` | ≥2 numeric cols |
+| `.hmm()` | `HmmFit \| None` | univariate target, ≥50 obs |
+| `.wavelet()` | `WaveletFit \| None` | univariate target, ≥32 obs |
+
+#### Utility methods
+
+| Method | Returns | Description |
+|---|---|---|
+| `.list_methods()` | `list[str]` | Every method the bundle has a finding for |
+| `.fit_status(name)` | `'fit' \| 'skipped' \| 'failed' \| None` | Per-method status |
+| `.evidence(name)` | `dict \| None` | Raw evidence dict — escape hatch for fields not yet typed |
+| `.backtest(prices, signal, ...)` | `BacktestResult` | Strategy backtest (see below) |
+| `.signal_from_threshold(series, ...)` | `list[int]` | Build positions from per-bar predicates |
+
+#### Returned dataclasses
+
+Each `*Fit` is a `@dataclass(frozen=True)` with a `.to_dict()` for JSON serialization. See `aurora_sdk/methods.py` for the exhaustive shape — abbreviated highlights:
+
+- `VarFit(chosen_lag, n_obs, n_vars, target_cols, top_coupling: CrossCoupling | None, forecast_horizon, forecast_summary)`
+- `BocpdFit(target_col, n_obs, threshold, hazard, change_points: list[ChangePoint])`
+- `MatrixProfileFit(target_col, n_obs, window, motifs: list[Motif], discords: list[Discord], profile_stats)`
+- `KalmanFit(target_col, n_obs, noise_reduction_fraction, forecast_horizon, forecast: list[KalmanForecastStep])`
+- `SpectralEntropyFit(target_col, n_obs, global_spectral_entropy, regime_class, window_results, biggest_window_jump)`
+- `GrangerFit(pairs: list[GrangerPair])` — each pair carries `verdict ∈ {no_evidence, i_causes_j, j_causes_i, bidirectional}`
+
+#### Worked example — automated quantitative trading engine
+
+The full reason `MethodsView` exists: read structured analytical output from Aurora and use it to drive trading decisions.
+
+```python
+import aurora_sdk as aurora
+import pandas as pd
+
+# 1. Run Aurora on your OHLCV dataset.
+r = aurora.run("data/btc_1h.csv", depth="standard")
+
+# 2. Pull typed signals from the engine.
+mp = r.methods.matrix_profile()
+bocpd = r.methods.bocpd()
+se = r.methods.spectral_entropy()
+hmm = r.methods.hmm()
+
+# 3. Build a composite trading signal.
+df = pd.read_csv("data/btc_1h.csv")
+prices = df["close"].values
+
+# Component A: long when in a high-entropy "trending" regime AND the
+# HMM says we're in the middle (positive) state.
+def make_signal(p):
+    pos = [0] * len(p)
+    if not hmm or not se:
+        return pos
+    # Per-bar regime — we keep it constant since HMM gives one state for the run.
+    in_middle = hmm.current_state == 1
+    in_trend  = se and se.regime_class in ("moderate", "low_entropy")
+    target = 1 if (in_middle and in_trend) else 0
+    # Cap risk: drop position 5 bars before / after every BOCPD change-point.
+    cp_indices = {c.row_idx for c in (bocpd.change_points if bocpd else [])}
+    for i in range(len(p)):
+        if any(abs(i - cp) <= 5 for cp in cp_indices):
+            pos[i] = 0
+        else:
+            pos[i] = target
+    return pos
+
+# 4. Backtest with realistic costs.
+bt = r.methods.backtest(
+    prices,
+    make_signal(prices),
+    initial_capital=10_000,
+    commission_per_trade=1.0,    # $1 per fill
+    slippage_bps=2.0,            # 2 bps per side
+    bars_per_year=252 * 24,      # hourly bars
+)
+
+print(f"Trades:        {bt.n_trades}")
+print(f"Win rate:      {bt.win_rate:.1%}")
+print(f"Total return:  {bt.total_return:.2%}")
+print(f"Sharpe:        {bt.sharpe:.2f}" if bt.sharpe else "Sharpe:        n/a")
+print(f"Max drawdown:  {bt.max_drawdown_pct:.2%}")
+
+# 5. Save a signed bundle for audit.
+r.bundle.save("runs/btc_1h.aurora.json")
+```
+
+The `BacktestResult` carries everything a quant workflow needs:
+
+| Field | Type | What it is |
+|---|---|---|
+| `n_bars`, `n_trades`, `n_wins`, `n_losses`, `win_rate` | counts + ratio | basic accounting |
+| `total_return`, `cagr` | float | growth |
+| `sharpe`, `sortino` | float \| None | annualised risk-adjusted return |
+| `max_drawdown`, `max_drawdown_pct` | float | dollar + fractional worst peak-to-trough |
+| `avg_trade_pnl`, `avg_trade_pct` | float \| None | per-trade averages |
+| `best_trade`, `worst_trade` | dict \| None | the extreme trades by PnL |
+| `equity_curve` | list[float] | per-bar equity values |
+| `bar_returns` | list[float] | per-bar log returns |
+| `trades` | list[dict] | every closed trade with entry/exit indices + prices + PnL |
+| `config` | dict | the parameters used (capital, commission, slippage, bars/year) |
+
+#### Conventions
+
+* Position changes execute at the **next bar's close** (no look-ahead).
+* Position is clipped to `{-1, 0, +1}` — long-only / short-only / hedged-flat. Fractional sizing isn't supported in this MVP; for that, wrap your own simulator.
+* Commission + slippage are subtracted on entry AND exit of every trade.
+* Sharpe / Sortino are annualised via `bars_per_year` (default 252 for daily; pass 252×24 for hourly, etc.).
 
 ## Bundle Format v1 reference
 

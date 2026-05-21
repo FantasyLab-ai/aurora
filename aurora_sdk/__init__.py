@@ -47,6 +47,22 @@ from .notebook_export import (
     EXPORT_SCHEMA_VERSION,
     EXPORT_EXTENSION,
 )
+from .methods import (
+    MethodsView,
+    # Typed fits — each accessor returns one of these or None.
+    VarFit, CrossCoupling,
+    DtwFit, DtwPair,
+    BocpdFit, ChangePoint,
+    RobustPcaFit, OutlierRow,
+    EmdFit, ImfStat,
+    KalmanFit, KalmanForecastStep,
+    SpectralEntropyFit, SpectralEntropyWindow,
+    MatrixProfileFit, Motif, Discord,
+    GrangerFit, GrangerPair,
+    MutualInfoFit, MutualInfoPair,
+    HmmFit,
+    WaveletFit,
+)
 
 __all__ = [
     "Bundle",
@@ -70,6 +86,20 @@ __all__ = [
     "NotebookExportError",
     "EXPORT_SCHEMA_VERSION",
     "EXPORT_EXTENSION",
+    # v0.10.1 — typed method accessors + trading backtest.
+    "MethodsView",
+    "VarFit", "CrossCoupling",
+    "DtwFit", "DtwPair",
+    "BocpdFit", "ChangePoint",
+    "RobustPcaFit", "OutlierRow",
+    "EmdFit", "ImfStat",
+    "KalmanFit", "KalmanForecastStep",
+    "SpectralEntropyFit", "SpectralEntropyWindow",
+    "MatrixProfileFit", "Motif", "Discord",
+    "GrangerFit", "GrangerPair",
+    "MutualInfoFit", "MutualInfoPair",
+    "HmmFit",
+    "WaveletFit",
 ]
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"

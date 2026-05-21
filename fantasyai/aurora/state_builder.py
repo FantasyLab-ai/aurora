@@ -1198,12 +1198,14 @@ EXTENDED_METHOD_LABELS = {
     "emd":              "EMD · intrinsic modes",
     "kalman":           "Kalman · state filter",
     "spectral_entropy": "Spectral entropy",
+    "matrix_profile":   "Matrix profile · motifs",
 }
 
 # Canonical ordering for the frontend grid (matches the v1.2 brief).
 EXTENDED_METHOD_ORDER = [
     "var", "dtw", "bocpd", "robust_pca",
     "emd", "kalman", "spectral_entropy",
+    "matrix_profile",
 ]
 
 
@@ -1295,6 +1297,9 @@ _EVIDENCE_SAFE_KEYS = {
     # spectral_entropy
     "global_spectral_entropy", "regime_class",
     "window_results", "biggest_window_jump",
+    # matrix_profile
+    "window", "motifs", "discords", "profile_stats",
+    "n_motifs", "n_discords",
 }
 
 

@@ -138,23 +138,30 @@ class TestStateBuilderExtendedMethods:
 
     def test_build_extended_methods_handles_missing_doc(self):
         # CRITICAL: even when extended_methods.json doesn't exist for
-        # this run, the builder MUST still return the 7-tile shell so
-        # the frontend renders a consistent grid. available=False just
-        # signals "this run didn't produce data" — it never hides tiles.
-        from fantasyai.aurora.state_builder import _build_extended_methods
+        # this run, the builder MUST still return the full tile shell
+        # so the frontend renders a consistent grid. available=False
+        # just signals "this run didn't produce data" — it never
+        # hides tiles. v0.10.1 added matrix_profile, taking the
+        # canonical set from 7 to 8.
+        from fantasyai.aurora.state_builder import (
+            _build_extended_methods, EXTENDED_METHOD_ORDER,
+        )
         out = _build_extended_methods(None)
         assert out["available"] is False
         assert "per_method" in out
-        assert set(out["per_method"].keys()) == {
-            "var", "dtw", "bocpd", "robust_pca",
-            "emd", "kalman", "spectral_entropy",
-        }
-        # All 7 tiles default to "missing" so frontend shows them as pending.
+        assert set(out["per_method"].keys()) == set(EXTENDED_METHOD_ORDER)
+        assert "matrix_profile" in out["per_method"]
+        # All tiles default to "missing" so frontend shows them as pending.
         for name, tile in out["per_method"].items():
             assert tile["status"] == "missing"
 
-    def test_build_extended_methods_produces_seven_tiles(self):
-        from fantasyai.aurora.state_builder import _build_extended_methods
+    def test_build_extended_methods_produces_full_tile_set(self):
+        """The full v0.10.1 set is 8 methods: var, dtw, bocpd, robust_pca,
+        emd, kalman, spectral_entropy, matrix_profile."""
+        from fantasyai.aurora.state_builder import (
+            _build_extended_methods, EXTENDED_METHOD_ORDER,
+        )
+        n_methods = len(EXTENDED_METHOD_ORDER)
         doc = {
             "findings": [
                 {"method": "var",
@@ -167,19 +174,16 @@ class TestStateBuilderExtendedMethods:
                                 "n_obs": 50, "n_vars": 2}},
             ],
             "per_method": {"var": {"status": "fit", "elapsed_s": 0.1}},
-            "n_methods_run": 7, "n_findings": 1,
+            "n_methods_run": n_methods, "n_findings": 1,
         }
         out = _build_extended_methods(doc)
         assert out["available"] is True
-        assert out["n_methods_run"] == 7
-        # All 7 methods always have a tile entry — even when not run
-        # (status='missing') — so the UI can show a stable grid.
-        assert set(out["per_method"].keys()) == {
-            "var", "dtw", "bocpd", "robust_pca",
-            "emd", "kalman", "spectral_entropy",
-        }
+        assert out["n_methods_run"] == n_methods
+        # Every method in the canonical order has a tile entry.
+        assert set(out["per_method"].keys()) == set(EXTENDED_METHOD_ORDER)
         assert out["per_method"]["var"]["status"] == "fit"
         assert out["per_method"]["dtw"]["status"] == "missing"
+        assert out["per_method"]["matrix_profile"]["status"] == "missing"
 
     def test_evidence_whitelist_drops_large_blobs(self):
         from fantasyai.aurora.state_builder import _trim_evidence

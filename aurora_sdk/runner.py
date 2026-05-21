@@ -59,6 +59,18 @@ class RunResult:
         return self.bundle.system_model()
 
     @property
+    def methods(self):
+        """Typed accessors for the analytical methods that fire on
+        every run — VAR, DTW, BOCPD, Robust PCA, EMD, Kalman, Spectral
+        Entropy, Matrix Profile, Granger, Mutual Info, HMM, Wavelet —
+        plus a strategy-backtest helper for trading workflows.
+
+        See ``aurora_sdk.MethodsView`` for the full surface.
+        """
+        from .methods import MethodsView
+        return MethodsView(self.bundle)
+
+    @property
     def fabricated_count(self) -> int:
         return self.bundle.fabricated_count
 
