@@ -151,7 +151,17 @@ def _infer_col_role(df: pd.DataFrame, c: str) -> dict:
     except Exception:
         mono_hint = False
 
-    if name_id_hint or uniq_ratio > 0.98 or mono_hint:
+    # v0.10.2 bugfix: a datetime column legitimately has near-unique
+    # values (one timestamp per row) — don't reclassify it as id_like.
+    # The previous logic clobbered role="datetime" to role="id_like"
+    # whenever uniq_ratio > 0.98, which made downstream code that
+    # filters on `role == "datetime"` miss real time columns (e.g.
+    # GAME_DATE on a one-game-per-day NBA log). Datetime columns are
+    # protected from the id_like override; the rescue path in
+    # _pick_best_time_column kept the contract self-consistent before
+    # this fix, but downstream consumers that read `role` directly
+    # got the wrong answer.
+    if role != "datetime" and (name_id_hint or uniq_ratio > 0.98 or mono_hint):
         role = "id_like"
         hints.append("id_like")
 
