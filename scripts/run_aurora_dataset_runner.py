@@ -845,8 +845,18 @@ def _main() -> None:
     # Downstream modules should prefer numeric/time views (more robust than raw)
     df_for_engine = df_numeric if (df_numeric is not None and df_numeric.shape[1] >= 1) else df_canonical
 
-    # Build rich schema/structure contract
-    structure_contract = build_structure_contract(df_for_engine if "df_for_engine" in locals() else df, dataset_key=resolved.get("dataset_key"))
+    # v0.10.2 bugfix: build_structure_contract MUST see the original
+    # frame including datetime columns. Feeding df_numeric here strips
+    # the time column before profiling, which gave Aurora "no valid time
+    # axis" on any dataset that had a real datetime column (e.g. a
+    # GAME_DATE / TIMESTAMP column on an NBA game log). The analytical
+    # engine downstream still uses df_for_engine = df_numeric — only
+    # the structure contract needs the time-aware view.
+    df_for_structure = (
+        df_time if (df_time is not None and df_time.shape[1] >= 1)
+        else df_canonical
+    )
+    structure_contract = build_structure_contract(df_for_structure, dataset_key=resolved.get("dataset_key"))
     _write_json(run_dir / "structure_contract.json", structure_contract)
 
     # Keep legacy structure.json for backward compatibility

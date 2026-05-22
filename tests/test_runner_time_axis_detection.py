@@ -130,6 +130,41 @@ class TestStructureContractEndToEnd:
         assert game_date_profile is not None
         assert game_date_profile["role"] == "datetime"
 
+    def test_main_feeds_structure_contract_a_time_aware_view(self):
+        """The runner's _main() must pass a frame INCLUDING the date
+        column to build_structure_contract. Earlier versions fed
+        df_numeric (numeric-only view) which silently stripped the
+        time column — the structure contract then had time.best_time_col=None
+        and the Studio cube displayed "no valid time axis" even though
+        a real datetime column existed.
+
+        We grep the script source for the right pattern rather than
+        running _main (which spawns subprocesses + needs many deps).
+        """
+        from pathlib import Path
+        src = (Path(__file__).resolve().parents[1]
+               / "scripts" / "run_aurora_dataset_runner.py").read_text(encoding="utf-8")
+        # The fix: build_structure_contract receives a time-aware frame.
+        assert "df_for_structure" in src, (
+            "_main should compute a separate df_for_structure that "
+            "preserves datetime columns for build_structure_contract"
+        )
+        # Confirm the dangerous prior pattern (feeding df_for_engine,
+        # which is df_numeric) is no longer the call argument to
+        # build_structure_contract.
+        # Find the build_structure_contract call site.
+        bsc_call_lines = [
+            line for line in src.splitlines()
+            if "build_structure_contract(" in line and "def " not in line
+        ]
+        assert bsc_call_lines, "build_structure_contract call site not found"
+        # The call should be: build_structure_contract(df_for_structure, ...)
+        assert any("build_structure_contract(df_for_structure" in line
+                    for line in bsc_call_lines), (
+            f"build_structure_contract should be called with df_for_structure; "
+            f"found: {bsc_call_lines}"
+        )
+
     def test_numeric_cols_excludes_time_column(self, runner):
         """numeric_cols should NOT include the date column even when
         the date column happens to be parseable as numeric (epoch /
