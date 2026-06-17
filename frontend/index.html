@@ -8820,22 +8820,25 @@
   }
 
   function populateForecast(f) {
+    // Idempotent: always wipe the showcase HTML at entry so partial state
+    // (e.g. {available: true, target: '...'} with no points/headline) can't
+    // leave stale "wave_height · 72H · 3.4 m · breach predicted" content
+    // visible. Same pattern populateMotifs uses (line ~12336).
+    const _fcBadge   = document.getElementById('forecastBadge');
+    const _fcHead    = document.getElementById('forecastHeadline');
+    const _fcPts     = document.getElementById('forecastPoints');
+    const _fcWarn    = document.getElementById('forecastWarn');
+    const _fcAlt     = document.getElementById('forecastAlt');
+    if (_fcHead) _fcHead.innerHTML = '';
+    if (_fcPts)  _fcPts.innerHTML  = '';
+    if (_fcWarn) _fcWarn.innerHTML = '';
+    if (_fcAlt)  _fcAlt.innerHTML  = '';
     if (!f || !f.available) {
-      // Clear the showcase-default HTML so a real run doesn't render on
-      // top of stale "wave_height · 72H" placeholder content.
-      const badge = document.getElementById('forecastBadge');
-      if (badge) badge.textContent = 'no forecast';
-      const headline = document.getElementById('forecastHeadline');
-      if (headline) headline.innerHTML =
+      if (_fcBadge) _fcBadge.textContent = 'no forecast';
+      if (_fcHead) _fcHead.innerHTML =
         '<div class="lbl" style="color:var(--ink-faint);">FORECAST</div>' +
         '<div class="val" style="color:var(--ink-faint);font-size:24px;font-style:italic;">—</div>' +
         '<div class="ci" style="color:var(--ink-faint);font-style:italic;">No forecast available for this dataset shape.</div>';
-      const pts = document.getElementById('forecastPoints');
-      if (pts) pts.innerHTML = '';
-      const warn = document.getElementById('forecastWarn');
-      if (warn) warn.innerHTML = '';
-      const alt = document.getElementById('forecastAlt');
-      if (alt) alt.innerHTML = '';
       return;
     }
     document.getElementById('forecastBadge').textContent =
@@ -8956,19 +8959,23 @@
   }
 
   function populatePhysics(p) {
+    // Idempotent: always wipe the showcase HTML at entry (Pierson-Moskowitz
+    // law, conservation/dimensional/energy/symmetry check tiles, and the
+    // "Energy flux conserved / SST diurnal cycle / Wind-wave coupling"
+    // invariants list at #physInvariants). Same pattern as populateMotifs.
+    const _pLaw   = document.getElementById('physLaw');
+    const _pChks  = document.getElementById('physChecks');
+    const _pInvs  = document.getElementById('physInvariants');
+    if (_pChks) _pChks.innerHTML = '';
+    if (_pInvs) _pInvs.innerHTML = '';
     if (!p || !p.available) {
-      // Wipe the Pierson-Moskowitz showcase HTML so a run without a
-      // discovered law doesn't keep lying with H_s ≈ 0.21·U_10²·F^0.5/g.
-      const law = document.getElementById('physLaw');
-      if (law) law.innerHTML =
+      if (_pLaw) _pLaw.innerHTML =
         '<div class="lbl" style="color:var(--ink-faint);">PHYSICS</div>' +
         '<div class="desc" style="color:var(--ink-faint);font-style:italic;line-height:1.5;">' +
         'No symbolic law discovered for this dataset. ' +
         'Re-run at STANDARD tier with a numeric target column to invoke the ' +
         'symbolic-discovery layer.' +
         '</div>';
-      const checks = document.getElementById('physChecks');
-      if (checks) checks.innerHTML = '';
       return;
     }
     if (p.discovered_law && (p.discovered_law.equation || p.discovered_law.name)) {
