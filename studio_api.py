@@ -771,6 +771,132 @@ def api_domains():
 # Decision-contract acquisition (Phase B)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Auto-fire contracts on run completion (Aurora Sentinel)
+# ---------------------------------------------------------------------------
+#
+# Every Aurora batch run automatically evaluates loaded Decision Contracts
+# against the just-completed bundle and fires the ones whose trigger
+# predicate is satisfied. This is the core Aurora Sentinel UX promise:
+# "drop a CSV → Aurora finds something → Discord/Slack/device reacts"
+# without any extra command.
+#
+# Opt-out:
+#   AURORA_AUTOFIRE_CONTRACTS=0    disables auto-fire entirely
+#
+# Behaviour:
+#   * Runs in a daemon thread so it never blocks the run-completion path.
+#   * Loads contracts from ~/.aurora/decision_contracts/ via the engine's
+#     load_contracts(); same contracts the UI lists at /api/contracts.
+#   * Builds the bundle from the just-completed run via build_state().
+#   * Honours each contract's rate_limit, dry-run flags, etc.
+#   * Failures are caught + logged; never crashes the runner thread.
+# ---------------------------------------------------------------------------
+
+_AUTOFIRE_ENABLED = os.environ.get("AURORA_AUTOFIRE_CONTRACTS", "1").strip() not in ("0", "false", "no", "")
+
+
+def _autofire_contracts(run_dir: Optional[str], *, source: str = "batch") -> None:
+    """Evaluate every loaded contract against the bundle from `run_dir`
+    and fire those that match. Safe to call from any thread; never raises."""
+    if not _AUTOFIRE_ENABLED:
+        return
+    if not run_dir:
+        return
+    try:
+        from fantasyai.aurora.decision_contracts.engine import (
+            load_contracts, fire_contract,
+        )
+    except Exception as e:
+        print(f"[aurora-autofire] contracts engine unavailable: {e}",
+              flush=True)
+        return
+
+    try:
+        rd_path = Path(run_dir)
+        if not rd_path.exists():
+            return
+        # Build the bundle. Prefer the SDK shape; fall back to a minimal
+        # envelope so we still fire even when SDK isn't importable.
+        bundle: Dict[str, Any]
+        if _HAVE_STATE:
+            try:
+                state = build_state(rd_path)
+            except Exception as e:
+                print(f"[aurora-autofire] build_state failed: {e}", flush=True)
+                return
+            # Try the SDK first for the canonical bundle shape (it has
+            # integrity hashes + signing surface contracts may reference).
+            try:
+                from aurora_sdk import Bundle
+                b = Bundle.from_state(state, run_dir=rd_path)
+                bundle = b.doc if hasattr(b, "doc") else dict(b)
+            except Exception:
+                # Minimal envelope — engine's predicate walker only needs
+                # findings + counts + a few aggregates.
+                bundle = {
+                    "run":               {"run_id": state.get("run_id")
+                                            or rd_path.name},
+                    "findings":          state.get("findings") or [],
+                    "anomalies":         state.get("anomalies") or [],
+                    "forecast":          state.get("forecast")  or {},
+                    "system_model":      state.get("system_model") or {},
+                    "fabricated_count":  state.get("fabricated_count") or 0,
+                }
+        else:
+            return
+
+        contracts = load_contracts()
+        if not contracts:
+            return
+
+        n_fit = 0
+        n_fired = 0
+        for c in contracts:
+            try:
+                rec = fire_contract(c, bundle, dry_run=False)
+                errs = list(getattr(rec, "errors", []) or [])
+                if "not_satisfied" in errs:
+                    continue
+                if "rate_limited" in errs:
+                    print(f"[aurora-autofire] {c.id} skipped — rate limited",
+                          flush=True)
+                    continue
+                n_fit += 1
+                attempted = int(getattr(rec, "actions_attempted", 0) or 0)
+                succeeded = int(getattr(rec, "actions_succeeded", 0) or 0)
+                if succeeded >= attempted and attempted > 0:
+                    n_fired += 1
+                    print(f"[aurora-autofire] {c.id} fired "
+                          f"({succeeded}/{attempted} actions)", flush=True)
+                else:
+                    print(f"[aurora-autofire] {c.id} matched but actions "
+                          f"failed: {errs}", flush=True)
+            except Exception as e:
+                print(f"[aurora-autofire] {getattr(c, 'id', '?')} crash: "
+                      f"{type(e).__name__}: {e}", flush=True)
+        if n_fit:
+            print(f"[aurora-autofire] {source} run {rd_path.name}: "
+                  f"{n_fit} contracts matched, {n_fired} fully fired",
+                  flush=True)
+    except Exception as e:
+        # Outermost catch — never let auto-fire crash the runner.
+        print(f"[aurora-autofire] unexpected error: {type(e).__name__}: {e}",
+              flush=True)
+
+
+def _autofire_contracts_async(run_dir: Optional[str], *, source: str = "batch") -> None:
+    """Kick off _autofire_contracts in a daemon thread so the caller
+    (the run-completion path) doesn't block on webhook latency."""
+    if not _AUTOFIRE_ENABLED or not run_dir:
+        return
+    import threading as _t
+    t = _t.Thread(target=_autofire_contracts, args=(run_dir,),
+                   kwargs={"source": source}, daemon=True,
+                   name=f"aurora-autofire-{source}")
+    t.start()
+
+
 @app.route("/api/contracts")
 def api_contracts():
     """List the 21 default decision contracts.
@@ -2881,6 +3007,8 @@ def api_run():
                             )
                     except Exception:
                         pass
+                # Aurora Sentinel: auto-fire contracts on cache-hit too.
+                _autofire_contracts_async(str(cached), source="cache_hit")
                 return jsonify({
                     "ok": True,
                     "async": False,
@@ -2966,6 +3094,10 @@ def api_run():
                     pass
             if ok:
                 _reg.complete(run_id, run_dir=run_dir, cached=cached)
+                # Aurora Sentinel: auto-fire contracts the moment the
+                # batch run completes. Runs in a daemon thread so the
+                # runner thread doesn't block on webhook latency.
+                _autofire_contracts_async(run_dir, source="async")
             else:
                 _reg.fail(run_id, err or "unknown error")
         except Exception as e:
