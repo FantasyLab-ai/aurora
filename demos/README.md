@@ -195,40 +195,67 @@ If both happen, you're golden.
 
 ## 🎯 Demo 5 — Rediscover the Law (Physics) · record SECOND
 
-**Length:** 40-60 s. **Hero shot:** `y = −4.905·t²` resolving over your real ball-drop clip.
+**Length:** 40-60 s. **Hero shot:** the **DISCOVERED MODEL** card showing the
+power-law fit Aurora rediscovered for `p99_ms` — plus the eight candidate
+forms it tried (and the seven it ruled out).
 
-### Step A — record the real-world clip first (phone, no Aurora)
+This demo pairs beautifully with Demo 3 because it uses the **same dataset
+on a different lens**. Demo 3's narrative is *"Aurora caught the regime
+shift no one was watching."* Demo 5 is *"On the same data, Aurora also
+discovered the LAW the system was obeying — no invented dynamics, every
+fit cited, every candidate scored."* Two demos, one truth chain.
 
-1. Get a ball (tennis ball is great).
-2. Phone in landscape, frame the drop from ~5 ft height.
-3. Hit phone-record. Hold 1 s → release ball → hold 2 s after impact.
-4. Save the 3-4 s clip to your machine.
+> **Why not falling_ball?** Aurora's symbolic-discovery layer didn't
+> produce a fit for the falling-ball dataset (likely a small-N
+> target-inference issue — 60 rows isn't enough for the layer's current
+> preconditions). Server metrics produces a clean `power_law` fit with
+> RMSE 0.041 and 8 candidates scored. We use what works.
 
-### Step B — record Aurora discovering the law
+### Step A — run Aurora on server_metrics
 
 ```powershell
 # === Terminal 1 ===
 cd C:\Users\bgrut\Desktop\Aurora_QIE\.claude\worktrees\peaceful-easley-8514ec
 . .\.venv\Scripts\Activate.ps1
+. .\demos\load_env.ps1
 python studio_api.py
 ```
 
-In the browser at `http://127.0.0.1:8000`:
+In the browser at `http://127.0.0.1:8000` (or 8001):
 
 1. **CHANGE** to clear any prior dataset.
-2. Drag `demos\datasets\falling_ball\falling_ball.csv`.
-3. In "WHAT DO YOU WANT TO KNOW", type: `target column: y`.
+2. Drag `demos\datasets\server_metrics\server_metrics.csv`.
+3. In "WHAT DO YOU WANT TO KNOW", type: `target column: p99_ms`.
 4. Click **STANDARD** tier.
 5. Click **RUN ANALYSIS**.
 
-**Press F9** to start recording. The analysis runs ~30 s. When complete:
+### Step B — record the dashboard panel
 
-1. Click **PHYSICS** in the lens row.
-2. Zoom on the **"DISCOVERED MODEL"** card showing `y(t) = …`, the RMSE,
-   and the `seed:sindy` citation.
-3. Hold 4-5 s. **Press F9** to stop.
+**Press F9** to start recording. The analysis runs ~30 s. When complete,
+scroll down to the **intelligence** dashboard band. The **PHYSICS** panel
+shows the hero shot:
 
-### Step C — extract the equation for the overlay
+```
+DISCOVERED MODEL · POWER_LAW
+y = a · t^b
+RMSE 0.041
+CONSISTENCY 1.00
+
+ALL CANDIDATES TRIED · 8 FORMS
+  power_law    y = a · t^b              0.041  ← winner
+  sigmoid      y = L / (1 + exp(−k·t))  0.044
+  linear_ode   dy/dt = a·y + b          0.078
+  logistic     ...                      0.127
+  exponential  ...                      0.842
+  damped_osc   ...                      0.869
+  ...
+```
+
+Hold the camera 4-5 s on the **DISCOVERED MODEL** card, then pan down
+to the **ALL CANDIDATES TRIED** list to emphasize the citation chain.
+**Press F9** to stop.
+
+### Step C — extract the equation JSON for editor overlay
 
 ```powershell
 # === Terminal 2 ===
@@ -237,16 +264,20 @@ cd C:\Users\bgrut\Desktop\Aurora_QIE\.claude\worktrees\peaceful-easley-8514ec
 python -m demos.datasets.falling_ball.extract_physics --latest
 ```
 
-Outputs JSON with a `headline_overlay` array — three lines for your editor:
+(The script lives under `falling_ball/` for historical reasons but is
+dataset-agnostic — it reads any run's `deep_math.json`.)
+
+Outputs JSON with `law`, `model`, fitted `params`, `rmse`, `aic`, the
+list of `runner_ups`, and a 3-line `headline_overlay` your editor stamps
+on screen. For server_metrics:
 
 ```
 y(t) = ?
-y(t) = 5.000 + 0.010·t + −4.905·t²
-½a = −4.905   →   a = −9.81 m/s²
+y = a · t^b   ·   a=0.398  b=−95872.870
+RMSE = 0.0415  ·  Aurora cited: SINDy
 ```
 
-Stamp those onto the ball-drop clip in three timed beats. Last beat:
-the cited paper string.
+The cited paper string (Brunton/Proctor/Kutz 2016) is the visual climax.
 
 ---
 

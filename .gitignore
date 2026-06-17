@@ -37,6 +37,14 @@ datasets/
 *.zip
 *.gz
 *.txt
+
+# But: demos/datasets/ ships source files (generators, extractors, READMEs)
+# alongside generated CSVs. Track the source; let the *.csv rule keep the
+# generated data out of git.
+!demos/datasets/
+!demos/datasets/**/
+!demos/datasets/**/*.py
+!demos/datasets/**/*.md
 *.exe
 # Allow our actual dependency manifests through the *.txt rule above.
 !requirements.txt
