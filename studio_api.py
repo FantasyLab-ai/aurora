@@ -796,6 +796,33 @@ def api_domains():
 _AUTOFIRE_ENABLED = os.environ.get("AURORA_AUTOFIRE_CONTRACTS", "1").strip() not in ("0", "false", "no", "")
 
 
+def _dominant_method(findings: Any) -> Optional[str]:
+    """Tally analytical methods across findings and return the dominant
+    label as ``"NAME (n/total)"`` — e.g. ``"Z-SCORE (12/23)"``. Used by the
+    autofire path to enrich count-based contract payloads so the relay's
+    Discord/Slack card cites a real method instead of an em dash.
+
+    Returns ``None`` when no finding carries a ``method`` tag, in which
+    case the relay falls back to the existing em-dash placeholder.
+    """
+    if not findings:
+        return None
+    from collections import Counter
+    tally: "Counter[str]" = Counter()
+    for f in findings:
+        if not isinstance(f, dict):
+            continue
+        m = str(f.get("method") or "").strip()
+        if m:
+            tally[m] += 1
+    if not tally:
+        return None
+    top, n = tally.most_common(1)[0]
+    total = sum(tally.values())
+    display = top.upper().replace("_", "-")
+    return f"{display} ({n}/{total})"
+
+
 def _autofire_contracts(run_dir: Optional[str], *, source: str = "batch") -> None:
     """Evaluate every loaded contract against the bundle from `run_dir`
     and fire those that match. Safe to call from any thread; never raises."""
@@ -850,11 +877,30 @@ def _autofire_contracts(run_dir: Optional[str], *, source: str = "batch") -> Non
         if not contracts:
             return
 
+        # Pre-compute the dominant analytical method across findings so
+        # every fired contract carries it in its WebhookAction payload.
+        # Count-based triggers (findings.count >= 1) have no single finding
+        # to cite — this aggregate fills the Method field on the relay card
+        # honestly: "Z-SCORE (12/23)" rather than an em dash.
+        dominant = _dominant_method(bundle.get("findings"))
+
         n_fit = 0
         n_fired = 0
         for c in contracts:
+            # Restore-on-exit pattern: we temporarily enrich each contract's
+            # metadata with the dominant method, fire, then always restore —
+            # so the in-memory contract objects don't accumulate state
+            # between runs or leak between contracts.
+            orig_meta = c.metadata
+            if dominant:
+                c.metadata = {**(orig_meta or {}), "method": dominant}
             try:
-                rec = fire_contract(c, bundle, dry_run=False)
+                try:
+                    rec = fire_contract(c, bundle, dry_run=False)
+                except Exception as e:
+                    print(f"[aurora-autofire] {getattr(c, 'id', '?')} crash: "
+                          f"{type(e).__name__}: {e}", flush=True)
+                    continue
                 errs = list(getattr(rec, "errors", []) or [])
                 if "not_satisfied" in errs:
                     continue
@@ -872,9 +918,8 @@ def _autofire_contracts(run_dir: Optional[str], *, source: str = "batch") -> Non
                 else:
                     print(f"[aurora-autofire] {c.id} matched but actions "
                           f"failed: {errs}", flush=True)
-            except Exception as e:
-                print(f"[aurora-autofire] {getattr(c, 'id', '?')} crash: "
-                      f"{type(e).__name__}: {e}", flush=True)
+            finally:
+                c.metadata = orig_meta
         if n_fit:
             print(f"[aurora-autofire] {source} run {rd_path.name}: "
                   f"{n_fit} contracts matched, {n_fired} fully fired",
