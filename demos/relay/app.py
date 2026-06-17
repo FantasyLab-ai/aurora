@@ -198,10 +198,22 @@ def events():
 @app.route("/overlay/")
 @app.route("/overlay/<path:filename>")
 def overlay(filename: str = "index.html"):
-    """Serve the OBS browser-source overlay assets."""
+    """Serve the OBS browser-source overlay assets.
+
+    Sends `Cache-Control: no-store` on every asset. Without this,
+    Chrome aggressively caches `app.js` + `style.css` (12h TTL from
+    Flask's default `send_from_directory`), and changes we push
+    here don't reach the overlay until the user manually hard-
+    refreshes. For a recording rig where iteration is constant,
+    that's a deal-breaker — bake it out.
+    """
     from pathlib import Path
     overlay_dir = Path(__file__).resolve().parent.parent / "overlay"
-    return send_from_directory(str(overlay_dir), filename)
+    resp = send_from_directory(str(overlay_dir), filename)
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 
 # ---------------------------------------------------------------------------

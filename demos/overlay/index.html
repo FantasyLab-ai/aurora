@@ -24,7 +24,10 @@
     href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;700&family=Departure+Mono&display=swap"
     rel="stylesheet"
   />
-  <link rel="stylesheet" href="style.css" />
+  <!-- v=2 cache-buster — bump this whenever app.js or style.css changes.
+       Combined with no-store headers from the relay, this guarantees
+       Chrome / OBS browser source pull the latest code on every load. -->
+  <link rel="stylesheet" href="style.css?v=2" />
 </head>
 <body>
   <!-- The card lives in a corner anchor so it composes cleanly over
@@ -78,6 +81,6 @@
     <source src="fire.wav" type="audio/wav" />
   </audio>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=2"></script>
 </body>
 </html>
