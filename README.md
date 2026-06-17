@@ -12,11 +12,81 @@
   [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
   [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
   [![Status](https://img.shields.io/badge/status-v2.0%20active-purple.svg)](#)
-  [![Tests](https://img.shields.io/badge/tests-599%20passing-brightgreen.svg)](#)
+  [![Tests](https://img.shields.io/badge/tests-699%20passing-brightgreen.svg)](#)
   [![Patreon](https://img.shields.io/badge/support-Patreon-f96854.svg)](https://www.patreon.com/c/FantasyLab3DStudio)
 
-  [Install](#install) · [See it in action](#see-aurora-in-action) · [Aurora Copilot](#-aurora-copilot--for-humans) · [Aurora Cortex](#%EF%B8%8F-aurora-cortex--for-ai-systems) · [Roadmap](ROADMAP.md) · [FantasyLab.ai](https://fantasylab.ai)
+  [Quickstart](#-quickstart-60-seconds) · [Aurora Sentinel demos](#-aurora-sentinel--decision-contracts-in-the-room) · [See it in action](#see-aurora-in-action) · [Aurora Copilot](#-aurora-copilot--for-humans) · [Aurora Cortex](#%EF%B8%8F-aurora-cortex--for-ai-systems) · [Roadmap](ROADMAP.md) · [FantasyLab.ai](https://fantasylab.ai)
 </div>
+
+---
+
+## ⚡ Quickstart (60 seconds)
+
+```bash
+# 1. Clone + create a virtualenv
+git clone https://github.com/FantasyLab-ai/aurora.git
+cd aurora
+python -m venv .venv
+# Windows:
+.\.venv\Scripts\Activate.ps1
+# macOS / Linux:
+source .venv/bin/activate
+
+# 2. Install
+pip install -r requirements.txt
+
+# 3. Run the Studio
+python studio_api.py
+```
+
+Open <http://127.0.0.1:8000>. Click **▶ Try a demo** for an instant smoke test, or drop your own CSV / Parquet / JSON / XLSX.
+
+> First run will download a small knowledge-bank seed (~50 MB). After that, Aurora runs **fully offline** — no API keys, no cloud, no telemetry.
+
+**Optional extras** (only if you need them):
+
+```bash
+pip install cryptography             # Ed25519 bundle signing
+pip install mcp                      # MCP server for LLM agents (Claude Desktop, Cursor, etc.)
+pip install -r requirements-dev.txt  # contributor / test extras
+```
+
+For the optional Vite + TypeScript frontend build (developers only), see [§ Optional frontend build](#optional-enhanced-frontend-build).
+
+---
+
+## 🚨 Aurora Sentinel — Decision Contracts in the room
+
+Aurora ships a complete **demo rig** under [`demos/`](demos/) that turns a Decision Contract trip into something tangible — a Discord ping, a Slack alert, an OBS overlay card, a smart-plug flipping in your room. Five "I gave my local AI X and watch what it caught" videos, all built on the same scaffolding.
+
+| # | Demo | Hero shot | What it shows |
+|---|---|---|---|
+| 1 | **Aurora Alarm** | A physical light flips when the data breaks | The closed loop is real — software → cited reason → real-world consequence |
+| 2 | **Community Sentinel** | A Discord embed lands with method + row + |z|σ | Drop-in for any Discord community; cited anomalies, no cloud |
+| 3 | **The Save** | A Slack ping arrives at the regime shift | The "human watching dashboards would have slept through this" demo |
+| 4 | **Verification Cortex** | An agent calls Aurora's MCP and acts on a *verified* number | Sells the agent-builder use case; no more confidently-wrong z-scores |
+| 5 | **Rediscover the Law** | Aurora derives `y = ½·a·t²` from a falling-ball video | The flagship hook — a free local AI rediscovers gravity, cited to SINDy |
+
+**Quickstart for the demos** (after the install above):
+
+```bash
+# Generate the synthetic datasets one time:
+python -m demos.datasets.falling_ball.generate
+python -m demos.datasets.server_metrics.generate
+
+# Install the demo contracts into Aurora's contracts dir:
+cp demos/contracts/*.json ~/.aurora/decision_contracts/        # macOS / Linux
+copy demos\contracts\*.json $env:USERPROFILE\.aurora\decision_contracts\   # Windows
+
+# Configure your webhooks once (copy the template + paste your URLs):
+cp demos/.env.demos.example demos/.env.demos                   # macOS / Linux
+copy demos\.env.demos.example demos\.env.demos                 # Windows
+
+# Run the relay (it reads .env.demos for Discord/Slack URLs):
+python -m demos.relay.app
+```
+
+Full step-by-step recording walkthrough with OBS setup, contract installation, and a per-demo runbook lives at **[`demos/README.md`](demos/README.md)**.
 
 ---
 
@@ -68,24 +138,30 @@ A real run on an environmental air-quality dataset — captured straight from a 
 
 ---
 
-## Install
+## Verifying the install
 
-```bash
-git clone https://github.com/fantasylab/aurora.git
-cd aurora
-python -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+After `python studio_api.py` starts, you should see something like:
 
-# Optional substrate-layer extras
-pip install cryptography             # Ed25519 bundle signing
-pip install mcp                      # MCP server for LLM agents
-
-# Run the Studio
-python studio_api.py
+```
+[aurora] frontend = /path/to/aurora/frontend
+ * Running on http://127.0.0.1:8000
 ```
 
-Open <http://127.0.0.1:8000>. Click **▶ Try a demo** for a 10-second smoke test, or drop your own CSV / Parquet / JSON / XLSX.
+Open the URL. The Studio greets you with a "drop a dataset" zone. Use any of:
+
+```bash
+data/fixtures/factory_bearing_demo.csv      # ships with the repo — bearing failure
+data/fixtures/climate_buoy_demo.csv         # ships with the repo — NOAA-style buoy data
+data/fixtures/patient_cohort_demo.csv       # ships with the repo — clinical cohort
+```
+
+Drop one, click **AUTO** + **▶ RUN ANALYSIS**. In ~10-20 seconds you'll see:
+
+- The six analytical lenses populate (Overview, Anomalies, Regimes, Motifs, Forecast, Physics)
+- The Findings cards list every cited claim
+- The `0 fabricated` chip (always — that's Aurora's contract)
+
+If that worked, you're production-ready.
 
 ### Optional: enhanced frontend build (v0.10 Phase 2)
 

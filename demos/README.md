@@ -1,128 +1,343 @@
-# Aurora Demos
+# 🎬 Aurora Sentinel — demo recording runbook
 
-The `demos/` workspace is the production rig for the five Aurora
-demo videos. Everything here is reusable — the relay + overlay +
-replay harness service ALL five demos.
+This folder is the **production rig** for five short Aurora demo videos.
+Everything is reusable — the relay + overlay + replay harness service
+all five demos. Per-demo: just a new contract + a new replay command.
 
-## Layout
+If you're reading this to set up the recording, **read § Phase 0 first**,
+then jump straight to the demo you want to shoot. Every command below
+has been smoke-tested and includes the exact folder path.
 
-```
-demos/
-  relay/        — Flask service: receives Aurora's contract webhook,
-                  fans out to Discord / Slack / OBS overlay / log /
-                  device.
-  overlay/      — Browser-source HTML/CSS/JS for OBS. Listens to the
-                  relay's SSE stream and renders the "Aurora fired"
-                  card on screen.
-  replay.py     — Streams a CSV row-by-row so contracts trip on
-                  camera. Configurable speed (`--speed 50` = 50×).
-  datasets/     — Curated demo datasets with known anomalies
-                  (factory_bearing, server_metrics, falling_ball).
-                  Each has its own README documenting the expected
-                  finding so takes are repeatable.
-  contracts/    — Aurora Decision Contract JSON, one per demo.
-                  Each points its webhook at the relay.
-  agent_loop/   — Demo 4 — Verification Cortex terminal walkthrough.
-```
+---
 
-## One-time setup
+## 📦 Phase 0 — one-time setup
+
+### 0.1 Generate the synthetic datasets
 
 ```powershell
-# 1. Set up the relay's targets via env (only the ones you want to fire).
-$env:AURORA_DEMO_DISCORD_WEBHOOK = "https://discord.com/api/webhooks/..."
-$env:AURORA_DEMO_SLACK_WEBHOOK   = "https://hooks.slack.com/services/..."
-$env:AURORA_DEMO_DEVICE_URL      = "http://192.168.1.50/fire"   # ESP32 firmware
-$env:AURORA_DEMO_DEVICE_KIND     = "esp32"                      # or "shelly"
+cd C:\Users\bgrut\Desktop\Aurora_QIE\.claude\worktrees\peaceful-easley-8514ec
+. .\.venv\Scripts\Activate.ps1     # or wherever your .venv lives
 
-# 2. Install Aurora's contracts into the user's contracts dir.
-copy demos\contracts\aurora-alarm.json $HOME\.aurora\decision_contracts\
-copy demos\contracts\community-sentinel.json $HOME\.aurora\decision_contracts\
-copy demos\contracts\the-save.json $HOME\.aurora\decision_contracts\
-
-# 3. Generate the synthesised datasets.
 python -m demos.datasets.falling_ball.generate
 python -m demos.datasets.server_metrics.generate
 ```
 
-## The recording flow (every demo)
+(`factory_bearing_demo.csv` already ships with Aurora — no generator needed.)
 
-Open three terminals + OBS:
-
-1. **Aurora Studio** — `python studio_api.py` (the engine running on `:8000`).
-2. **Relay** — `python -m demos.relay.app` (the fan-out on `:7077`).
-3. **Replay harness** — `python -m demos.replay <dataset> --to demos\_live\stream.csv --speed 50` (only for "live"-style demos).
-4. **OBS** — add a Browser source pointing at `http://127.0.0.1:7077/overlay/`.
-
-When the contract trips, you'll see:
-
-- The Aurora Studio cube updates with the new finding.
-- The relay logs the fan-out in its terminal.
-- The overlay card animates in over your OBS scene with the cited
-  method + row + |z|σ + `0 FABRICATED`.
-- Discord / Slack messages land (if configured).
-- The smart plug / LED reacts (if configured).
-
-## Per-demo cheat sheet
-
-| # | Demo | Dataset | Contract | Relay outputs |
-|---|---|---|---|---|
-| 1 | Aurora Alarm | `factory_bearing_demo.csv` | `aurora-alarm.json` | overlay + device |
-| 2 | Community Sentinel | live feed (NOAA / crypto) or `factory_bearing` | `community-sentinel.json` | overlay + Discord |
-| 3 | The Save | `demos/datasets/server_metrics/server_metrics.csv` | `the-save.json` | overlay + Slack + log |
-| 4 | Verification Cortex | `factory_bearing_demo.csv` | none (terminal-only) | overlay (optional) |
-| 5 | Rediscover the Law | `demos/datasets/falling_ball/falling_ball.csv` | none | overlay (Physics lens) |
-
-## Sanity-checking the relay
+### 0.2 Install the contracts into Aurora's contracts dir
 
 ```powershell
-# Smoke-test the fire endpoint without firing Aurora:
-curl -X POST http://127.0.0.1:7077/aurora/fire `
-  -H "Content-Type: application/json" `
-  -d '{\"contract_id\":\"smoke\",\"contract_name\":\"smoke-test\",\"trigger_field\":\"findings.crit_count\",\"trigger_value\":4,\"metadata\":{\"method\":\"hampel-z\",\"row\":1247,\"z\":5.73}}'
+mkdir $env:USERPROFILE\.aurora\decision_contracts -Force
+
+copy demos\contracts\aurora-alarm.json        $env:USERPROFILE\.aurora\decision_contracts\
+copy demos\contracts\community-sentinel.json  $env:USERPROFILE\.aurora\decision_contracts\
+copy demos\contracts\the-save.json            $env:USERPROFILE\.aurora\decision_contracts\
 ```
 
-If the overlay's open in another tab/OBS, you should see the card
-fire instantly. Use this to frame the OBS scene + verify the relay
-+ overlay chain before going live.
+### 0.3 Set up your webhook URLs (one-time)
 
-## Demo 5 (Physics) — running it end-to-end
+**Discord** — Edit channel → Integrations → Webhooks → New Webhook → copy URL.
+
+**Slack** — <https://api.slack.com/apps> → Create App → Incoming Webhooks → Add to Workspace → copy URL.
+
+Then:
 
 ```powershell
-# Generate the falling-ball data.
-python -m demos.datasets.falling_ball.generate
+copy demos\.env.demos.example demos\.env.demos
+notepad demos\.env.demos        # paste your URLs into the two AURORA_DEMO_* lines
+```
 
-# Run Aurora on it (Studio or SDK).
+`demos\.env.demos` is **gitignored** — your URLs never reach the repo.
+Treat them like passwords; rotate if you ever paste them in a chat.
+
+### 0.4 Set up OBS once
+
+Create a scene called **"Aurora Demo"** with:
+
+1. **Display Capture** (or two Window Captures for split-screen demos).
+2. **Browser Source** with:
+   - URL: `http://127.0.0.1:7077/overlay/?corner=tr&hold=10000`
+   - Width 1920, Height 1080
+   - ✅ Refresh browser when scene becomes active
+   - ✅ Shutdown source when not visible
+3. Recording output: **1920×1080 @ 60fps, MP4**.
+4. Pick a hotkey for Start/Stop Recording (recommended: **F9**).
+
+### 0.5 Smoke-test the rig (do this once before any demo)
+
+```powershell
+# === Terminal A ===
+. .\demos\load_env.ps1
+python -m demos.relay.app
+```
+
+Expected:
+```
+[aurora-demo-relay] listening on http://127.0.0.1:7077
+  Adapters: ['sse', 'log', 'discord', 'slack']
+```
+
+Switch OBS to the "Aurora Demo" scene. The overlay's status crumb
+should turn **green** ("overlay · connected").
+
+```powershell
+# === Terminal B (smoke test only — closes when done) ===
+curl.exe -X POST http://127.0.0.1:7077/aurora/fire `
+  -H "Content-Type: application/json" `
+  -d '{\"contract_id\":\"smoke\",\"contract_name\":\"smoke-test\",\"trigger_field\":\"findings.crit_count\",\"trigger_value\":4,\"severity\":\"crit\",\"metadata\":{\"method\":\"hampel-z\",\"row\":1247,\"z\":5.73}}'
+```
+
+You should immediately see:
+
+- A magenta CRIT card fly in over OBS for ~10 seconds.
+- A message land in your Discord channel.
+- A message land in your Slack channel.
+- A JSON line appended to `demos\relay\fires.jsonl`.
+
+If all four happened, **the rig is production-ready**. Stop the relay (Ctrl+C).
+
+---
+
+## 🎯 Demo 2 — Community Sentinel (Discord) · record FIRST
+
+**Length:** 30-45 s. **Hero shot:** the Discord embed lands live with the citation.
+
+### Terminals
+
+```powershell
+# === Terminal 1 — Aurora Studio ===
+cd C:\Users\bgrut\Desktop\Aurora_QIE\.claude\worktrees\peaceful-easley-8514ec
+. .\.venv\Scripts\Activate.ps1
 python studio_api.py
-# In the browser, drop demos/datasets/falling_ball/falling_ball.csv,
-# set TARGET = y, hit RUN ANALYSIS.
+```
 
-# After the run finishes, extract the discovered equation for the overlay:
+```powershell
+# === Terminal 2 — Relay (with webhooks loaded) ===
+cd C:\Users\bgrut\Desktop\Aurora_QIE\.claude\worktrees\peaceful-easley-8514ec
+. .\.venv\Scripts\Activate.ps1
+. .\demos\load_env.ps1
+python -m demos.relay.app
+```
+
+### OBS layout
+
+Split-screen: Aurora Studio on left, Discord channel on right, overlay top-right corner.
+
+```
+┌─────────────────────────────┬──────────────────────┐
+│   Aurora Studio :8000       │  Discord channel     │
+│   (cube + lens row)         │  (windowed)          │
+└─────────────────────────────┴──────────────────────┘
+              overlay floats top-right
+```
+
+### Dry run (NOT recording yet)
+
+1. Open `http://127.0.0.1:8000`.
+2. Drag `data\fixtures\factory_bearing_demo.csv` onto the upload zone.
+3. **AUTO** → **RUN ANALYSIS**.
+4. ~15 s later, confirm: Discord message lands AND overlay card fires.
+
+If both happen, you're golden.
+
+### Record
+
+1. Aurora Studio: hit **CHANGE** to clear the previous run.
+2. Switch OBS scene → **press F9**.
+3. Wait 2 s.
+4. Drag `factory_bearing_demo.csv` → click **RUN ANALYSIS**.
+5. When contract trips (~12-15 s), hold camera 3 s on the Discord embed.
+6. **Press F9** to stop.
+
+---
+
+## 🎯 Demo 5 — Rediscover the Law (Physics) · record SECOND
+
+**Length:** 40-60 s. **Hero shot:** `y = −4.905·t²` resolving over your real ball-drop clip.
+
+### Step A — record the real-world clip first (phone, no Aurora)
+
+1. Get a ball (tennis ball is great).
+2. Phone in landscape, frame the drop from ~5 ft height.
+3. Hit phone-record. Hold 1 s → release ball → hold 2 s after impact.
+4. Save the 3-4 s clip to your machine.
+
+### Step B — record Aurora discovering the law
+
+```powershell
+# === Terminal 1 ===
+cd C:\Users\bgrut\Desktop\Aurora_QIE\.claude\worktrees\peaceful-easley-8514ec
+. .\.venv\Scripts\Activate.ps1
+python studio_api.py
+```
+
+In the browser at `http://127.0.0.1:8000`:
+
+1. **CHANGE** to clear any prior dataset.
+2. Drag `demos\datasets\falling_ball\falling_ball.csv`.
+3. In "WHAT DO YOU WANT TO KNOW", type: `target column: y`.
+4. Click **STANDARD** tier.
+5. Click **RUN ANALYSIS**.
+
+**Press F9** to start recording. The analysis runs ~30 s. When complete:
+
+1. Click **PHYSICS** in the lens row.
+2. Zoom on the **"DISCOVERED MODEL"** card showing `y(t) = …`, the RMSE,
+   and the `seed:sindy` citation.
+3. Hold 4-5 s. **Press F9** to stop.
+
+### Step C — extract the equation for the overlay
+
+```powershell
+# === Terminal 2 ===
+cd C:\Users\bgrut\Desktop\Aurora_QIE\.claude\worktrees\peaceful-easley-8514ec
+. .\.venv\Scripts\Activate.ps1
 python -m demos.datasets.falling_ball.extract_physics --latest
 ```
 
-The script prints the discovered law + RMSE + cited paper string in
-a shape the video editor can stamp onto the real-world ball-drop clip.
+Outputs JSON with a `headline_overlay` array — three lines for your editor:
 
-## Demo 4 (Verification Cortex) — running it end-to-end
+```
+y(t) = ?
+y(t) = 5.000 + 0.010·t + −4.905·t²
+½a = −4.905   →   a = −9.81 m/s²
+```
+
+Stamp those onto the ball-drop clip in three timed beats. Last beat:
+the cited paper string.
+
+---
+
+## 🎯 Demo 1 — Aurora Alarm (physical device) · skip without hardware
+
+Need an ESP32 (any LAN HTTP endpoint) **or** a Shelly smart plug.
 
 ```powershell
-# Just runs in the terminal — no relay needed (but overlay can still
-# fire alongside if you want).
+# === Terminal 2 — Relay with device URL ===
+. .\demos\load_env.ps1
+$env:AURORA_DEMO_DEVICE_URL  = "http://192.168.1.50"
+$env:AURORA_DEMO_DEVICE_KIND = "shelly"        # or "esp32"
+python -m demos.relay.app
+```
+
+Same flow as Demo 2. Split your OBS scene so the **room with the
+device** is visible alongside Aurora Studio. When the contract trips,
+the device fires in sync with the overlay card.
+
+Skip this demo for now if you don't have hardware.
+
+---
+
+## 🎯 Demo 3 — The Save (Slack) · record THIRD
+
+**Length:** 45-60 s. **Hero shot:** Slack ping arrives at the regime shift.
+
+Same as Demo 2 but use the **server_metrics** dataset and your **Slack**
+channel for the visible window.
+
+```powershell
+# === Terminal 1 — Aurora ===
+python studio_api.py
+
+# === Terminal 2 — Relay (webhooks already in .env.demos) ===
+. .\demos\load_env.ps1
+python -m demos.relay.app
+```
+
+In the browser:
+
+1. **CHANGE**.
+2. Drop `demos\datasets\server_metrics\server_metrics.csv`.
+3. **STANDARD** → **RUN ANALYSIS**.
+4. ~25 s in, the contract trips at the regime shift; Slack ping is the climax.
+
+OBS split: Aurora left, Slack channel right.
+
+---
+
+## 🎯 Demo 4 — Verification Cortex (agent loop) · record LAST
+
+**Length:** 30-40 s. **Hero shot:** the contrast between the wrong invented number and the cited verified one.
+
+Terminal-only. No relay needed.
+
+```powershell
+cd C:\Users\bgrut\Desktop\Aurora_QIE\.claude\worktrees\peaceful-easley-8514ec
+. .\.venv\Scripts\Activate.ps1
+```
+
+Make the terminal **large** (140 cols × 40 rows; Windows Terminal:
+Settings → Defaults → Profile → Window: 140 × 40).
+
+**Press F9** to start OBS (terminal window capture). Then:
+
+```powershell
 python -m demos.agent_loop.run_demo --dataset data\fixtures\factory_bearing_demo.csv
 ```
 
-You'll see the "naive baseline" (a confidently-wrong invented number)
-contrasted with the Aurora-verified chain, then the agent-action
-beat. Capture the terminal in OBS.
+You'll see:
+- "Naive Agent" block (faded grey, wrong invented number)
+- "Aurora-Verified Agent" block (cyan/mint, the cited MCP chain)
+- "Agent Action" block (cyan, how the agent would use the verified figure)
 
-## Honest notes
+Hold 3 s after "end of demo." prints. **Press F9** to stop.
 
-- The relay uses Aurora's existing **generic webhook** action.
-  That ships TODAY. The v1.2 native Discord/Slack/PagerDuty actions
-  shipped earlier as well; the relay is still the cleanest path
-  because one Aurora contract drives multiple targets at once.
-- The replay harness is `--speed` only. It doesn't try to simulate
-  network jitter or out-of-order arrival. Real ops scenarios would
-  need a richer simulator; for a 20-second TikTok, this is enough.
+---
+
+## 🧹 Cleanup between takes
+
+```powershell
+# Stop terminals (Ctrl+C each), then:
+Remove-Item -Recurse -Force outputs\aurora_dataset_runs\*falling_ball*    -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force outputs\aurora_dataset_runs\*factory_bearing* -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force outputs\aurora_dataset_runs\*server_metrics*  -ErrorAction SilentlyContinue
+Remove-Item -Force demos\relay\fires.jsonl                                -ErrorAction SilentlyContinue
+```
+
+Every take starts from a fresh slate so `find_latest_run` picks up the right one.
+
+---
+
+## 🆘 Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| Overlay says "overlay · connecting…" | Relay isn't running — start Terminal 2 |
+| Overlay says "overlay · connected" but no card fires | Contract didn't trip. Check `~\.aurora\decision_contracts\` has the JSON; the relay's terminal logs every `/aurora/fire` POST it receives |
+| Discord post fails | Webhook URL in `.env.demos` is wrong / channel was deleted. Re-paste, restart relay |
+| Aurora says "no valid time axis" | Drop the CSV again. The time-axis fix is in `scripts/run_aurora_dataset_runner.py`; restart Aurora Studio if the bug returns |
+| `python -m demos.relay.app` crashes on import | Activate the venv: `. .\.venv\Scripts\Activate.ps1` |
+
+---
+
+## 📂 What lives where
+
+```
+demos/
+├── README.md                — this runbook
+├── .env.demos.example       — template; copy to .env.demos (gitignored) and fill in
+├── load_env.ps1             — PowerShell helper that loads .env.demos into $env:
+├── replay.py                — streams a CSV to simulate "live" data
+├── relay/
+│   ├── app.py               — Flask service on :7077; receives Aurora's webhook
+│   └── adapters/            — discord / slack / log / sse / device fan-out
+├── overlay/                 — OBS browser-source HTML/CSS/JS
+├── contracts/               — one Aurora Decision Contract JSON per demo
+├── agent_loop/              — Demo 4 terminal walkthrough
+└── datasets/
+    ├── factory_bearing/     — README for the shipped fixture (Demos 1+2)
+    ├── server_metrics/      — generator + README (Demo 3)
+    └── falling_ball/        — generator + extractor + README (Demo 5)
+```
+
+## 🔑 Notes
+
+- The relay leverages Aurora's **generic webhook** Decision Contract
+  action. That ships today. Native Discord/Slack contract actions also
+  exist (v1.2) — the relay is still the cleanest path because one
+  contract drives multiple targets at once.
+- Replay supports `--speed` only. Real ops scenarios need richer
+  network-jitter simulation; for a 20-second TikTok, `--speed 50` is
+  enough.
 - The ESP32 firmware sketch lives outside this repo — `device_adapter`
   just POSTs JSON to whatever HTTP server you flash onto the board.

@@ -192,6 +192,23 @@ All seven are wired into the runner via `extended_runner.py`, persisted as `exte
 - Opens as a full-screen modal (1100 × 720 max, 92vw × 86vh fluid) with sidebar nav + content area. Two close paths (Escape key, backdrop click); body scroll locked while open; focus auto-jumps to the first input.
 - Six tabs (Causal · KB Ingest · Attest · Marketplace · Connectors · Compute), each with a header + intro paragraph above the controls.
 
+#### Aurora Sentinel demo rig (`demos/`)
+
+New `demos/` workspace that powers the five "I gave my local AI X" demo videos. Build-once-reuse-everywhere — every demo shares the same relay + overlay + replay primitives.
+
+- **`demos/relay/app.py`** — Flask service on `:7077` that receives Aurora's generic `webhook` contract action and fans out to 5 targets (Discord embed, Slack Block Kit, OBS browser-source overlay via SSE, append-only JSONL log, physical device over LAN HTTP).
+- **`demos/relay/adapters/`** — 5 adapter modules (discord, slack, log, sse, device). The device adapter speaks both Shelly Gen1/Gen2 and a generic ESP32 firmware JSON shape.
+- **`demos/overlay/`** — OBS browser source (`http://127.0.0.1:7077/overlay/`). Listens to SSE, renders an on-brand "Aurora fired" card with the cited method + row + |z|σ + `0 FABRICATED` chip + bundle run id. URL params for corner / hold / sound / demo-mode.
+- **`demos/replay.py`** — streams a CSV row-by-row at configurable `--speed` so contracts trip on camera in compressed time. Both `--to FILE` and `--post URL` modes.
+- **`demos/datasets/falling_ball/`** — generator + extractor for the Demo 5 physics dataset. The extractor pulls the SINDy best-fit out of an Aurora run and emits a 3-beat overlay payload for the video editor.
+- **`demos/datasets/server_metrics/`** — generator for the Demo 3 "1440-minute server day with a regime shift at minute 1382" dataset.
+- **`demos/datasets/factory_bearing/README.md`** — documents the known anomaly in the shipped fixture so takes are repeatable.
+- **`demos/contracts/`** — 3 Decision Contract JSONs (`aurora-alarm.json`, `community-sentinel.json`, `the-save.json`); each points its webhook at the relay so one contract drives multiple targets simultaneously.
+- **`demos/agent_loop/run_demo.py`** — Demo 4 terminal walkthrough. Coloured output showing a "naive baseline" (invented number) vs the Aurora-MCP-verified chain (`analyze → findings → explain`) → agent-action beat.
+- **`demos/load_env.ps1`** + **`demos/.env.demos.example`** — gitignored env loader pattern for webhook URLs. Real `.env.demos` never reaches the repo.
+- **`demos/README.md`** — full recording runbook with one-time setup + per-demo terminal commands + OBS layout + dry-run + record steps + cleanup + troubleshooting.
+- 23 audit tests covering: every adapter's safety + format, the relay Flask app's endpoints, the overlay's HTML/CSS/JS structural pieces, the replay harness in both modes, every contract JSON parses through `Contract.from_dict`, both generated datasets contain the documented anomaly, the physics extractor produces the right overlay payload.
+
 ### Changed
 
 - **`extended_runner`** now also invokes installed plugins after running built-ins; their findings flow into the same `findings` list and per-plugin telemetry surfaces under `result["plugins"]`
@@ -214,7 +231,7 @@ All seven are wired into the runner via `extended_runner.py`, persisted as `exte
 
 ### Tests
 
-- **599 tests passing locally** (~625 in CI, which adds scipy + flask-dependent tests). Baseline at v1.1 launch was 320.
+- **699 tests passing locally** (~725 in CI, which adds scipy + flask-dependent tests). Baseline at v1.1 launch was 320.
 - New test files since launch:
   - `tests/test_preflight.py` (34)
   - `tests/test_kb_packs.py` (25)
@@ -231,6 +248,11 @@ All seven are wired into the runner via `extended_runner.py`, persisted as `exte
   - `tests/test_q2_causal_inference.py` (12) — do-calculus + counterfactuals
   - `tests/test_q2_streaming_connectors.py` (14) — Kafka + Postgres CDC
   - `tests/test_q2_kb_attest_market_embed.py` (24+) — ingestion + attestation + marketplace + embeddings
+  - `tests/test_phase1_polish.py` — Phase 1 UI polish audit
+  - `tests/test_phase2_build.py` — Vite + TS build scaffolding audit
+  - `tests/test_sdk_methods_namespace.py` (31) — SDK MethodsView + Matrix Profile + backtest
+  - `tests/test_runner_time_axis_detection.py` — guards the time-axis detection bug fix
+  - `tests/test_demos_scaffolding.py` (27) — demos relay + overlay + replay + datasets + contracts
   - `tests/test_v1_2_frontend_wiring.py` (35) — full v2.0 LAB modal audit
 
 ### Docs

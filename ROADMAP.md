@@ -63,6 +63,7 @@ The platform play.
 - ✅ **Signed-bundle attestation service** — `fantasyai/aurora/attestation/` ships three-check rollup: integrity hash + Ed25519 signature + workspace-scoped trusted-signer registry. The `summary=True` invariant fails closed when a signed bundle's signer isn't registered (9 tests)
 - ✅ **KB pack marketplace** — `fantasyai/aurora/kb/marketplace.py` cross-references the bundled manifest with the installed-pack registry. Preview-state packs honestly labelled "not yet released" so users aren't misled (5 tests)
 - ✅ **GPU acceleration for embeddings** — `fantasyai/aurora/embedding_device.py` env-var device selection (`AURORA_EMBEDDINGS_DEVICE=cuda|mps|auto`) with graceful CPU fallback (5 tests)
+- ✅ **Aurora Sentinel demo rig** — `demos/` workspace with a Flask relay (fan-out to Discord/Slack/OBS overlay/log/device), an on-brand OBS browser-source overlay, a replay harness, two synthesised datasets (falling_ball, server_metrics), three Decision Contract JSONs, an MCP agent-chain walkthrough, and a physics-extraction script. Powers the five "I gave my local AI X" demo videos. Full recording runbook in [`demos/README.md`](demos/README.md) (23 audit tests)
 
 **Still planned:**
 

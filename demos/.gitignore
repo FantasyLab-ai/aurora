@@ -12,3 +12,5 @@ datasets/server_metrics/server_metrics.csv
 .env
 .env.*
 secrets.json
+# …but DO ship the template file so others know the shape.
+!.env.demos.example
