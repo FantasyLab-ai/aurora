@@ -1,0 +1,30 @@
+{
+  "id": "community-sentinel-demo2",
+  "name": "Community Sentinel — post a cited anomaly to Discord",
+  "description": "Demo 2. Fires the relay when ANY finding (info+) lands on the live feed. The relay formats a Discord embed with the method, severity, row, |z|, and the 0-fabricated chip; the channel sees it live on camera. This is the proven 'I gave my Discord a local AI' format with automation baked in.",
+  "enabled": true,
+  "trigger": {
+    "field": "findings.count",
+    "op": ">=",
+    "value": 1
+  },
+  "actions": [
+    {
+      "type": "webhook",
+      "url": "http://127.0.0.1:7077/aurora/fire",
+      "headers": {
+        "X-Aurora-Demo": "community-sentinel"
+      },
+      "method": "POST",
+      "timeout_s": 5
+    }
+  ],
+  "rate_limit": {
+    "max_per_minute": 3
+  },
+  "metadata": {
+    "owner": "fantasylab",
+    "demo": "2",
+    "note": "Set AURORA_DEMO_DISCORD_WEBHOOK to your channel's incoming-webhook URL before starting the relay. The relay's discord_adapter turns the envelope into a Block-Kit-style embed."
+  }
+}

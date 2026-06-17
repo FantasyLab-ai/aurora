@@ -1,0 +1,229 @@
+/* ============================================================
+   Aurora Fire Overlay — FantasyLab retro-techno / GameCube palette.
+
+   Designed to composite cleanly over any OBS scene:
+     - Transparent background (OBS background source shows through).
+     - Card sits in a corner anchor (default: top-right).
+     - High-contrast text + hairline borders, not glow on text.
+     - Severity-tiered accent (mint / amber / magenta / cyan).
+   ============================================================ */
+
+:root {
+  --surface-0:   #050808;
+  --surface-1:   rgba(8, 14, 16, 0.92);
+  --surface-2:   rgba(14, 22, 26, 0.94);
+  --surface-3:   rgba(20, 32, 38, 0.96);
+  --hairline-1:  rgba(120, 240, 220, 0.35);
+  --hairline-2:  rgba(120, 240, 220, 0.18);
+
+  --text-1:      #f0fafb;
+  --text-2:      #b6c6cb;
+  --text-3:      #7a8c92;
+  --text-4:      #4d5a5e;
+
+  --accent:        #88ffd1;    /* mint — identity */
+  --accent-soft:   rgba(136, 255, 209, 0.10);
+  --info:          #6ee7ff;    /* cyan */
+  --warn:          #ffd54a;    /* amber */
+  --crit:          #ff5577;    /* magenta-red */
+
+  --font-body:    'Geist', 'Inter', system-ui, sans-serif;
+  --font-mono:    'Geist Mono', 'JetBrains Mono', monospace;
+  --font-chrome:  'Departure Mono', 'Geist Mono', monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  /* CRITICAL: transparent body for OBS browser source. */
+  background: transparent;
+  color: var(--text-1);
+  font-family: var(--font-body);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* --- Anchor positions ---------------------------------------------------- */
+
+.anchor {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 10;
+}
+.anchor-tr { top: 32px;    right: 32px; align-items: flex-end; }
+.anchor-tl { top: 32px;    left:  32px; align-items: flex-start; }
+.anchor-br { bottom: 32px; right: 32px; align-items: flex-end; }
+.anchor-bl { bottom: 32px; left:  32px; align-items: flex-start; }
+
+/* --- Card --------------------------------------------------------------- */
+
+.card {
+  --card-accent: var(--accent);
+  min-width: 480px;
+  max-width: 600px;
+  padding: 22px 28px;
+  background: var(--surface-1);
+  border: 1px solid var(--card-accent);
+  border-radius: 2px;
+  /* Border-glow only (not text-glow) — quiet cyberpunk. */
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--card-accent) 25%, transparent),
+    0 12px 40px rgba(0, 0, 0, 0.55),
+    0 0 60px color-mix(in oklch, var(--card-accent) 18%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  /* Card enters with a quick spring + faint scale. */
+  animation: card-enter 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.card[data-severity="crit"]  { --card-accent: var(--crit); }
+.card[data-severity="warn"]  { --card-accent: var(--warn); }
+.card[data-severity="info"]  { --card-accent: var(--info); }
+.card[data-severity="ok"]    { --card-accent: var(--accent); }
+.card[data-exit="1"] { animation: card-exit 220ms cubic-bezier(0.4, 0, 1, 1) forwards; }
+
+@keyframes card-enter {
+  from { opacity: 0; transform: translateY(-12px) scale(0.96); }
+  to   { opacity: 1; transform: translateY(0)     scale(1); }
+}
+@keyframes card-exit {
+  from { opacity: 1; transform: translateY(0)    scale(1); }
+  to   { opacity: 0; transform: translateY(-8px) scale(0.98); }
+}
+
+.card__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.card__header { justify-content: flex-start; flex-wrap: wrap; }
+.card__footer { justify-content: space-between; flex-wrap: wrap; }
+
+.card__contract {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--card-accent);
+  letter-spacing: 0.2px;
+  line-height: 1.2;
+  /* No text-shadow / text-glow — depth comes from the border. */
+}
+
+/* --- Chips -------------------------------------------------------------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  background: var(--surface-3);
+  border: 1px solid var(--hairline-2);
+  color: var(--text-2);
+  font-family: var(--font-chrome);
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  border-radius: 1px;
+}
+.chip-aurora {
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.chip-severity {
+  background: color-mix(in oklch, var(--card-accent) 12%, transparent);
+  border-color: var(--card-accent);
+  color: var(--card-accent);
+  font-weight: 600;
+}
+.chip-method {
+  font-family: var(--font-mono);
+  text-transform: none;
+  letter-spacing: 0.4px;
+}
+.chip-fabricated {
+  background: color-mix(in oklch, var(--accent) 14%, transparent);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.chip-fabricated[data-fab="bad"] {
+  background: color-mix(in oklch, var(--crit) 14%, transparent);
+  border-color: var(--crit);
+  color: var(--crit);
+}
+.chip-run, .chip-time {
+  font-family: var(--font-mono);
+  text-transform: none;
+  letter-spacing: 0.3px;
+  color: var(--text-3);
+}
+
+/* --- Citation block ---------------------------------------------------- */
+
+.card__citation {
+  background: var(--surface-2);
+  border-left: 2px solid var(--card-accent);
+  padding: 12px 16px;
+  gap: 22px;
+  flex-wrap: wrap;
+}
+.citation-cell { display: flex; flex-direction: column; gap: 3px; }
+.citation-label {
+  font-family: var(--font-chrome);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--text-3);
+}
+.citation-value {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+.citation-value.mono { color: var(--card-accent); }
+
+/* --- Status crumb (when no fire) --------------------------------------- */
+
+.crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--hairline-2);
+  color: var(--text-3);
+  font-family: var(--font-chrome);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.crumb-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-4);
+  transition: background 200ms ease;
+}
+.crumb-dot-connected    { background: var(--accent);
+                          box-shadow: 0 0 8px color-mix(in oklch, var(--accent) 50%, transparent); }
+.crumb-dot-disconnected { background: var(--crit); }
+.crumb-dot-firing       { background: var(--warn);
+                          animation: pulse 700ms ease-in-out infinite; }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+
+/* --- Hide-when-not-needed --------------------------------------------- */
+[hidden] { display: none !important; }
+
+/* --- Print-safe (so saving page-as-PDF for a still works) ------------- */
+@media print {
+  body { background: white; }
+  .card { box-shadow: none; }
+}

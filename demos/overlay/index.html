@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Aurora · Fire Overlay</title>
+  <meta name="viewport" content="width=1920, initial-scale=1" />
+  <!-- ====================================================================
+       Aurora Fire Overlay — OBS browser source.
+
+       Add to OBS:
+           Source → Browser → URL = http://127.0.0.1:7077/overlay/
+           Width 1920, Height 1080
+           ☑ Refresh browser when scene becomes active
+           ☑ Shutdown source when not visible
+
+       The overlay listens to the relay's SSE stream (/aurora/events)
+       and shows a high-contrast "Aurora fired" card aligned to the
+       FantasyLab retro-techno / GameCube palette. Card auto-dismisses
+       after ~8 s (severity-tiered).
+  ==================================================================== -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;700&family=Departure+Mono&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- The card lives in a corner anchor so it composes cleanly over
+       any OBS scene. Move it via the .anchor data attribute. -->
+  <div id="anchor" class="anchor anchor-tr" data-corner="tr">
+    <div id="card" class="card" aria-live="polite" hidden>
+      <div class="card__row card__header">
+        <span class="chip chip-aurora">⚡ AURORA</span>
+        <span class="chip chip-severity" id="sev">—</span>
+        <span class="chip chip-method"   id="method">—</span>
+      </div>
+
+      <div class="card__contract" id="contractName">contract fired</div>
+
+      <div class="card__row card__citation">
+        <div class="citation-cell">
+          <div class="citation-label">FIELD</div>
+          <div class="citation-value" id="triggerField">—</div>
+        </div>
+        <div class="citation-cell">
+          <div class="citation-label">VALUE</div>
+          <div class="citation-value" id="triggerValue">—</div>
+        </div>
+        <div class="citation-cell" id="rowCell" hidden>
+          <div class="citation-label">ROW</div>
+          <div class="citation-value" id="row">—</div>
+        </div>
+        <div class="citation-cell" id="zCell" hidden>
+          <div class="citation-label">|Z|</div>
+          <div class="citation-value mono" id="zScore">—</div>
+        </div>
+      </div>
+
+      <div class="card__row card__footer">
+        <span class="chip chip-fabricated" id="fabricatedChip">0 FABRICATED</span>
+        <span class="chip chip-run"        id="runChip">—</span>
+        <span class="chip chip-time"       id="timeChip">—</span>
+      </div>
+    </div>
+
+    <!-- Status crumb when no card is showing. Lets the streamer confirm
+         the overlay is connected without a fire having happened yet. -->
+    <div id="statusCrumb" class="crumb">
+      <span class="crumb-dot crumb-dot-disconnected" id="crumbDot"></span>
+      <span id="crumbLabel">overlay · connecting…</span>
+    </div>
+  </div>
+
+  <!-- Audio cue. Replace with a custom .wav for the production shoot. -->
+  <audio id="fireSound" preload="auto">
+    <source src="fire.wav" type="audio/wav" />
+  </audio>
+
+  <script src="app.js"></script>
+</body>
+</html>

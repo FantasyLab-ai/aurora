@@ -1,0 +1,31 @@
+{
+  "id": "aurora-alarm-demo1",
+  "name": "Aurora Alarm — flip a physical thing when something breaks",
+  "description": "Demo 1. Fires the relay when any CRITICAL finding lands on the current bundle. The relay drives the smart plug / LED / servo + lights the OBS overlay card in sync.",
+  "enabled": true,
+  "trigger": {
+    "field": "findings.crit_count",
+    "op": ">=",
+    "value": 1
+  },
+  "actions": [
+    {
+      "type": "webhook",
+      "url": "http://127.0.0.1:7077/aurora/fire",
+      "headers": {
+        "X-Aurora-Demo": "alarm"
+      },
+      "method": "POST",
+      "timeout_s": 5
+    }
+  ],
+  "rate_limit": {
+    "max_per_minute": 6
+  },
+  "metadata": {
+    "owner": "fantasylab",
+    "demo": "1",
+    "runbook": "demos/datasets/factory_bearing/README.md",
+    "note": "Stream factory_bearing_demo.csv via demos/replay.py. The crit anomaly lands ~70% through the file. Overlay card fires in sync with the physical reaction."
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "id": "the-save-demo3",
+  "name": "The Save — Slack ping on the 2am regime shift",
+  "description": "Demo 3. Fires when 3+ critical findings appear on the bundle, mirroring the README example. Replay 1 day of server metrics in ~20s; the contract trips at the regime shift; the relay posts to Slack with the cited z-score on the exact row. Contrast with a 'human dashboard' that looks calm.",
+  "enabled": true,
+  "trigger": {
+    "field": "findings.crit_count",
+    "op": ">=",
+    "value": 3
+  },
+  "actions": [
+    {
+      "type": "webhook",
+      "url": "http://127.0.0.1:7077/aurora/fire",
+      "headers": {
+        "X-Aurora-Demo": "the-save"
+      },
+      "method": "POST",
+      "timeout_s": 5
+    }
+  ],
+  "rate_limit": {
+    "max_per_hour": 12
+  },
+  "metadata": {
+    "owner": "fantasylab",
+    "demo": "3",
+    "runbook": "demos/datasets/server_metrics/README.md",
+    "note": "Slack ping is the climax. Set AURORA_DEMO_SLACK_WEBHOOK first. Save the run as a .aurora.json bundle to show 'and it's signed + re-verifiable.'"
+  }
+}
