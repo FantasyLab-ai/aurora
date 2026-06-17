@@ -8820,7 +8820,24 @@
   }
 
   function populateForecast(f) {
-    if (!f || !f.available) return;
+    if (!f || !f.available) {
+      // Clear the showcase-default HTML so a real run doesn't render on
+      // top of stale "wave_height · 72H" placeholder content.
+      const badge = document.getElementById('forecastBadge');
+      if (badge) badge.textContent = 'no forecast';
+      const headline = document.getElementById('forecastHeadline');
+      if (headline) headline.innerHTML =
+        '<div class="lbl" style="color:var(--ink-faint);">FORECAST</div>' +
+        '<div class="val" style="color:var(--ink-faint);font-size:24px;font-style:italic;">—</div>' +
+        '<div class="ci" style="color:var(--ink-faint);font-style:italic;">No forecast available for this dataset shape.</div>';
+      const pts = document.getElementById('forecastPoints');
+      if (pts) pts.innerHTML = '';
+      const warn = document.getElementById('forecastWarn');
+      if (warn) warn.innerHTML = '';
+      const alt = document.getElementById('forecastAlt');
+      if (alt) alt.innerHTML = '';
+      return;
+    }
     document.getElementById('forecastBadge').textContent =
       `${fmt.esc(f.target)} · ${f.horizon || '?'}H`;
     if (f.headline_value != null) {
@@ -8910,7 +8927,21 @@
   }
 
   function populateCausal(c) {
-    if (!c || !c.available || !c.items) return;
+    if (!c || !c.available || !c.items) {
+      // Clear the wind_speed / pressure / fetch_km showcase items so they
+      // don't bleed onto a run whose causal layer didn't produce anything.
+      const list = document.getElementById('whatifList');
+      if (list) list.innerHTML =
+        '<div class="whatif" style="opacity:0.55;">' +
+        '  <div class="if-clause" style="color:var(--ink-faint);font-style:italic;">' +
+        '    No causal interventions available for this dataset.' +
+        '  </div>' +
+        '  <div class="then-clause" style="color:var(--ink-faint);font-style:italic;">' +
+        '    Causal-DAG layer needs a time axis and ≥2 covariates.' +
+        '  </div>' +
+        '</div>';
+      return;
+    }
     document.getElementById('whatifList').innerHTML = c.items.map(i => {
       const v = i.effect_value;
       const sign = v == null ? '' : v > 0 ? 'pos' : 'neg';
@@ -8925,7 +8956,21 @@
   }
 
   function populatePhysics(p) {
-    if (!p || !p.available) return;
+    if (!p || !p.available) {
+      // Wipe the Pierson-Moskowitz showcase HTML so a run without a
+      // discovered law doesn't keep lying with H_s ≈ 0.21·U_10²·F^0.5/g.
+      const law = document.getElementById('physLaw');
+      if (law) law.innerHTML =
+        '<div class="lbl" style="color:var(--ink-faint);">PHYSICS</div>' +
+        '<div class="desc" style="color:var(--ink-faint);font-style:italic;line-height:1.5;">' +
+        'No symbolic law discovered for this dataset. ' +
+        'Re-run at STANDARD tier with a numeric target column to invoke the ' +
+        'symbolic-discovery layer.' +
+        '</div>';
+      const checks = document.getElementById('physChecks');
+      if (checks) checks.innerHTML = '';
+      return;
+    }
     if (p.discovered_law && (p.discovered_law.equation || p.discovered_law.name)) {
       const law = p.discovered_law;
       // Prior match: if the fit resembles a known law at ≥70% confidence,
@@ -12162,7 +12207,12 @@
   function populateAnomalyCubeFace(anomalies, forecast) {
     const svg = document.getElementById('anomCubeSvg');
     const list = document.getElementById('anomCubeList');
-    if (!Array.isArray(anomalies) || !anomalies.length) return;
+    if (!Array.isArray(anomalies) || !anomalies.length) {
+      if (svg) svg.innerHTML = '';
+      if (list) list.innerHTML =
+        '<div style="font-size:10px;color:var(--ink-faint);font-style:italic;padding:6px;">no anomalies on this run</div>';
+      return;
+    }
 
     // Build a sparkline from the forecast points if available; else flat baseline.
     const W = 280, H = 80, pad = 4;
@@ -12233,7 +12283,12 @@
   function populateForecastCubeFace(f) {
     const hdr = document.getElementById('forecastCubeHeader');
     const svg = document.getElementById('forecastCubeSvg');
-    if (!f || !f.available || !Array.isArray(f.points) || !f.points.length) return;
+    if (!f || !f.available || !Array.isArray(f.points) || !f.points.length) {
+      if (hdr) hdr.innerHTML =
+        '<span style="color:var(--ink-faint);font-style:italic;">no forecast for this dataset</span>';
+      if (svg) svg.innerHTML = '';
+      return;
+    }
 
     if (hdr) {
       hdr.innerHTML = `TARGET <b style="color:var(--cyan)">${fmt.esc(f.target)}</b> · ${f.horizon || f.points.length} steps · ${fmt.esc(f.method || '')}`;
@@ -12291,7 +12346,13 @@
   function populatePhysicsCubeFace(p) {
     const checks = document.getElementById('physicsCubeChecks');
     const law = document.getElementById('physicsCubeLaw');
-    if (!p || !p.available) return;
+    if (!p || !p.available) {
+      // Clear the wave_h ∝ wind² · fetch^0.5 showcase HTML on the cube face.
+      if (checks) checks.innerHTML = '';
+      if (law) law.innerHTML =
+        '<span style="color:var(--ink-faint);font-style:italic;">no physics law discovered for this dataset</span>';
+      return;
+    }
 
     // Build up to 4 small check tiles from real check data, falling back to consistency_score.
     let cards = [];
