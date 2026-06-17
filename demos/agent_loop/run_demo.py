@@ -24,11 +24,32 @@ the on-screen card to fire when the verified finding lands.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import json
+import logging
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
+
+# Aurora's RAG layer emits `_log.warning("RAG falling back: ...")` whenever a
+# new dataset has no matching precedent in the knowledge bank. That's the
+# correct behaviour — the system refusing to fabricate — but on a clean demo
+# run it clutters the cinematic terminal output. Belt-and-braces: silence the
+# loggers and capture stdout/stderr around each MCP call.
+for _name in ("fantasyai", "fantasyai.aurora.synthesis.rag", "aurora_mcp"):
+    logging.getLogger(_name).setLevel(logging.ERROR)
+
+
+def _quiet_call(fn: Callable[..., Any], *args, **kwargs) -> Any:
+    """Run an MCP tool with stdout/stderr captured. Aurora internals may
+    emit logger warnings ("RAG falling back: ...") or stray prints; we
+    don't want them interleaved with the demo's cinematic terminal blocks.
+    The function's return value still propagates normally."""
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+        return fn(*args, **kwargs)
 
 
 # Cosmetic helpers — keep the terminal output cinematic.
@@ -50,6 +71,39 @@ def _line(s: str = "", color: str = "") -> None:
 
 def _pause(seconds: float) -> None:
     time.sleep(seconds)
+
+
+def _row_display(finding: Dict[str, Any]) -> str:
+    """Render whichever row representation a finding carries.
+
+    Findings from scalar detectors (z-score, Hampel) expose a single
+    ``row`` int. Subspace / multi-row detectors (Robust PCA, BOCPD,
+    matrix profile) stash a list under ``evidence.top_outlier_rows`` /
+    ``evidence.rows`` / ``rows``. We surface the first few + the count
+    so the demo always cites a real number, never an em dash.
+    """
+    # Scalar shapes first.
+    for k in ("row", "row_idx", "claim_row"):
+        v = finding.get(k)
+        if isinstance(v, (int, float)):
+            return str(int(v))
+    # List-row shapes — finding-level then evidence-level.
+    ev = finding.get("evidence") if isinstance(finding.get("evidence"), dict) else {}
+    for src in (finding, ev):
+        for k in ("top_outlier_rows", "outlier_rows", "rows"):
+            v = (src or {}).get(k)
+            if isinstance(v, (list, tuple)) and v:
+                # Stringify whatever's there — numpy scalars, ints, even
+                # tuples — without filtering. An empty preview was the bug
+                # in the previous version when values weren't plain ints.
+                preview = ", ".join(str(x) for x in v[:3])
+                more = f" (+{len(v) - 3} more)" if len(v) > 3 else ""
+                return f"[{preview}{more}]"
+    # n_outlier_rows is a count, not the rows themselves — last resort.
+    n = (ev or {}).get("n_outlier_rows") or finding.get("n_rows")
+    if isinstance(n, (int, float)):
+        return f"{int(n)} outlier rows"
+    return "—"
 
 
 def _naive_baseline(dataset: Path) -> Dict[str, Any]:
@@ -100,27 +154,33 @@ def _aurora_verified(dataset: Path) -> Optional[Dict[str, Any]]:
         _line(f"┃  ERROR: aurora_mcp.tools not importable — {e}", CRIT)
         return None
     _pause(0.3)
-    analyzed = aurora_analyze({"path": str(dataset)})
+    analyzed = _quiet_call(aurora_analyze, {"path": str(dataset)})
     if analyzed.get("error"):
         _line(f"┃  ERROR: analyze failed — {analyzed['error']}", CRIT)
         return None
-    bundle_run_id = analyzed.get("run_id") or analyzed.get("run_dir")
-    fab = analyzed.get("fabricated_count", "?")
-    n_crit = analyzed.get("crit_count")
-    if n_crit is None:
-        # Derive from the summary findings block if present.
-        sev = analyzed.get("findings_by_severity") or {}
-        n_crit = sev.get("crit") or sev.get("critical") or 0
+    # aurora_analyze returns {"ok": True, "summary": {...}, "bundle": ...} —
+    # the run id, fabricated count, and severity counts all live under summary.
+    summary = analyzed.get("summary") or {}
+    bundle_run_id = summary.get("run_id")
+    fab = summary.get("fabricated_count", "?")
+    sev = summary.get("findings_count_by_severity") or {}
+    n_crit = sev.get("crit") or sev.get("critical") or 0
+    n_warn = sev.get("warn") or sev.get("warning") or 0
+    n_info = sev.get("info") or 0
+    n_total = n_crit + n_warn + n_info
     _line(f"┃         · run_id          = {bundle_run_id}", GREY)
     _line(f"┃         · fabricated      = {fab}", MINT)
-    _line(f"┃         · critical count  = {n_crit}", AMBER)
+    _line(f"┃         · findings        = {n_total} "
+          f"(crit={n_crit}  warn={n_warn}  info={n_info})", AMBER)
     _line("┃", MINT)
 
-    # Step 2 — aurora_findings(severity="crit").
+    # Step 2 — aurora_findings(severity="crit"). The findings tool takes
+    # `path`, not `run_dir`; the SDK's run cache short-circuits the re-call
+    # so this doesn't re-analyse.
     _line(f"┃  [2/3] aurora_findings(severity=\"crit\")", CYAN)
     _pause(0.3)
-    crits_out = aurora_findings({"severity": "crit", "limit": 3,
-                                   "run_dir": analyzed.get("run_dir")})
+    crits_out = _quiet_call(aurora_findings, {"path": str(dataset),
+                                                "severity": "crit", "limit": 3})
     if crits_out.get("error"):
         _line(f"┃  ERROR: findings failed — {crits_out['error']}", CRIT)
         return None
@@ -128,7 +188,7 @@ def _aurora_verified(dataset: Path) -> Optional[Dict[str, Any]]:
     if not crit_list:
         _line(f"┃         (no critical findings on this run)", AMBER)
         # Fall back to whatever the most severe finding was.
-        all_out = aurora_findings({"limit": 1, "run_dir": analyzed.get("run_dir")})
+        all_out = _quiet_call(aurora_findings, {"path": str(dataset), "limit": 1})
         crit_list = (all_out.get("findings") or [])[:1]
         if not crit_list:
             _line(f"┃  no findings at all — abort.", CRIT)
@@ -143,8 +203,8 @@ def _aurora_verified(dataset: Path) -> Optional[Dict[str, Any]]:
     claim_id = head.get("claim_id") or ""
     _line(f"┃  [3/3] aurora_explain(claim_id=\"{claim_id}\")", CYAN)
     _pause(0.3)
-    expl = aurora_explain({"claim_id": claim_id,
-                            "run_dir": analyzed.get("run_dir")}) if claim_id else {}
+    expl = _quiet_call(aurora_explain, {"path": str(dataset),
+                                          "claim_id": claim_id}) if claim_id else {}
     method_spec = expl.get("method_spec") if isinstance(expl, dict) else None
     evidence = expl.get("evidence") if isinstance(expl, dict) else None
     if evidence:
@@ -163,8 +223,9 @@ def _aurora_verified(dataset: Path) -> Optional[Dict[str, Any]]:
             _line(f"┃         · citation       = {ms_cite[:64]}", GREY)
     _line("┃", MINT)
 
+    row_str = _row_display(head)
     _line(f"┃  {BOLD}ANSWER (cited){RESET}{MINT}:", MINT)
-    _line(f"┃    \"Critical finding on row {head.get('row') or '?'}, ", MINT)
+    _line(f"┃    \"Top finding: row(s) {row_str}, ", MINT)
     _line(f"┃     method={head.get('method', '?')}, ", MINT)
     _line(f"┃     claim={claim_id}, ", MINT)
     _line(f"┃     fabricated={fab}.\"", MINT)
@@ -173,7 +234,7 @@ def _aurora_verified(dataset: Path) -> Optional[Dict[str, Any]]:
 
     return {
         "method":     head.get("method"),
-        "row":        head.get("row"),
+        "row":        _row_display(head),
         "claim_id":   claim_id,
         "bundle_run": bundle_run_id,
         "fabricated": fab,
@@ -189,7 +250,7 @@ def _action(verified: Dict[str, Any]) -> None:
     _line(f"┃  Opening a ticket for the maintenance team:", CYAN)
     _line(f"┃", CYAN)
     _line(f"┃    \"Bearing anomaly detected.", CYAN)
-    _line(f"┃     Row {verified.get('row') or '?'} via {verified.get('method') or '?'}.", CYAN)
+    _line(f"┃     Row(s) {verified.get('row') or '—'} via {verified.get('method') or '?'}.", CYAN)
     _line(f"┃     Aurora bundle: {verified.get('bundle_run') or '—'}.", CYAN)
     _line(f"┃     Claim id: {verified.get('claim_id') or '—'} — see signed bundle.\"", CYAN)
     _line(f"┃", CYAN)

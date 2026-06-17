@@ -65,6 +65,20 @@ Write-Host "  Aurora demos env loaded ($loaded vars from $EnvPath)" -ForegroundC
 foreach ($key in ($secrets.Keys | Sort-Object)) {
     Write-Host ("    {0,-34} {1}" -f $key, $secrets[$key]) -ForegroundColor DarkGray
 }
+
+# The demos POST from Aurora to the local relay at http://127.0.0.1:7077.
+# Aurora's WebhookAction has an SSRF guard that refuses loopback targets
+# by default; the demos require this opt-in. Skipping this is the #1
+# reason a user sees "all 3 contracts matched, 0 fully fired" with the
+# error "webhook target '127.0.0.1' resolves to a private/loopback address".
+# Set unconditionally here so BOTH the Aurora terminal and the relay
+# terminal that dot-source this script get it.
+if (-not $env:AURORA_ALLOW_LOCAL_WEBHOOKS) {
+    $env:AURORA_ALLOW_LOCAL_WEBHOOKS = "1"
+    Write-Host ("    {0,-34} {1}" -f "AURORA_ALLOW_LOCAL_WEBHOOKS", "1 (auto-set for demos)") -ForegroundColor DarkGray
+}
+
 Write-Host ""
 Write-Host "  Now you can run:  python -m demos.relay.app" -ForegroundColor Cyan
+Write-Host "  (or:              python studio_api.py    for Aurora Studio)" -ForegroundColor Cyan
 Write-Host ""

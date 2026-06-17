@@ -94,7 +94,49 @@ You should immediately see:
 - A message land in your Slack channel.
 - A JSON line appended to `demos\relay\fires.jsonl`.
 
-If all four happened, **the rig is production-ready**. Stop the relay (Ctrl+C).
+If all four happened, the **relay** is production-ready. Now validate the
+end-to-end Aurora → contract → relay path before recording anything.
+
+### 0.6 End-to-end autofire check (don't skip this — it caught us)
+
+The smoke test in 0.5 POSTs directly to the relay. It does NOT exercise
+Aurora's autofire path, which has its own loopback guard. A real run can
+still silently fail after 0.5 passes. Run this once:
+
+```powershell
+# === Terminal A — relay still running from 0.5 ===
+
+# === Terminal B — Aurora Studio with demos env loaded ===
+. .\demos\load_env.ps1
+python studio_api.py
+```
+
+In the browser at `http://127.0.0.1:8000`, drop
+`data\fixtures\factory_bearing_demo.csv` and click **RUN ANALYSIS**.
+
+Watch the **Aurora terminal** (not Discord). Within ~15 s of the run
+completing you should see lines like:
+
+```
+[aurora-autofire] aurora-alarm-demo1 fired (1/1 actions)
+[aurora-autofire] community-sentinel-demo2 fired (1/1 actions)
+[aurora-autofire] the-save-demo3 fired (1/1 actions)
+[aurora-autofire] async run <id>: 3 contracts matched, 3 fully fired
+```
+
+…and the Discord/Slack messages should land. If you see:
+
+```
+[aurora-autofire] ... matched but actions failed:
+    ["WebhookAction: webhook target '127.0.0.1' resolves to a
+      private / loopback address; set ALLOW_LOCAL_WEBHOOKS=True ..."]
+```
+
+…then `AURORA_ALLOW_LOCAL_WEBHOOKS=1` isn't set in the Aurora terminal.
+Re-dot-source: `. .\demos\load_env.ps1` and restart `studio_api.py`.
+
+If both autofire lines AND the messages land, **you're production-ready
+for all demos**. Stop the relay + Aurora (Ctrl+C each).
 
 ---
 
@@ -304,7 +346,11 @@ Every take starts from a fresh slate so `find_latest_run` picks up the right one
 |---|---|
 | Overlay says "overlay · connecting…" | Relay isn't running — start Terminal 2 |
 | Overlay says "overlay · connected" but no card fires | Contract didn't trip. Check `~\.aurora\decision_contracts\` has the JSON; the relay's terminal logs every `/aurora/fire` POST it receives |
+| Aurora terminal shows `WebhookAction: webhook target '127.0.0.1' resolves to a private / loopback address` | `AURORA_ALLOW_LOCAL_WEBHOOKS=1` isn't set in the Aurora terminal. Re-dot-source `. .\demos\load_env.ps1`, then `python studio_api.py` |
+| Aurora terminal shows `0 contracts matched, 0 fully fired` (or no `[aurora-autofire]` lines at all) | Either the running Aurora process is stale (started before you pulled the autofire patch — restart it) OR `~\.aurora\decision_contracts\` is empty (re-run Phase 0.2) |
 | Discord post fails | Webhook URL in `.env.demos` is wrong / channel was deleted. Re-paste, restart relay |
+| Demo 4 terminal shows `Row ?` or `findings = 0 (crit=0  warn=0  info=0)` | Old version of `demos/agent_loop/run_demo.py` — pull latest |
+| Demo 4 terminal interleaves `RAG falling back: no_relevant_entries` lines | Benign — RAG correctly refuses to invent precedent on a fresh dataset. Latest `run_demo.py` silences it; pull latest |
 | Aurora says "no valid time axis" | Drop the CSV again. The time-axis fix is in `scripts/run_aurora_dataset_runner.py`; restart Aurora Studio if the bug returns |
 | `python -m demos.relay.app` crashes on import | Activate the venv: `. .\.venv\Scripts\Activate.ps1` |
 
