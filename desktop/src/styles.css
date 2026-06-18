@@ -769,6 +769,87 @@ code { font-family: var(--font-mono); font-size: 0.92em; color: var(--cyan); }
   vertical-align: middle;
 }
 
+/* Data view -- dataset summary + column profile. */
+.data-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-5);
+}
+.data-summary-card {
+  background: var(--bg-card);
+  border: 1px solid var(--bevel-light);
+  border-radius: var(--r-3);
+  padding: var(--sp-3) var(--sp-4);
+}
+.data-summary-card .lbl {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--ink-faint);
+  margin-bottom: var(--sp-1);
+}
+.data-summary-card .val {
+  font-family: var(--font-num);
+  font-size: 22px;
+  color: var(--ink);
+}
+.data-summary-card .val.mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.col-kind {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: var(--r-1);
+}
+.col-kind--n { background: rgba(110, 231, 255, 0.10); color: var(--cyan); }
+.col-kind--c { background: rgba(255, 200, 87, 0.10); color: var(--amber); }
+.col-kind--t { background: rgba(124, 92, 255, 0.10); color: var(--violet-bright); }
+.col-kind--b { background: rgba(255, 110, 199, 0.10); color: var(--magenta); }
+.col-kind--i { background: rgba(136, 255, 209, 0.10); color: var(--mint); }
+.col-kind--s,
+.col-kind--\? { background: rgba(255,255,255,0.05); color: var(--ink-dim); }
+
+.fill-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 200px;
+}
+.fill-bar {
+  height: 4px;
+  border-radius: 2px;
+  flex: 1;
+  background: var(--bg-deep);
+  position: relative;
+  overflow: hidden;
+}
+.fill-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--w);
+  background: var(--mint);
+  transition: width var(--dur-norm) var(--ease);
+}
+.fill-bar--ok::after   { background: var(--mint); }
+.fill-bar--warn::after { background: var(--amber); }
+.fill-bar--low::after  { background: var(--crit); }
+.fill-pct {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-dim);
+  min-width: 36px;
+  text-align: right;
+}
+
 
 /* ---------------------------------------------------------------------
    7.6 Narrative card — Aurora's interpretive_summary, prominent

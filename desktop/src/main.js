@@ -22,7 +22,7 @@ const STATE_POLL_MS  = 6000;
 // Shows in the WebView2 console so we can verify the right JS loaded
 // (WebView2 sometimes caches main.js across builds despite Tauri
 // bundling fresh assets every time).
-const AURORA_SHELL_VERSION = "phase-2.5.1-sticky-rundir";
+const AURORA_SHELL_VERSION = "phase-2.6-all-tabs-live";
 console.log(`%c[aurora-shell] ${AURORA_SHELL_VERSION}`,
             "color:#6ee7ff;font-weight:bold;");
 
@@ -419,34 +419,70 @@ async function refreshData(runDir) {
   const wrap = document.getElementById("dataTableWrap");
   if (!wrap) return;
   if (!state || state.ok === false) {
-    wrap.innerHTML = `<div class="empty-state">No dataset loaded.
-      Open <b>Aurora Studio</b> to upload a CSV, then come back.</div>`;
+    wrap.innerHTML = renderEmpty(
+      "No dataset state yet. Submit a run from <b>Overview</b> or pick one in <b>Bundles</b>.");
     return;
   }
 
   const s = state.state || state;
   const ds = s.dataset || {};
-  const cols = ds.columns || ds.column_names || [];
-  const preview = ds.preview || ds.head || [];
-
+  const structure = s.structure || {};
+  const cols = structure.columns || ds.columns || [];
   const runId = s.run_id || state.run_dir || "current dataset";
   setText("dataRunId", String(runId).split(/[\\/]/).pop().slice(0, 56));
 
-  if (!cols.length || !preview.length) {
-    wrap.innerHTML = `<div class="empty-state">
-      Dataset preview unavailable. Open <b>Aurora Studio</b> for full data inspection.
-    </div>`;
+  if (!cols.length) {
+    wrap.innerHTML = renderEmpty(
+      "No column profile available. Open <b>Aurora Studio</b> for the full dataset inspector.");
     return;
   }
 
-  const head = cols.map((c) => `<th>${esc(c.name || c)}</th>`).join("");
-  const rows = preview.slice(0, 25).map((row) => {
-    const cells = (Array.isArray(row) ? row : cols.map((c) => row[c.name || c]))
-      .map((v) => `<td>${esc(v == null ? "—" : String(v))}</td>`).join("");
-    return `<tr>${cells}</tr>`;
+  // Aurora doesn't ship raw row preview through /api/state -- the file
+  // contents live elsewhere. Instead, show the COLUMN PROFILE Aurora
+  // built: name, type, fill %, plus the dataset's size + cadence.
+  const rowCount   = ds.rows ?? s.dataset_rows_full ?? "—";
+  const colCount   = ds.cols ?? cols.length;
+  const sizeMb     = ds.size_mb ?? null;
+  const hasTime    = !!structure.time_axis;
+  const cadence    = structure.cadence || "—";
+  const dsName     = ds.name || String(runId).split(/[\\/]/).pop();
+  const dsPath     = ds.path || "";
+
+  const summary = `
+    <div class="data-summary-grid">
+      <div class="data-summary-card"><div class="lbl">DATASET</div><div class="val mono">${esc(dsName)}</div></div>
+      <div class="data-summary-card"><div class="lbl">ROWS</div><div class="val">${esc(String(rowCount))}</div></div>
+      <div class="data-summary-card"><div class="lbl">COLUMNS</div><div class="val">${esc(String(colCount))}</div></div>
+      <div class="data-summary-card"><div class="lbl">TIME AXIS</div><div class="val">${hasTime ? "yes" : "no"}</div></div>
+      <div class="data-summary-card"><div class="lbl">CADENCE</div><div class="val">${esc(cadence)}</div></div>
+      ${sizeMb != null
+        ? `<div class="data-summary-card"><div class="lbl">SIZE</div><div class="val">${(sizeMb).toFixed(2)} MB</div></div>`
+        : ""}
+    </div>
+  `;
+
+  const colTypeLabel = (k) => ({
+    n: "numeric", c: "categorical", t: "datetime",
+    b: "boolean", i: "id-like", s: "string",
+  })[k] || (k || "—");
+
+  const colRows = cols.map((c) => {
+    const fill = c.fill_pct != null ? `${c.fill_pct.toFixed(0)}%` : "—";
+    const fillCls = c.fill_pct >= 99 ? "ok" : c.fill_pct >= 90 ? "warn" : "low";
+    return `<tr>
+      <td><code>${esc(c.name)}</code></td>
+      <td><span class="col-kind col-kind--${esc(c.kind || "?")}">${esc(colTypeLabel(c.kind))}</span></td>
+      <td class="fill-cell"><div class="fill-bar fill-bar--${fillCls}" style="--w:${(c.fill_pct ?? 0).toFixed(0)}%"></div><span class="fill-pct">${esc(fill)}</span></td>
+    </tr>`;
   }).join("");
 
-  wrap.innerHTML = `<table class="data-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
+  wrap.innerHTML = summary + `
+    <table class="data-table">
+      <thead><tr><th>column</th><th>type</th><th>fill</th></tr></thead>
+      <tbody>${colRows}</tbody>
+    </table>
+    ${dsPath ? `<div class="data-foot-hint">source: <code>${esc(dsPath)}</code></div>` : ""}
+  `;
 }
 
 
@@ -456,10 +492,6 @@ async function refreshData(runDir) {
 async function refreshMethods(runDir) {
   const wrap = document.getElementById("methodsList");
   if (!wrap) return;
-  if (!auroraOnline) {
-    wrap.innerHTML = renderEmpty("Aurora offline. Start <b>studio_api.py</b> to populate this view.");
-    return;
-  }
   const url = runDir
     ? `/api/state?run_dir=${encodeURIComponent(runDir)}`
     : "/api/state";
@@ -516,33 +548,37 @@ async function refreshMethods(runDir) {
 async function refreshDatasets() {
   const wrap = document.getElementById("datasetsList");
   if (!wrap) return;
-  if (!auroraOnline) {
-    wrap.innerHTML = renderEmpty("Aurora offline. Start <b>studio_api.py</b> to list datasets.");
-    return;
-  }
   const r = await auroraFetch("/api/demo_datasets");
   if (!r || r.ok === false || !Array.isArray(r.datasets || r)) {
     // Fallback: hardcoded fixture list matching the runDatasetSelect dropdown.
     const fallback = [
-      { path: "data/fixtures/factory_bearing_demo.csv",           label: "factory_bearing_demo",     domain: "manufacturing" },
-      { path: "demos/datasets/server_metrics/server_metrics.csv", label: "server_metrics",           domain: "ops" },
-      { path: "demos/datasets/falling_ball/falling_ball.csv",     label: "falling_ball",             domain: "physics" },
-      { path: "data/fixtures/climate_buoy_demo.csv",              label: "climate_buoy_demo",        domain: "climate" },
-      { path: "data/fixtures/patient_cohort_demo.csv",            label: "patient_cohort_demo",      domain: "biomed" },
+      { path: "data/fixtures/factory_bearing_demo.csv",           title: "Factory bearing",          domain: "industrial" },
+      { path: "demos/datasets/server_metrics/server_metrics.csv", title: "Server metrics",           domain: "ops" },
+      { path: "demos/datasets/falling_ball/falling_ball.csv",     title: "Falling ball",             domain: "physics" },
+      { path: "data/fixtures/climate_buoy_demo.csv",              title: "Climate buoy",             domain: "enviro" },
+      { path: "data/fixtures/patient_cohort_demo.csv",            title: "Patient cohort",           domain: "research" },
     ];
     wrap.innerHTML = renderDatasetGrid(fallback);
+    _wireDatasetCardClicks(wrap);
     return;
   }
+  // Use Aurora's RICH demo_datasets fields when available -- title,
+  // subtitle, highlights, domain, size_bytes.
   const list = (r.datasets || r).map((d) => ({
-    path:   d.path || d.file || d.dataset || "",
-    label:  d.name || d.label || (d.path || "").split(/[\\/]/).pop().replace(/\.[^.]+$/, ""),
-    domain: d.domain || d.category || "—",
-    rows:   d.rows || d.row_count || null,
-    cols:   d.cols || d.column_count || null,
+    path:       d.path || d.file || d.dataset || "",
+    title:      d.title || d.name || d.label || (d.path || "").split(/[\\/]/).pop().replace(/\.[^.]+$/, ""),
+    subtitle:   d.subtitle || "",
+    highlights: d.highlights || "",
+    domain:     d.domain || d.category || "—",
+    size_kb:    d.size_bytes != null ? (d.size_bytes / 1024).toFixed(0) : null,
+    available:  d.available !== false,
   }));
   wrap.innerHTML = renderDatasetGrid(list);
-  // Wire click-to-run on every dataset card so the user can fire an
-  // analysis from this view without going back to Overview.
+  _wireDatasetCardClicks(wrap);
+}
+
+function _wireDatasetCardClicks(wrap) {
+  // Click a dataset card -> fire that dataset through /api/run.
   wrap.querySelectorAll(".finding-card[data-dataset-path]").forEach((card) => {
     card.addEventListener("click", async () => {
       const path = card.dataset.datasetPath;
@@ -557,12 +593,13 @@ function renderDatasetGrid(list) {
   if (!list.length) return renderEmpty("No datasets registered with Aurora.");
   return `<div class="findings-grid">
     ${list.map((d) => {
-      const meta = [d.domain, d.rows && `${d.rows} rows`, d.cols && `${d.cols} cols`]
+      const meta = [d.domain, d.size_kb && `${d.size_kb} KB`]
         .filter(Boolean).join(" · ");
       return `<article class="finding-card" data-dataset-path="${esc(d.path)}">
-        <span class="finding-sev finding-sev--info">dataset</span>
-        <div class="finding-title">${esc(d.label)}</div>
-        <div class="finding-sub"><code>${esc(d.path)}</code></div>
+        <span class="finding-sev finding-sev--info">${esc(d.domain || "dataset")}</span>
+        <div class="finding-title">${esc(d.title)}</div>
+        ${d.subtitle ? `<div class="finding-sub">${esc(d.subtitle)}</div>` : ""}
+        ${d.highlights ? `<div class="finding-sub" style="color:var(--ink-faint);margin-top:8px;">${esc(d.highlights.slice(0, 120))}</div>` : ""}
         <div class="finding-meta">${esc(meta || "—")}</div>
       </article>`;
     }).join("")}
@@ -576,13 +613,10 @@ function renderDatasetGrid(list) {
 async function refreshBundles() {
   const wrap = document.getElementById("bundlesList");
   if (!wrap) return;
-  if (!auroraOnline) {
-    wrap.innerHTML = renderEmpty("Aurora offline. Start <b>studio_api.py</b> to list saved runs.");
-    return;
-  }
   const r = await auroraFetch("/api/runs");
   if (!r || r.ok === false) {
-    wrap.innerHTML = renderEmpty("Couldn't list runs. Check Aurora Studio is reachable.");
+    wrap.innerHTML = renderEmpty(
+      "Aurora hasn't reported any runs yet. Submit one from <b>Overview</b> or <b>Datasets</b>.");
     return;
   }
   const runs = r.runs || r.list || (Array.isArray(r) ? r : []);
@@ -590,28 +624,58 @@ async function refreshBundles() {
     wrap.innerHTML = renderEmpty("No runs on disk yet. Trigger one from <b>Overview</b>.");
     return;
   }
-  // Take the 30 most recent (already sorted by Aurora, but be defensive).
+  // Take the 30 most recent (Aurora sorts by mtime desc already, but defensive).
   const sorted = [...runs].sort((a, b) =>
-    String(b.run_id || "").localeCompare(String(a.run_id || ""))).slice(0, 30);
+    Number(b.mtime || 0) - Number(a.mtime || 0)).slice(0, 30);
+
   wrap.innerHTML = `<div class="findings-grid">
     ${sorted.map((run) => {
-      const id     = run.run_id || run.id || "(unknown)";
+      const id      = run.run_id || run.id || "(unknown)";
+      const runDir  = run.run_dir || "";
       const dataset = run.dataset || run.dataset_path || "";
-      const dsName = dataset ? String(dataset).split(/[\\/]/).pop() : "—";
-      const status = (run.status || run.state || "").toLowerCase();
-      const sev    = status === "complete" || status === "completed" ? "info"
-                    : status === "failed" || status === "error"       ? "crit"
-                    : "warn";
-      const findings = run.findings_count != null ? run.findings_count : "—";
-      const fab    = run.fabricated_count != null ? run.fabricated_count : 0;
-      return `<article class="finding-card" data-run-id="${esc(id)}">
-        <span class="finding-sev finding-sev--${sev}">${esc(status || "run")}</span>
+      const dsName  = dataset ? String(dataset).split(/[\\/]/).pop().replace(/\.csv$/i, "") : "—";
+      const findings = run.n_findings != null ? run.n_findings : (run.findings_count != null ? run.findings_count : "—");
+      const conf    = run.confidence != null ? `${(run.confidence * 100).toFixed(0)}%` : "—";
+      const when    = run.mtime ? _fmtRelative(run.mtime) : "—";
+      const pinned  = !!run.pinned;
+      const sev     = pinned ? "warn" : "info";   // pinned == amber, otherwise cyan
+      return `<article class="finding-card" data-run-id="${esc(id)}" data-run-dir="${esc(runDir)}">
+        <span class="finding-sev finding-sev--${sev}">${pinned ? "pinned" : "run"}</span>
         <div class="finding-title">${esc(dsName)}</div>
-        <div class="finding-sub"><code>${esc(String(id).slice(0, 36))}</code></div>
-        <div class="finding-meta">findings: ${esc(String(findings))} · fabricated: ${esc(String(fab))}</div>
+        <div class="finding-sub"><code>${esc(String(id).split("__").pop().slice(0, 40))}</code></div>
+        <div class="finding-meta">${esc(when)} · ${esc(String(findings))} findings · confidence ${esc(conf)}</div>
       </article>`;
     }).join("")}
   </div>`;
+
+  // Click a bundle card -> load that run as the active view.
+  wrap.querySelectorAll(".finding-card[data-run-dir]").forEach((card) => {
+    card.addEventListener("click", () => {
+      const dir = card.dataset.runDir;
+      if (!dir) return;
+      _currentRunDir = dir;
+      // Refresh all per-run views to show this bundle's data.
+      refreshOverview(_currentRunDir);
+      refreshFindings(_currentRunDir);
+      refreshData(_currentRunDir);
+      refreshMethods(_currentRunDir);
+      // Drop the user onto Overview to see what they just loaded.
+      setActiveView("overview");
+    });
+  });
+}
+
+function _fmtRelative(unixSec) {
+  // Aurora's mtime is Unix-seconds float. Format as a friendly relative
+  // string so the user can eyeball "fresh" vs "yesterday" runs quickly.
+  const now = Date.now() / 1000;
+  const diff = now - Number(unixSec);
+  if (diff < 60)       return `${diff.toFixed(0)}s ago`;
+  if (diff < 3600)     return `${(diff / 60).toFixed(0)}m ago`;
+  if (diff < 86400)    return `${(diff / 3600).toFixed(0)}h ago`;
+  if (diff < 86400 * 7) return `${(diff / 86400).toFixed(0)}d ago`;
+  const d = new Date(Number(unixSec) * 1000);
+  return d.toLocaleDateString();
 }
 
 
