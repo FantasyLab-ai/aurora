@@ -18,6 +18,14 @@ const AURORA_BASE = "http://127.0.0.1:8001";
 const HEALTH_POLL_MS = 4000;
 const STATE_POLL_MS  = 6000;
 
+// Version banner -- bump this whenever main.js changes meaningfully.
+// Shows in the WebView2 console so we can verify the right JS loaded
+// (WebView2 sometimes caches main.js across builds despite Tauri
+// bundling fresh assets every time).
+const AURORA_SHELL_VERSION = "phase-2.3-bulletproof-ping";
+console.log(`%c[aurora-shell] ${AURORA_SHELL_VERSION}`,
+            "color:#6ee7ff;font-weight:bold;");
+
 
 // ---------------------------------------------------------------------
 // 1. Window controls — Tauri v2 global API
@@ -128,20 +136,31 @@ async function auroraFetch(path, init) {
 }
 
 async function pingAurora() {
-  // We just need to know Aurora's HTTP server is alive -- NOT whether the
-  // body says ok:true. /api/preflight legitimately returns
-  // {"ok": false, "error": "no dataset found..."} on an idle backend with
-  // no run loaded, and that's a "I'm up, waiting for you" response, not
-  // a death rattle. Treating it as offline kept the sidebar dot red and
-  // the Run button disabled even when Aurora was fully running.
+  // Bulletproof health check: just hit Aurora's root URL with a short
+  // timeout. If we get ANY HTTP response back (200/404/500/whatever),
+  // Aurora's process is alive and serving. The ONLY thing that should
+  // register as offline is a network-level failure -- ECONNREFUSED,
+  // ENOTFOUND, or the request timing out.
+  //
+  // Previous versions read /api/preflight's body.ok field, but that
+  // endpoint legitimately returns {ok:false} on an idle backend with no
+  // run loaded -- a "I'm up, waiting for you" response, not a death
+  // rattle. Even resp.status < 500 wasn't enough in practice because
+  // WebView2 sometimes cached the old function. Hitting / with a 2s
+  // AbortSignal is the simplest possible probe.
   try {
-    const resp = await fetch(`${AURORA_BASE}/api/preflight`, {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
+    await fetch(`${AURORA_BASE}/`, {
+      method: "GET",
       cache: "no-store",
-      headers: { Accept: "application/json" },
+      signal: controller.signal,
     });
-    return resp.status < 500;  // any 2xx/3xx/4xx from Aurora == alive
+    clearTimeout(timer);
+    return true;
   } catch (err) {
-    return false;             // network-level failure == truly offline
+    // ECONNREFUSED, timeout, or any other network-level failure.
+    return false;
   }
 }
 
