@@ -1,0 +1,676 @@
+/* =====================================================================
+   Aurora desktop shell — Phase 1
+   ---------------------------------------------------------------------
+   Single stylesheet by design. Sections are commented; for Phase 2 we
+   can split into tokens.css / shell.css / tabs.css if it grows past
+   ~1.5K lines.
+
+   Polish techniques baked in (see chat for the eight-point list):
+     1. Token system (colors, spacing, radius, typography)
+     2. One motion system (one easing curve, three durations)
+     3. Sliding tab underline (one element, transform-animated)
+     4. Cross-fade view transitions with 8px rise
+     5. Font smoothing
+     6. Frameless chrome (rounded card floating over transparent window)
+     7. Hover micro-interactions (lift + glow, 120ms)
+     8. Custom thin scrollbars
+   ===================================================================== */
+
+
+/* ---------------------------------------------------------------------
+   1. Tokens — colors, spacing, radius, typography, motion
+   --------------------------------------------------------------------- */
+:root {
+  /* Backgrounds — near-black, layered. */
+  --bg-window:   #050614;     /* transparent-window fallback */
+  --bg-deep:     #08081a;     /* shell card body */
+  --bg-elev:     #0e1023;     /* sidebar, tab-bar */
+  --bg-card:     #131630;     /* stat cards, finding cards */
+  --bg-card-hi:  #181c3a;     /* hover state */
+
+  /* Bevels & dividers. */
+  --bevel-light: rgba(124, 92, 255, 0.16);
+  --bevel-soft:  rgba(110, 231, 255, 0.10);
+  --divider:     rgba(255, 255, 255, 0.06);
+
+  /* Aurora identity palette — cyan, mint, violet, magenta. */
+  --cyan:         #6ee7ff;
+  --cyan-deep:    #3ec8e8;
+  --mint:         #88ffd1;
+  --violet:       #7c5cff;
+  --violet-bright:#a78dff;
+  --magenta:      #ff6ec7;
+  --amber:        #ffc857;
+  --crit:         #ff5577;
+  --warn:         #ff9a4a;
+
+  /* Ink (text). */
+  --ink:        #d6d8f5;
+  --ink-dim:    #8a8db0;
+  --ink-faint:  #5a5e88;
+
+  /* Spacing scale — 4/8/12/16/24/32/48. Use these, not arbitrary px. */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+  --sp-7: 48px;
+
+  /* Radius scale. */
+  --r-1: 2px;
+  --r-2: 4px;
+  --r-3: 8px;
+  --r-4: 12px;
+  --r-5: 16px;
+
+  /* Typography. */
+  --font-ui:   'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Consolas', monospace;
+  --font-num:  'VT323', 'JetBrains Mono', monospace;
+
+  /* Motion system — ONE easing, three durations. Reuse everywhere. */
+  --ease:      cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast:  120ms;
+  --dur-norm:  200ms;
+  --dur-slow:  320ms;
+
+  /* Window-chrome geometry. */
+  --titlebar-h: 36px;
+  --sidebar-w:  220px;
+}
+
+
+/* ---------------------------------------------------------------------
+   2. Base — font smoothing, full-window layout
+   --------------------------------------------------------------------- */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: transparent;        /* required for Tauri transparent window */
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+
+  /* Polish technique #5: font smoothing. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+button { font-family: inherit; }
+code { font-family: var(--font-mono); font-size: 0.92em; color: var(--cyan); }
+
+/* The whole window is a rounded card floating over the transparent OS
+   layer. This is what makes the app read native rather than browser. */
+.aurora-window {
+  height: 100vh;
+  background:
+    radial-gradient(1200px 700px at 20% 0%,  rgba(124, 92, 255, 0.08), transparent 60%),
+    radial-gradient(1000px 600px at 100% 100%, rgba(110, 231, 255, 0.05), transparent 50%),
+    var(--bg-deep);
+  border-radius: 10px;
+  border: 1px solid var(--bevel-light);
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  display: grid;
+  grid-template-rows: var(--titlebar-h) 1fr;
+  overflow: hidden;               /* clip iframe corners */
+}
+
+
+/* ---------------------------------------------------------------------
+   3. Frameless titlebar — drag region + brand + window controls
+   --------------------------------------------------------------------- */
+.titlebar {
+  height: var(--titlebar-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--sp-3) 0 var(--sp-4);
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
+  border-bottom: 1px solid var(--divider);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.titlebar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: 12px;
+  letter-spacing: 1.5px;
+  color: var(--ink-dim);
+}
+
+.brand-diamond {
+  color: var(--cyan);
+  font-size: 14px;
+  filter: drop-shadow(0 0 6px rgba(110, 231, 255, 0.55));
+}
+
+.brand-name {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  letter-spacing: 0.18em;
+}
+
+.titlebar-controls {
+  display: flex;
+  gap: var(--sp-1);
+}
+
+.tc {
+  width: 30px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: 11px;
+  border-radius: var(--r-2);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease);
+}
+.tc:hover         { background: var(--bg-card); color: var(--ink); }
+.tc-close:hover   { background: var(--crit);    color: white; }
+
+
+/* ---------------------------------------------------------------------
+   4. App shell — sidebar + content
+   --------------------------------------------------------------------- */
+.app-shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  overflow: hidden;
+}
+
+.sidebar {
+  background: var(--bg-elev);
+  border-right: 1px solid var(--divider);
+  padding: var(--sp-4) var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  overflow-y: auto;
+}
+
+.nav-section--bottom { margin-top: auto; }
+
+.nav-section-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--ink-faint);
+  padding: 0 var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+
+.nav-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: transparent;
+  border: none;
+  color: var(--ink-dim);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--r-3);
+  position: relative;
+  transition: background var(--dur-fast) var(--ease),
+              color      var(--dur-fast) var(--ease),
+              transform  var(--dur-fast) var(--ease);
+}
+.nav-item:hover {
+  background: var(--bg-card);
+  color: var(--ink);
+  transform: translateX(1px);
+}
+.nav-item.is-active {
+  background: linear-gradient(90deg, rgba(110, 231, 255, 0.12), rgba(110, 231, 255, 0.03));
+  color: var(--cyan);
+  box-shadow: inset 2px 0 0 var(--cyan);
+}
+
+.nav-ico {
+  width: 16px;
+  text-align: center;
+  font-size: 12px;
+  color: inherit;
+  opacity: 0.85;
+}
+.nav-item.is-active .nav-ico {
+  color: var(--cyan);
+  filter: drop-shadow(0 0 6px rgba(110, 231, 255, 0.55));
+}
+
+.sidebar-status {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  transition: background var(--dur-norm) var(--ease),
+              box-shadow var(--dur-norm) var(--ease);
+}
+.status-dot--on  { background: var(--mint);
+                    box-shadow: 0 0 8px rgba(136, 255, 209, 0.6); }
+.status-dot--off { background: var(--crit); opacity: 0.7; }
+
+
+/* ---------------------------------------------------------------------
+   5. Content area — tabs + view stack
+   --------------------------------------------------------------------- */
+.content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Tab bar — polish technique #3: ONE shared sliding underline. */
+.tabbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-5);
+  height: 48px;
+  border-bottom: 1px solid var(--divider);
+  background: var(--bg-elev);
+  position: relative;
+}
+
+.tab {
+  background: transparent;
+  border: none;
+  color: var(--ink-dim);
+  padding: 14px 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  position: relative;
+  transition: color var(--dur-fast) var(--ease);
+}
+.tab:hover         { color: var(--ink); }
+.tab.is-active     { color: var(--cyan); }
+
+.tab-underline {
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  width: 0;
+  background: var(--cyan);
+  border-radius: 2px 2px 0 0;
+  box-shadow: 0 0 10px rgba(110, 231, 255, 0.6);
+  transition: transform var(--dur-norm) var(--ease),
+              width     var(--dur-norm) var(--ease);
+}
+
+/* View stack — polish technique #4: cross-fade with 8px rise. */
+.view-stack {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.view {
+  position: absolute;
+  inset: 0;
+  padding: var(--sp-5) var(--sp-6);
+  overflow-y: auto;
+  opacity: 0;
+  transform: translateY(8px);
+  pointer-events: none;
+  transition: opacity   var(--dur-slow) var(--ease),
+              transform var(--dur-slow) var(--ease);
+}
+.view.is-active {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.view--studio { padding: 0; }       /* iframe takes the full pane */
+
+
+/* ---------------------------------------------------------------------
+   6. Common blocks — breadcrumb, stat cards, finding cards, empty states
+   --------------------------------------------------------------------- */
+.breadcrumb {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--ink-faint);
+  margin-bottom: var(--sp-5);
+}
+.breadcrumb b { color: var(--ink-dim); font-weight: 500; }
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-5);
+}
+
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--bevel-light);
+  border-radius: var(--r-4);
+  padding: var(--sp-4);
+  transition: transform   var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease),
+              background  var(--dur-fast) var(--ease);
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(110, 231, 255, 0.35);
+  background: var(--bg-card-hi);
+}
+
+.stat-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--cyan);
+  margin-bottom: var(--sp-2);
+}
+.stat-val {
+  font-family: var(--font-num);
+  font-size: 36px;
+  line-height: 1.1;
+  color: var(--ink);
+  letter-spacing: 0.5px;
+}
+.stat-val--crit { color: var(--crit); }
+.stat-sub {
+  margin-top: var(--sp-2);
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.run-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-5);
+  flex-wrap: wrap;
+}
+
+.btn {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  padding: 10px 16px;
+  border-radius: var(--r-3);
+  border: 1px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  transition: all var(--dur-fast) var(--ease);
+}
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-primary {
+  background: linear-gradient(180deg, var(--violet) 0%, #5b3ec8 100%);
+  color: white;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.22),
+              0 0 14px rgba(124,92,255,0.35);
+}
+.btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.28),
+              0 0 22px rgba(124,92,255,0.55);
+}
+.btn-secondary {
+  background: var(--bg-card);
+  color: var(--ink);
+  border-color: var(--bevel-light);
+}
+.btn-secondary:hover {
+  background: var(--bg-card-hi);
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+.btn-ico { color: inherit; }
+
+.select {
+  background: var(--bg-card);
+  color: var(--ink);
+  border: 1px solid var(--bevel-light);
+  padding: 10px var(--sp-3);
+  border-radius: var(--r-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  cursor: pointer;
+}
+.select:hover { border-color: var(--cyan); }
+
+.run-hint {
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+.run-hint b { color: var(--ink-dim); }
+
+.overview-foot {
+  margin-top: var(--sp-6);
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--divider);
+}
+.hint-line {
+  font-size: 12px;
+  color: var(--ink-faint);
+  line-height: 1.6;
+}
+.hint-line b { color: var(--ink-dim); }
+
+
+/* Findings grid + cards. */
+.findings-toolbar {
+  display: flex;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+}
+.chip {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  padding: 6px 10px;
+  border-radius: var(--r-2);
+  border: 1px solid var(--bevel-light);
+  background: var(--bg-card);
+  color: var(--ink-dim);
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease);
+}
+.chip:hover { color: var(--ink); border-color: var(--cyan); }
+.chip.is-active {
+  background: rgba(110, 231, 255, 0.10);
+  color: var(--cyan);
+  border-color: var(--cyan);
+}
+
+.findings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--sp-3);
+}
+
+.finding-card {
+  background: var(--bg-card);
+  border: 1px solid var(--bevel-light);
+  border-radius: var(--r-3);
+  padding: var(--sp-4);
+  cursor: pointer;
+  transition: transform   var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease);
+}
+.finding-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(110, 231, 255, 0.35);
+}
+
+.finding-sev {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 3px 6px;
+  border-radius: var(--r-1);
+  display: inline-block;
+  margin-bottom: var(--sp-2);
+}
+.finding-sev--crit { background: rgba(255,85,119,0.15);  color: var(--crit); }
+.finding-sev--warn { background: rgba(255,154,74,0.15);  color: var(--warn); }
+.finding-sev--info { background: rgba(110,231,255,0.10); color: var(--cyan); }
+
+.finding-title { font-weight: 600; color: var(--ink); margin-bottom: var(--sp-1); font-size: 14px; }
+.finding-sub   { font-size: 12px; color: var(--ink-dim); margin-bottom: var(--sp-2); }
+.finding-meta  { font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px;
+                  color: var(--ink-faint); text-transform: uppercase; }
+
+.empty-state {
+  padding: var(--sp-6);
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: 13px;
+  background: var(--bg-card);
+  border: 1px dashed var(--bevel-light);
+  border-radius: var(--r-3);
+}
+.empty-state b { color: var(--ink-dim); }
+
+.data-foot-hint {
+  margin-top: var(--sp-4);
+  padding: var(--sp-3);
+  font-size: 11px;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  letter-spacing: 0.5px;
+  border-left: 2px solid var(--violet);
+  background: rgba(124,92,255,0.04);
+}
+
+/* Data table — clean rows, hover highlight. */
+.data-table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 12px; }
+.data-table thead th {
+  text-align: left;
+  font-weight: 400;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: var(--cyan);
+  text-transform: uppercase;
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--divider);
+}
+.data-table tbody td {
+  padding: var(--sp-3) var(--sp-4);
+  color: var(--ink-dim);
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+.data-table tbody tr:hover td { background: rgba(110,231,255,0.04); color: var(--ink); }
+
+
+/* ---------------------------------------------------------------------
+   7. Studio (legacy iframe) — full-bleed with offline fallback
+   --------------------------------------------------------------------- */
+.studio-frame-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  height: calc(100% - 36px);   /* breadcrumb takes ~36px */
+}
+.studio-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: var(--bg-deep);
+  display: block;
+}
+
+.studio-offline {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  background: var(--bg-deep);
+  color: var(--ink-dim);
+  padding: var(--sp-6);
+  text-align: center;
+}
+.studio-offline.is-visible { display: flex; }
+.offline-glyph {
+  font-size: 48px;
+  color: var(--cyan);
+  opacity: 0.5;
+  filter: drop-shadow(0 0 16px rgba(110,231,255,0.4));
+}
+.offline-title { font-size: 16px; color: var(--ink); }
+.offline-sub   { font-size: 13px; line-height: 1.7; max-width: 480px; color: var(--ink-dim); }
+.offline-sub code {
+  background: var(--bg-card);
+  padding: 2px 6px;
+  border-radius: var(--r-1);
+}
+
+.view--studio .breadcrumb {
+  padding: var(--sp-3) var(--sp-5);
+  margin: 0;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--divider);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.link-btn {
+  background: transparent;
+  border: none;
+  color: var(--ink-dim);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  padding: 2px 8px;
+  border-radius: var(--r-2);
+  cursor: pointer;
+  margin-left: auto;
+  transition: all var(--dur-fast) var(--ease);
+}
+.link-btn:hover { color: var(--cyan); background: var(--bg-card); }
+
+
+/* ---------------------------------------------------------------------
+   8. Scrollbars — polish technique #8: custom thin scrollbars
+   --------------------------------------------------------------------- */
+::-webkit-scrollbar           { width: 8px; height: 8px; }
+::-webkit-scrollbar-track     { background: transparent; }
+::-webkit-scrollbar-thumb     { background: var(--bevel-light); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(110, 231, 255, 0.4); }

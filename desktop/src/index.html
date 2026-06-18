@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aurora</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=VT323&display=swap" rel="stylesheet" />
+    <script type="module" src="/main.js" defer></script>
+  </head>
+  <body class="aurora-window">
+    <!-- Frameless titlebar: drag region + brand + window controls. -->
+    <header class="titlebar" data-tauri-drag-region>
+      <div class="titlebar-brand" data-tauri-drag-region>
+        <span class="brand-diamond">◆</span>
+        <span class="brand-name">aurora</span>
+      </div>
+      <div class="titlebar-controls">
+        <button class="tc tc-min"   id="winMin"   title="Minimize">—</button>
+        <button class="tc tc-max"   id="winMax"   title="Maximize">▢</button>
+        <button class="tc tc-close" id="winClose" title="Close">✕</button>
+      </div>
+    </header>
+
+    <!-- Shell: sidebar (workspace + data) | content (tabs + views). -->
+    <div class="app-shell">
+      <aside class="sidebar">
+        <nav class="nav-section">
+          <div class="nav-section-label">workspace</div>
+          <button class="nav-item is-active" data-view="overview">
+            <span class="nav-ico">◆</span><span class="nav-label">Overview</span>
+          </button>
+          <button class="nav-item" data-view="findings">
+            <span class="nav-ico">▤</span><span class="nav-label">Findings</span>
+          </button>
+          <button class="nav-item" data-view="methods">
+            <span class="nav-ico">∿</span><span class="nav-label">Methods</span>
+          </button>
+        </nav>
+
+        <nav class="nav-section">
+          <div class="nav-section-label">data</div>
+          <button class="nav-item" data-view="datasets">
+            <span class="nav-ico">⊞</span><span class="nav-label">Datasets</span>
+          </button>
+          <button class="nav-item" data-view="bundles">
+            <span class="nav-ico">◇</span><span class="nav-label">Bundles</span>
+          </button>
+        </nav>
+
+        <nav class="nav-section nav-section--bottom">
+          <div class="nav-section-label">full studio</div>
+          <button class="nav-item" data-view="studio">
+            <span class="nav-ico">▶</span><span class="nav-label">Aurora Studio</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-status" id="sidebarStatus">
+          <div class="status-dot status-dot--off" id="auroraDot"></div>
+          <span class="status-label" id="auroraStatusLabel">aurora: offline</span>
+        </div>
+      </aside>
+
+      <main class="content">
+        <!-- Tab strip with one shared sliding underline (matches reference). -->
+        <div class="tabbar">
+          <button class="tab is-active" data-tab="overview">Overview</button>
+          <button class="tab"             data-tab="findings">Findings</button>
+          <button class="tab"             data-tab="data">Data</button>
+          <div class="tab-underline" id="tabUnderline"></div>
+        </div>
+
+        <div class="view-stack">
+          <!-- OVERVIEW: stat cards summarizing the latest run. -->
+          <section class="view is-active" id="view-overview">
+            <div class="breadcrumb">overview / <b id="overviewRunId">no active run</b></div>
+
+            <div class="stats-grid">
+              <article class="stat-card">
+                <div class="stat-label">findings</div>
+                <div class="stat-val" id="statFindings">—</div>
+                <div class="stat-sub" id="statFindingsSub">awaiting run</div>
+              </article>
+              <article class="stat-card">
+                <div class="stat-label">methods run</div>
+                <div class="stat-val" id="statMethods">—</div>
+                <div class="stat-sub" id="statMethodsSub">0 fabricated</div>
+              </article>
+              <article class="stat-card">
+                <div class="stat-label">anomalies</div>
+                <div class="stat-val stat-val--crit" id="statAnomalies">—</div>
+                <div class="stat-sub" id="statAnomaliesSub">crit + warn</div>
+              </article>
+              <article class="stat-card">
+                <div class="stat-label">regimes</div>
+                <div class="stat-val" id="statRegimes">—</div>
+                <div class="stat-sub" id="statRegimesSub">hmm latent states</div>
+              </article>
+            </div>
+
+            <div class="run-row">
+              <button class="btn btn-primary" id="runBtn" disabled>
+                <span class="btn-ico">▶</span> Run analysis
+              </button>
+              <select class="select" id="runDatasetSelect">
+                <option value="">— pick a dataset —</option>
+              </select>
+              <span class="run-hint" id="runHint">Aurora Studio must be running. Use the <b>Aurora Studio</b> sidebar item to launch it.</span>
+            </div>
+
+            <div class="overview-foot">
+              <div class="hint-line">
+                Phase 1 desktop shell · sidebar + tabs + sliding underline + frameless chrome.
+                Aurora's existing UI is still available under <b>Aurora Studio</b>.
+                Native views replace the legacy one progressively.
+              </div>
+            </div>
+          </section>
+
+          <!-- FINDINGS: card list, severity-coloured. -->
+          <section class="view" id="view-findings">
+            <div class="breadcrumb">findings / <b id="findingsRunId">no active run</b></div>
+            <div class="findings-toolbar">
+              <button class="chip chip-filter is-active" data-sev="all">all</button>
+              <button class="chip chip-filter" data-sev="crit">critical</button>
+              <button class="chip chip-filter" data-sev="warn">warnings</button>
+              <button class="chip chip-filter" data-sev="info">insights</button>
+            </div>
+            <div class="findings-grid" id="findingsGrid">
+              <div class="empty-state">No active run. Trigger one from <b>Overview</b>, or open <b>Aurora Studio</b>.</div>
+            </div>
+          </section>
+
+          <!-- DATA: dataset preview table. -->
+          <section class="view" id="view-data">
+            <div class="breadcrumb">data / <b id="dataRunId">no dataset loaded</b></div>
+            <div class="data-table-wrap" id="dataTableWrap">
+              <div class="empty-state">No dataset loaded. Open <b>Aurora Studio</b> to upload a CSV, then come back.</div>
+            </div>
+            <div class="data-foot-hint">
+              For large datasets, this view will eventually use a virtualized renderer
+              so 100k rows stay at 60fps — only the visible rows mount.
+            </div>
+          </section>
+
+          <!-- METHODS, DATASETS, BUNDLES: stubs that route to the legacy view. -->
+          <section class="view" id="view-methods">
+            <div class="breadcrumb">methods / <b>this run</b></div>
+            <div class="empty-state">
+              Coming in Phase 2 — for now, the full method panel is in <b>Aurora Studio</b>.
+            </div>
+          </section>
+
+          <section class="view" id="view-datasets">
+            <div class="breadcrumb">datasets / <b>available</b></div>
+            <div class="empty-state">
+              Coming in Phase 2 — for now, datasets are managed via <b>Aurora Studio</b>'s upload area.
+            </div>
+          </section>
+
+          <section class="view" id="view-bundles">
+            <div class="breadcrumb">bundles / <b>saved runs</b></div>
+            <div class="empty-state">
+              Coming in Phase 2 — browse saved <code>.aurora.json</code> bundles here.
+            </div>
+          </section>
+
+          <!-- STUDIO: full legacy Aurora UI in an iframe. -->
+          <section class="view view--studio" id="view-studio">
+            <div class="breadcrumb">
+              aurora studio / <b id="studioUrl">http://127.0.0.1:8001</b>
+              <button class="link-btn" id="studioReload" title="Reload Studio">↻</button>
+            </div>
+            <div class="studio-frame-wrap">
+              <iframe class="studio-frame" id="studioFrame" src="about:blank"
+                      sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads">
+              </iframe>
+              <div class="studio-offline" id="studioOffline">
+                <div class="offline-glyph">◆</div>
+                <div class="offline-title">Aurora Studio isn't running.</div>
+                <div class="offline-sub">
+                  Start it in a terminal: <code>python studio_api.py</code><br />
+                  then click <b>Reload</b> above.
+                </div>
+                <button class="btn btn-secondary" id="studioRetry">Retry connection</button>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </main>
+    </div>
+  </body>
+</html>
