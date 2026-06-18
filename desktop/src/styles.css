@@ -684,6 +684,165 @@ code { font-family: var(--font-mono); font-size: 0.92em; color: var(--cyan); }
 
 
 /* ---------------------------------------------------------------------
+   7.5 Run-status banner — visible state machine for in-flight runs
+   --------------------------------------------------------------------- */
+.run-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-4);
+  border-radius: var(--r-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  transition: background var(--dur-norm) var(--ease),
+              border-color var(--dur-norm) var(--ease);
+  border: 1px solid transparent;
+}
+.run-banner-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.run-banner-text { color: var(--ink); }
+.run-banner-text b { color: var(--cyan); font-weight: 500; }
+.run-banner-text code {
+  background: rgba(0,0,0,0.3);
+  padding: 1px 6px;
+  border-radius: var(--r-1);
+  color: var(--mint);
+}
+
+.run-banner--submitting {
+  background: rgba(124, 92, 255, 0.10);
+  border-color: rgba(124, 92, 255, 0.35);
+}
+.run-banner--submitting .run-banner-dot {
+  background: var(--violet);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.run-banner--running {
+  background: rgba(110, 231, 255, 0.08);
+  border-color: rgba(110, 231, 255, 0.35);
+}
+.run-banner--running .run-banner-dot {
+  background: var(--cyan);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.run-banner--complete {
+  background: rgba(136, 255, 209, 0.08);
+  border-color: rgba(136, 255, 209, 0.35);
+}
+.run-banner--complete .run-banner-dot {
+  background: var(--mint);
+  box-shadow: 0 0 10px rgba(136, 255, 209, 0.6);
+}
+
+.run-banner--failed {
+  background: rgba(255, 85, 119, 0.08);
+  border-color: rgba(255, 85, 119, 0.35);
+}
+.run-banner--failed .run-banner-dot {
+  background: var(--crit);
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1);    opacity: 1; }
+  50%      { transform: scale(1.3);  opacity: 0.6; }
+}
+
+
+/* ---------------------------------------------------------------------
+   7.6 Narrative card — Aurora's interpretive_summary, prominent
+   --------------------------------------------------------------------- */
+.narrative-card {
+  background: linear-gradient(180deg, var(--bg-card) 0%, var(--bg-elev) 100%);
+  border: 1px solid var(--bevel-light);
+  border-radius: var(--r-4);
+  padding: var(--sp-5);
+  margin-top: var(--sp-5);
+  margin-bottom: var(--sp-5);
+  border-left: 3px solid var(--cyan);
+}
+.narrative-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-3);
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--divider);
+}
+.narrative-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 2.5px;
+  color: var(--cyan);
+}
+.narrative-confidence {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+.narrative-body {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.65;
+  margin-bottom: var(--sp-4);
+}
+.narrative-insights {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.narrative-insights-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--ink-faint);
+  margin-bottom: var(--sp-1);
+}
+.narrative-insight {
+  display: grid;
+  grid-template-columns: 60px 1fr;
+  gap: var(--sp-3);
+  align-items: center;
+  padding: var(--sp-2) var(--sp-3);
+  background: rgba(0,0,0,0.25);
+  border-radius: var(--r-2);
+}
+.narrative-insight-sev {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 3px 6px;
+  border-radius: var(--r-1);
+  text-align: center;
+}
+.narrative-insight-title {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+.narrative-insight-method {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+
+
+/* ---------------------------------------------------------------------
    8. Drop zone — drag-and-drop CSV target on Overview
    --------------------------------------------------------------------- */
 .drop-zone {

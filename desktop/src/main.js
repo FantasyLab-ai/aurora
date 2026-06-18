@@ -22,9 +22,25 @@ const STATE_POLL_MS  = 6000;
 // Shows in the WebView2 console so we can verify the right JS loaded
 // (WebView2 sometimes caches main.js across builds despite Tauri
 // bundling fresh assets every time).
-const AURORA_SHELL_VERSION = "phase-2.3-bulletproof-ping";
+const AURORA_SHELL_VERSION = "phase-2.4-run-state-machine";
 console.log(`%c[aurora-shell] ${AURORA_SHELL_VERSION}`,
             "color:#6ee7ff;font-weight:bold;");
+
+
+// ---------------------------------------------------------------------
+// Run state machine -- tracks the in-flight run so the Overview/Findings
+// views stay accurate. Aurora's /api/state returns the LAST COMPLETED
+// run, so without this the stat cards keep showing the previous run's
+// numbers until the new run finishes (which can be confusing -- "I just
+// submitted X but I see Y's data"). The machine polls /api/state until
+// state.run_id matches the run_id we just submitted, then refreshes
+// every view.
+// ---------------------------------------------------------------------
+const RUN_POLL_MS    = 1500;    // tight cadence while a run is in flight
+const RUN_POLL_MAX_S = 600;     // give up after 10 min (sanity cap)
+
+let _activeRun = null;          // { runId, submittedAt, filename } | null
+let _elapsedTimer = null;
 
 
 // ---------------------------------------------------------------------
@@ -193,6 +209,11 @@ async function pollHealth() {
 // 5. Overview view — stat cards from /api/state
 // ---------------------------------------------------------------------
 async function refreshOverview() {
+  // Don't overwrite the "running…" state with stale data while we're
+  // waiting for a submitted run to complete -- the state machine will
+  // call refreshOverview() once /api/state shows the new run.
+  if (_activeRun) return;
+
   const state = await auroraFetch("/api/state");
   if (!state || state.ok === false) {
     setStat("statFindings",   "—", "awaiting run");
@@ -200,6 +221,7 @@ async function refreshOverview() {
     setStat("statAnomalies",  "—", "crit + warn");
     setStat("statRegimes",    "—", "hmm latent states");
     setText("overviewRunId", auroraOnline ? "no active run" : "aurora offline");
+    _renderNarrative(null);
     return;
   }
 
@@ -223,6 +245,68 @@ async function refreshOverview() {
 
   const runId = s.run_id || s.run_dir || state.run_dir || "current run";
   setText("overviewRunId", String(runId).split(/[\\/]/).pop().slice(0, 56));
+
+  _renderNarrative(s, findings);
+}
+
+function _renderNarrative(state, findings) {
+  const card = document.getElementById("narrativeCard");
+  if (!card) return;
+  if (!state) { card.hidden = true; return; }
+
+  // Aurora puts the synthesized prose in interpretive_summary; the
+  // narrative_engine.summary is a structured fallback.
+  const prose = state.interpretive_summary
+              || (state.narrative_engine && state.narrative_engine.summary)
+              || (state.overview && state.overview.summary)
+              || "";
+  const confidence = state.confidence || (state.run_meta && state.run_meta.confidence);
+
+  if (!prose && !findings.length) { card.hidden = true; return; }
+  card.hidden = false;
+
+  const conf = document.getElementById("narrativeConfidence");
+  if (conf) {
+    if (confidence != null) {
+      const pct = (Number(confidence) * 100).toFixed(0);
+      conf.textContent = `confidence ${pct}%`;
+      conf.style.color = confidence >= 0.7 ? "var(--mint)" :
+                          confidence >= 0.4 ? "var(--amber)" : "var(--crit)";
+    } else {
+      conf.textContent = "";
+    }
+  }
+
+  const body = document.getElementById("narrativeBody");
+  if (body) {
+    body.textContent = prose
+      ? String(prose).trim().slice(0, 900)
+      : "Aurora has no narrative for this run -- check the Findings tab for raw insights.";
+  }
+
+  // Top 3 most-severe / highest-confidence findings as bullet list.
+  const insights = document.getElementById("narrativeInsights");
+  if (insights) {
+    const top = (findings || [])
+      .filter(f => f && (f.title || f.description))
+      .sort((a, b) => {
+        const order = { crit: 0, warn: 1, info: 2 };
+        return (order[a.severity] ?? 3) - (order[b.severity] ?? 3);
+      })
+      .slice(0, 3);
+    if (!top.length) { insights.innerHTML = ""; return; }
+    insights.innerHTML = "<div class=\"narrative-insights-label\">KEY INSIGHTS</div>" +
+      top.map(f => {
+        const sev = (f.severity || "info").toLowerCase();
+        return `<div class="narrative-insight">
+          <span class="narrative-insight-sev finding-sev--${sev}">${esc(sev)}</span>
+          <div class="narrative-insight-text">
+            <div class="narrative-insight-title">${esc(f.title || f.name || "(untitled)")}</div>
+            <div class="narrative-insight-method">${esc(f.method || "—")}</div>
+          </div>
+        </div>`;
+      }).join("");
+  }
 }
 
 function setStat(id, val, sub) {
@@ -534,19 +618,113 @@ async function runWithPath(path) {
   // here so the run-hint state machine is consistent in both flows.
   const hint = document.getElementById("runHint");
   const filename = String(path).split(/[\\/]/).pop();
+
+  // Stop any previous run we were tracking.
+  _stopElapsedTimer();
+  _activeRun = null;
+
+  // Immediate visual: clear stale stats, show "submitting" state.
+  _showRunningState(filename, "submitting");
+
   if (hint) hint.textContent = `submitting run for ${filename}…`;
   const r = await auroraFetch("/api/run", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ dataset: path }),
   });
-  if (r && r.ok !== false) {
-    if (hint) hint.innerHTML = `submitted · <code>${esc(r.run_id || "(running)")}</code>`;
-    setTimeout(refreshOverview, 1500);
-  } else {
+
+  if (!r || r.ok === false) {
     if (hint) hint.innerHTML =
-      `<span style="color:var(--crit)">run failed: ${esc(r.error || "see Aurora Studio log")}</span>`;
+      `<span style="color:var(--crit)">run failed: ${esc((r && r.error) || "see Aurora Studio log")}</span>`;
+    _showRunningState(filename, "failed");
+    return;
   }
+
+  // Submission accepted. Aurora's /api/state will still return the
+  // PREVIOUS run until this one completes, so we now poll until we see
+  // the new run_id in /api/state -- that's our completion signal.
+  const newRunId = r.run_id || null;
+  _activeRun = {
+    runId: newRunId,
+    submittedAt: Date.now(),
+    filename,
+  };
+  if (hint) hint.innerHTML = newRunId
+    ? `running · <code>${esc(newRunId)}</code>`
+    : `running · <code>(pending)</code>`;
+  _showRunningState(filename, "running");
+  _startElapsedTimer();
+  pollUntilRunComplete();
+}
+
+function _showRunningState(filename, phase) {
+  // phase: "submitting" | "running" | "complete" | "failed"
+  const banner = document.getElementById("runStatusBanner");
+  if (banner) {
+    banner.hidden = false;
+    banner.className = `run-banner run-banner--${phase}`;
+    let label = "";
+    if (phase === "submitting") label = `submitting <b>${esc(filename)}</b>…`;
+    else if (phase === "running") label = `analyzing <b>${esc(filename)}</b> · <span id="runElapsed">0.0s</span>`;
+    else if (phase === "complete") label = `complete · <b>${esc(filename)}</b>`;
+    else if (phase === "failed")  label = `failed · <b>${esc(filename)}</b>`;
+    banner.innerHTML = `<span class="run-banner-dot"></span><span class="run-banner-text">${label}</span>`;
+  }
+  // Also blank the stat cards while running so the user doesn't see
+  // stale numbers from the previous run.
+  if (phase === "submitting" || phase === "running") {
+    setStat("statFindings",  "—", "running…");
+    setStat("statMethods",   "—", "running…");
+    setStat("statAnomalies", "—", "running…");
+    setStat("statRegimes",   "—", "running…");
+  }
+}
+
+function _startElapsedTimer() {
+  _stopElapsedTimer();
+  _elapsedTimer = setInterval(() => {
+    if (!_activeRun) { _stopElapsedTimer(); return; }
+    const el = document.getElementById("runElapsed");
+    if (el) {
+      const s = ((Date.now() - _activeRun.submittedAt) / 1000).toFixed(1);
+      el.textContent = `${s}s`;
+    }
+  }, 100);
+}
+
+function _stopElapsedTimer() {
+  if (_elapsedTimer) { clearInterval(_elapsedTimer); _elapsedTimer = null; }
+}
+
+async function pollUntilRunComplete() {
+  if (!_activeRun) return;
+  const elapsedS = (Date.now() - _activeRun.submittedAt) / 1000;
+  if (elapsedS > RUN_POLL_MAX_S) {
+    // Sanity bail-out -- something's wrong.
+    _activeRun = null;
+    _stopElapsedTimer();
+    const hint = document.getElementById("runHint");
+    if (hint) hint.innerHTML = `<span style="color:var(--warn)">run timed out at ${RUN_POLL_MAX_S}s -- check Aurora Studio log.</span>`;
+    return;
+  }
+  const state = await auroraFetch("/api/state");
+  const s = state && (state.state || state);
+  const stateRunId = s && s.run_id;
+  if (stateRunId && _activeRun.runId &&
+      String(stateRunId).includes(_activeRun.runId.split("__")[0] || _activeRun.runId)) {
+    // /api/state now reflects our submitted run. We're done.
+    const filename = _activeRun.filename;
+    _activeRun = null;
+    _stopElapsedTimer();
+    _showRunningState(filename, "complete");
+    // Refresh every view that depends on state.
+    refreshOverview();
+    refreshFindings();
+    refreshData();
+    refreshMethods();
+    return;
+  }
+  setTimeout(pollUntilRunComplete, RUN_POLL_MS);
 }
 
 async function triggerRun() {

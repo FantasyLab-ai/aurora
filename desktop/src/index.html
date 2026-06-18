@@ -7,11 +7,11 @@
     <!-- ?v= bump on every meaningful main.js / styles.css change to bust
          WebView2's persistent cache. The cache is keyed on full URL, so
          appending a unique query param forces a fresh fetch. -->
-    <link rel="stylesheet" href="styles.css?v=2.3.1" />
+    <link rel="stylesheet" href="styles.css?v=2.4.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=VT323&display=swap" rel="stylesheet" />
-    <script type="module" src="/main.js?v=2.3.1" defer></script>
+    <script type="module" src="/main.js?v=2.4.0" defer></script>
   </head>
   <body class="aurora-window">
     <!-- Frameless titlebar: drag region + brand + window controls. -->
@@ -80,6 +80,11 @@
           <section class="view is-active" id="view-overview">
             <div class="breadcrumb">overview / <b id="overviewRunId">no active run</b></div>
 
+            <!-- Run-status banner: shows "analyzing X · 3.2s" while a
+                 run is in flight, flips to "complete" when /api/state
+                 catches up. Hidden when no run is being tracked. -->
+            <div class="run-banner" id="runStatusBanner" hidden></div>
+
             <div class="stats-grid">
               <article class="stat-card">
                 <div class="stat-label">findings</div>
@@ -128,9 +133,22 @@
               <span class="run-hint" id="runHint">Aurora Studio must be running. Use the <b>Aurora Studio</b> sidebar item to launch it.</span>
             </div>
 
+            <!-- AURORA'S NARRATIVE: state.interpretive_summary rendered
+                 as a card. Includes the top 3 findings as bulleted
+                 "key insights" so the user sees what Aurora actually
+                 concluded, not just stat counts. -->
+            <section class="narrative-card" id="narrativeCard" hidden>
+              <div class="narrative-head">
+                <div class="narrative-label">AURORA'S NARRATIVE</div>
+                <div class="narrative-confidence" id="narrativeConfidence"></div>
+              </div>
+              <div class="narrative-body" id="narrativeBody"></div>
+              <div class="narrative-insights" id="narrativeInsights"></div>
+            </section>
+
             <div class="overview-foot">
               <div class="hint-line">
-                Phase 1 desktop shell · sidebar + tabs + sliding underline + frameless chrome.
+                Phase 2.4 desktop shell · sidebar + tabs + sliding underline + frameless chrome.
                 Aurora's existing UI is still available under <b>Aurora Studio</b>.
                 Native views replace the legacy one progressively.
               </div>

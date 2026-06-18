@@ -74,12 +74,36 @@ npm run tauri dev
 
 ```powershell
 cd desktop
-npm install                    # once
-npm run tauri build            # release build
+npm install                          # once
+npm run tauri build                  # release build (slower compile, smaller binary)
+npm run tauri build -- --debug       # debug build (faster compile, useful during dev)
 ```
 
-Installers land under `src-tauri/target/release/bundle/` — `.exe`/`.msi`
-on Windows, `.dmg` on macOS, `.AppImage`/`.deb` on Linux.
+Output locations:
+
+| Build mode | Where it lands                              |
+|---|---|
+| Release    | `src-tauri/target/release/desktop.exe`      |
+| Release    | `src-tauri/target/release/bundle/nsis/Aurora_<version>_x64-setup.exe` |
+| Release    | `src-tauri/target/release/bundle/msi/Aurora_<version>_x64_en-US.msi`   |
+| Debug      | `src-tauri/target/debug/desktop.exe`         |
+| Debug      | `src-tauri/target/debug/bundle/...` (same shape, slower)              |
+
+**`launch.ps1` picks whichever build is NEWER** (by file mtime). So if
+you have an old release `desktop.exe` on disk and you do a fresh debug
+rebuild, the launcher uses the debug build. That's deliberate — during
+active iteration the latest build is what you want, regardless of mode.
+The launcher logs which build it picked + its timestamp.
+
+If `launch.ps1` keeps picking a stale build, just rebuild:
+
+```powershell
+cd desktop
+npm run tauri build -- --debug    # fast, ~30-60s incremental
+```
+
+The new `desktop.exe` overwrites the stale one; the launcher's
+"pick newest" logic finds it on the next run.
 
 ## How it talks to Aurora
 
