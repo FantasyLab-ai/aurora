@@ -108,9 +108,22 @@ try {
         Set-Location $ScriptDir
         npm run tauri dev
     } else {
-        $exe = Join-Path $ScriptDir "src-tauri\target\release\desktop.exe"
-        if (-not (Test-Path $exe)) {
-            $exe = Join-Path $ScriptDir "src-tauri\target\debug\desktop.exe"
+        # Pick whichever build is NEWER -- not "release first then debug".
+        # During active development the debug build is almost always the
+        # one that has the latest fixes, while a stale release build from
+        # a much earlier session sits on disk. Picking by mtime makes
+        # "rebuild + relaunch" actually use the rebuilt binary.
+        $release = Join-Path $ScriptDir "src-tauri\target\release\desktop.exe"
+        $debug   = Join-Path $ScriptDir "src-tauri\target\debug\desktop.exe"
+        $candidates = @()
+        if (Test-Path $release) { $candidates += Get-Item $release }
+        if (Test-Path $debug)   { $candidates += Get-Item $debug }
+        if ($candidates.Count -eq 0) {
+            $exe = $debug    # triggers the missing-build error below
+        } else {
+            $newest = $candidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            $exe = $newest.FullName
+            Write-Host "  picked newer build: $($newest.LastWriteTime.ToString('HH:mm:ss')) -- $($newest.FullName)" -ForegroundColor DarkGray
         }
         if (-not (Test-Path $exe)) {
             Write-Host "  ERROR: No built desktop.exe under src-tauri\target\(debug|release)\." -ForegroundColor Red
