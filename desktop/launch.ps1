@@ -1,11 +1,11 @@
 # =====================================================================
-# Aurora desktop — single-terminal launcher.
+# Aurora desktop -- single-terminal launcher.
 # ---------------------------------------------------------------------
 # Activates the Python venv, starts studio_api.py in a background job,
 # waits for it to answer /api/preflight, then launches the Tauri shell.
 # On exit (closing the Aurora window) the backend job is stopped cleanly.
 #
-# Usage — from ANY directory, fresh PowerShell:
+# Usage -- from ANY directory, fresh PowerShell:
 #
 #     .\desktop\launch.ps1                # uses prebuilt desktop.exe
 #     .\desktop\launch.ps1 -DevMode       # uses `npm run tauri dev` (hot reload)
@@ -75,7 +75,7 @@ $auroraJob = Start-Job -Name "AuroraStudio" -ScriptBlock {
     $env:AURORA_PORT = $Port
     & $Python $Script 2>&1
 } -ArgumentList $pythonExe, $StudioApi, $AuroraPort, $WorktreeRoot
-Write-Host "  job id: $($auroraJob.Id) · log: Receive-Job $($auroraJob.Id)" -ForegroundColor DarkGray
+Write-Host "  job id: $($auroraJob.Id) | log: Receive-Job $($auroraJob.Id)" -ForegroundColor DarkGray
 
 # Poll /api/preflight so we don't open the desktop while Aurora is mid-boot.
 $ready = $false
@@ -88,7 +88,7 @@ for ($i = 0; $i -lt $WaitSeconds; $i++) {
     } catch { }
 }
 if (-not $ready) {
-    Write-Host "  WARN: Aurora didn't answer /api/preflight within $WaitSeconds s — continuing anyway." -ForegroundColor Yellow
+    Write-Host "  WARN: Aurora didn't answer /api/preflight within $WaitSeconds s -- continuing anyway." -ForegroundColor Yellow
     Write-Host "        Run 'Receive-Job $($auroraJob.Id)' in another shell to inspect its log." -ForegroundColor DarkGray
 } else {
     Write-Host "  Aurora is up at http://127.0.0.1:$AuroraPort" -ForegroundColor Green
@@ -106,7 +106,7 @@ try {
             $exe = Join-Path $ScriptDir "src-tauri\target\debug\desktop.exe"
         }
         if (-not (Test-Path $exe)) {
-            Write-Host "  ERROR: No built desktop.exe under src-tauri\target\{debug,release}\." -ForegroundColor Red
+            Write-Host "  ERROR: No built desktop.exe under src-tauri\target\(debug|release)\." -ForegroundColor Red
             Write-Host "  Build it once with:    cd desktop ; npm install ; npm run tauri build" -ForegroundColor Yellow
             Write-Host "  Or run with hot reload:   .\desktop\launch.ps1 -DevMode" -ForegroundColor Yellow
         } else {
