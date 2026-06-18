@@ -118,7 +118,47 @@ try {
             Write-Host "  Or run with hot reload:   .\desktop\launch.ps1 -DevMode" -ForegroundColor Yellow
         } else {
             Write-Host "  running $exe" -ForegroundColor DarkGray
-            & $exe
+            # Spawn asynchronously so we can grab the window handle, force
+            # it to a visible position (defends against off-screen / phantom-
+            # monitor positions Windows sometimes remembers), then wait for
+            # the user to close the window before cleaning up.
+            $proc = Start-Process -FilePath $exe -PassThru
+            $waited = 0
+            while ($proc -and -not $proc.HasExited -and
+                   ($proc.MainWindowHandle -eq [IntPtr]::Zero) -and
+                   $waited -lt 50) {
+                Start-Sleep -Milliseconds 100
+                $waited += 1
+                $proc.Refresh()
+            }
+            if ($proc -and -not $proc.HasExited -and
+                $proc.MainWindowHandle -ne [IntPtr]::Zero) {
+                Add-Type -ErrorAction SilentlyContinue -TypeDefinition @"
+                    using System;
+                    using System.Runtime.InteropServices;
+                    public class AuroraWin {
+                        [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n);
+                        [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+                        [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr h, int x, int y, int w, int hgt, bool repaint);
+                    }
+"@
+                # SW_RESTORE = 9 -- handles minimized AND maximized states.
+                [AuroraWin]::ShowWindow($proc.MainWindowHandle, 9) | Out-Null
+                # Force the window to (100,100) at 1400x900 -- guaranteed on
+                # any monitor configuration including single-monitor setups
+                # smaller than 1400x900 (Windows clamps to screen bounds).
+                [AuroraWin]::MoveWindow($proc.MainWindowHandle, 100, 100, 1400, 900, $true) | Out-Null
+                [AuroraWin]::SetForegroundWindow($proc.MainWindowHandle) | Out-Null
+                Write-Host "  Aurora window opened (pid $($proc.Id))." -ForegroundColor Green
+            } elseif ($proc -and $proc.HasExited) {
+                Write-Host "  WARN: desktop.exe exited immediately (code $($proc.ExitCode))." -ForegroundColor Yellow
+            } else {
+                Write-Host "  WARN: desktop.exe started but didn't expose a window in 5s." -ForegroundColor Yellow
+            }
+            # Block until the user closes the window.
+            if ($proc -and -not $proc.HasExited) {
+                $proc.WaitForExit()
+            }
         }
     }
 } finally {
