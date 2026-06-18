@@ -106,12 +106,12 @@
                  being dragged anywhere over the window. Accepts any
                  Aurora-readable format — CSV, TSV, JSON, JSONL, Parquet,
                  XLSX, etc. Server does the type detection. -->
-            <div class="drop-zone" id="dropZone">
+            <div class="drop-zone" id="dropZone" role="button" tabindex="0">
               <div class="drop-zone-glyph">↓</div>
-              <div class="drop-zone-title">Drop a file here</div>
+              <div class="drop-zone-title">Drop a file here — or click to browse</div>
               <div class="drop-zone-sub">
                 CSV · TSV · JSON · JSONL · Parquet · XLSX · all welcome.
-                Drop anywhere on the window — the path is sent to Aurora's <code>/api/run</code>.
+                Drop anywhere on the window, or click this zone for a native file picker.
               </div>
             </div>
 

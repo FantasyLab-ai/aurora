@@ -128,8 +128,21 @@ async function auroraFetch(path, init) {
 }
 
 async function pingAurora() {
-  const r = await auroraFetch("/api/preflight");
-  return r && r.ok !== false;
+  // We just need to know Aurora's HTTP server is alive -- NOT whether the
+  // body says ok:true. /api/preflight legitimately returns
+  // {"ok": false, "error": "no dataset found..."} on an idle backend with
+  // no run loaded, and that's a "I'm up, waiting for you" response, not
+  // a death rattle. Treating it as offline kept the sidebar dot red and
+  // the Run button disabled even when Aurora was fully running.
+  try {
+    const resp = await fetch(`${AURORA_BASE}/api/preflight`, {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+    return resp.status < 500;  // any 2xx/3xx/4xx from Aurora == alive
+  } catch (err) {
+    return false;             // network-level failure == truly offline
+  }
 }
 
 
@@ -529,6 +542,46 @@ async function triggerRun() {
 
 
 // ---------------------------------------------------------------------
+// 8a. Click-to-browse — opens a native Tauri file picker
+// ---------------------------------------------------------------------
+// Clicking the drop zone opens the OS file dialog (native, signed by
+// Microsoft on Windows, matches the rest of the desktop UX). The chosen
+// file's absolute path is fed through runWithPath() — identical to the
+// drag-drop branch, so both flows share the same UX feedback.
+async function pickAndRun() {
+  if (!TAURI || !TAURI.dialog) {
+    console.warn("Tauri dialog plugin not available — click-to-browse disabled.");
+    return;
+  }
+  try {
+    const path = await TAURI.dialog.open({
+      multiple: false,
+      directory: false,
+      title: "Pick a dataset for Aurora",
+      filters: [
+        { name: "Aurora datasets",
+          extensions: ["csv", "tsv", "txt", "json", "jsonl", "parquet", "xlsx", "xls", "feather", "arrow"] },
+        { name: "All files", extensions: ["*"] },
+      ],
+    });
+    if (!path) return;                       // user cancelled
+    const chosen = Array.isArray(path) ? path[0] : path;
+    setActiveView("overview");
+    await runWithPath(chosen);
+  } catch (err) {
+    console.warn("file picker failed:", err);
+  }
+}
+
+function wireDropZoneClick() {
+  const zone = document.getElementById("dropZone");
+  if (!zone) return;
+  zone.style.cursor = "pointer";
+  zone.addEventListener("click", pickAndRun);
+}
+
+
+// ---------------------------------------------------------------------
 // 8b. Drag-and-drop file → /api/run
 // ---------------------------------------------------------------------
 // Tauri 2 delivers drag-drop events to the *window*, not via the global
@@ -711,6 +764,7 @@ window.addEventListener("DOMContentLoaded", () => {
   wireFindingsFilters();
   wireStudioControls();
   wireDragDrop();
+  wireDropZoneClick();
   wireDetailPanel();
 
   const runBtn = document.getElementById("runBtn");
