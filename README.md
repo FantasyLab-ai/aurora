@@ -15,7 +15,7 @@
   [![Tests](https://img.shields.io/badge/tests-699%20passing-brightgreen.svg)](#)
   [![Patreon](https://img.shields.io/badge/support-Patreon-f96854.svg)](https://www.patreon.com/c/FantasyLab3DStudio)
 
-  [Quickstart](#-quickstart-60-seconds) · [Aurora Sentinel demos](#-aurora-sentinel--decision-contracts-in-the-room) · [See it in action](#see-aurora-in-action) · [Aurora Copilot](#-aurora-copilot--for-humans) · [Aurora Cortex](#%EF%B8%8F-aurora-cortex--for-ai-systems) · [Roadmap](ROADMAP.md) · [FantasyLab.ai](https://fantasylab.ai)
+  [Quickstart](#-quickstart-60-seconds) · [Desktop app](#%EF%B8%8F-desktop-app-native-shell) · [Aurora Sentinel demos](#-aurora-sentinel--decision-contracts-in-the-room) · [See it in action](#see-aurora-in-action) · [Aurora Copilot](#-aurora-copilot--for-humans) · [Aurora Cortex](#%EF%B8%8F-aurora-cortex--for-ai-systems) · [Roadmap](ROADMAP.md) · [FantasyLab.ai](https://fantasylab.ai)
 </div>
 
 ---
@@ -52,6 +52,106 @@ pip install -r requirements-dev.txt  # contributor / test extras
 ```
 
 For the optional Vite + TypeScript frontend build (developers only), see [§ Optional frontend build](#optional-enhanced-frontend-build).
+
+---
+
+## 🖥️ Desktop app (native shell)
+
+A real installable desktop app — frameless rounded window, sidebar
+navigation, sliding-underline tabs, drag-and-drop CSV onto the window.
+Built with Tauri 2: Rust shell + your existing Aurora UI inside.
+
+> The desktop shell is **Phase 1**. Aurora's full browser UI is still
+> embedded under the "Aurora Studio" sidebar item, so every feature you
+> have today is one click away. Native tabs (Overview / Findings / Data)
+> progressively replace the legacy iframe in Phase 2.
+
+### Prerequisites
+
+| What | Why | Install |
+|---|---|---|
+| Aurora venv | Backend that the shell talks to (`http://127.0.0.1:8001`) | The Quickstart above |
+| **Node 18+** + npm | Tauri CLI runs on Node | <https://nodejs.org> |
+| **Rust** (rustup) | Tauri compiles a native Rust shell — first build downloads ~200 crates | <https://rustup.rs> |
+| MSVC build tools (Windows) | Rust on Windows needs the C++ toolchain | The rustup installer walks you through it |
+
+### ⚠️ Windows: Smart App Control must be Off
+
+If you're on Windows 11 with **Smart App Control = On**, Rust's compiled
+build scripts will be blocked (`os error 4551 — An Application Control
+policy has blocked this file`). Disable SAC before building:
+
+> Settings → Privacy & Security → Windows Security → App & browser control
+> → Smart App Control settings → **Off**
+
+**Heads up — SAC is a one-way switch.** Once off, you can't re-enable
+without reinstalling Windows. That's Microsoft's design. Most devs leave
+it off because any compiled-from-source toolchain (Rust, Go, native Node
+modules) trips it.
+
+### Build it once
+
+```powershell
+cd desktop
+npm install                  # one-time, fast (~5s)
+npm run tauri build          # first compile is slow (5-15 min), then fast
+```
+
+Installers land at:
+
+```
+desktop\src-tauri\target\release\bundle\nsis\Aurora_<version>_x64-setup.exe   # Windows installer
+desktop\src-tauri\target\release\bundle\msi\Aurora_<version>_x64_en-US.msi    # MSI variant
+```
+
+(macOS / Linux: `.dmg` / `.AppImage` produced when built on those OSes.)
+
+Double-click the installer → Aurora gets a Start Menu entry. Or run the
+debug binary directly:
+
+```powershell
+# From PowerShell — note the & call operator for paths with spaces:
+& "desktop\src-tauri\target\debug\desktop.exe"
+```
+
+### Hot-reload dev mode (for UI iteration)
+
+```powershell
+cd desktop
+npm run tauri dev
+```
+
+Edits to `desktop/src/index.html`, `styles.css`, or `main.js` reflect
+live in the window.
+
+### What it looks like / does
+
+| Surface | Behavior |
+|---|---|
+| Frameless window | Rounded card on transparent OS background; `aurora ◆` titlebar with min/max/close |
+| Sidebar (left) | Workspace · Data · Full Studio sections + live "aurora: online / offline" status dot |
+| Tab strip (top) | Overview / Findings / Data with one shared sliding underline |
+| **Drag & drop a CSV** | Drop anywhere on the window → the file's path is sent to `/api/run` automatically |
+| Overview | 4 stat cards (Findings · Methods Run · Anomalies · Regimes) populated from `/api/state` |
+| Findings | Severity-filtered card grid; **click a card for the full evidence panel** |
+| Aurora Studio sidebar | Full legacy UI in an iframe — every existing feature still reachable |
+
+### Heads up: the shell needs Aurora running
+
+The desktop app is a UI on top of Aurora's HTTP API. Start the backend
+in any terminal first:
+
+```powershell
+# Activate the venv FIRST (otherwise `python studio_api.py` will fail with
+# "ModuleNotFoundError: No module named 'flask'")
+.\.venv\Scripts\Activate.ps1
+$env:AURORA_PORT = "8001"
+python studio_api.py
+```
+
+The sidebar's status dot turns green when Aurora answers `/api/preflight`.
+
+For full project structure + Phase 2 roadmap, see [`desktop/README.md`](desktop/README.md).
 
 ---
 

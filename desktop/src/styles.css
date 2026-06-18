@@ -668,7 +668,131 @@ code { font-family: var(--font-mono); font-size: 0.92em; color: var(--cyan); }
 
 
 /* ---------------------------------------------------------------------
-   8. Scrollbars — polish technique #8: custom thin scrollbars
+   8. Drop zone — drag-and-drop CSV target on Overview
+   --------------------------------------------------------------------- */
+.drop-zone {
+  padding: var(--sp-6) var(--sp-5);
+  border: 2px dashed var(--bevel-light);
+  border-radius: var(--r-4);
+  text-align: center;
+  margin-bottom: var(--sp-5);
+  background: rgba(110, 231, 255, 0.02);
+  transition: border-color var(--dur-fast) var(--ease),
+              background   var(--dur-fast) var(--ease),
+              transform    var(--dur-fast) var(--ease);
+}
+.drop-zone.is-active {
+  border-color: var(--cyan);
+  background: rgba(110, 231, 255, 0.08);
+  transform: scale(1.005);
+}
+.drop-zone-glyph {
+  font-size: 28px;
+  color: var(--cyan);
+  opacity: 0.65;
+  margin-bottom: var(--sp-2);
+  filter: drop-shadow(0 0 8px rgba(110, 231, 255, 0.45));
+}
+.drop-zone-title {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--ink);
+  margin-bottom: var(--sp-2);
+}
+.drop-zone-sub {
+  font-size: 12px;
+  color: var(--ink-faint);
+  max-width: 540px;
+  margin: 0 auto;
+  line-height: 1.55;
+}
+.drop-zone-sub b    { color: var(--ink-dim); }
+.drop-zone-sub code { background: var(--bg-card); padding: 1px 6px; border-radius: var(--r-1); }
+
+
+/* ---------------------------------------------------------------------
+   9. Detail panel — slide-in side panel for finding click-through
+   --------------------------------------------------------------------- */
+.detail-panel {
+  position: fixed;
+  top: var(--titlebar-h);
+  right: 0;
+  bottom: 0;
+  width: 460px;
+  max-width: 90vw;
+  background: var(--bg-elev);
+  border-left: 1px solid var(--bevel-light);
+  padding: var(--sp-5) var(--sp-5) var(--sp-6);
+  transform: translateX(100%);
+  transition: transform var(--dur-slow) var(--ease);
+  z-index: 100;
+  overflow-y: auto;
+  box-shadow: -16px 0 32px rgba(0, 0, 0, 0.4);
+}
+.detail-panel.is-visible { transform: translateX(0); }
+
+.detail-backdrop {
+  position: fixed;
+  top: var(--titlebar-h);
+  left: var(--sidebar-w);
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-norm) var(--ease);
+  z-index: 90;
+}
+.detail-backdrop.is-visible { opacity: 1; pointer-events: auto; }
+
+.detail-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--divider);
+  margin-bottom: var(--sp-4);
+}
+.detail-panel-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--cyan);
+}
+
+.detail-panel-body { font-size: 13px; }
+
+.detail-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  align-items: start;
+}
+.detail-row-key {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--ink-faint);
+  padding-top: 2px;
+}
+.detail-row-val {
+  color: var(--ink);
+  font-size: 13px;
+  word-break: break-word;
+  line-height: 1.5;
+}
+.detail-row-val--mono { font-family: var(--font-mono); font-size: 12px; }
+.detail-row-val--num  { font-family: var(--font-num); font-size: 18px; color: var(--cyan); }
+
+
+/* ---------------------------------------------------------------------
+   10. Scrollbars — polish technique #8: custom thin scrollbars
    --------------------------------------------------------------------- */
 ::-webkit-scrollbar           { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track     { background: transparent; }

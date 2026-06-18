@@ -234,18 +234,28 @@ function renderFindings(list) {
     return;
   }
 
-  grid.innerHTML = filtered.map((f) => {
+  grid.innerHTML = filtered.map((f, i) => {
     const sev = (f.severity || "info").toLowerCase();
     const title = esc(f.title || f.name || "(untitled)");
     const sub   = esc(f.description || f.summary || "");
     const meta  = esc(`${(f.method || "—")} · row ${f.row != null ? f.row : "—"}`);
-    return `<article class="finding-card">
+    return `<article class="finding-card" data-finding-idx="${i}">
       <span class="finding-sev finding-sev--${sev}">${sev}</span>
       <div class="finding-title">${title}</div>
       <div class="finding-sub">${sub}</div>
       <div class="finding-meta">${meta}</div>
     </article>`;
   }).join("");
+
+  // Wire click-to-detail. Index is local to the filtered list so the user
+  // sees the finding they clicked, not whatever is at that index in the
+  // unfiltered cache.
+  grid.querySelectorAll(".finding-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const idx = parseInt(card.dataset.findingIdx, 10);
+      if (!Number.isNaN(idx) && filtered[idx]) openFindingDetail(filtered[idx]);
+    });
+  });
 }
 
 function wireFindingsFilters() {
@@ -317,6 +327,26 @@ async function refreshDatasetOptions() {
     fixtures.map((f) => `<option value="${esc(f.value)}">${esc(f.label)}</option>`).join("");
 }
 
+async function runWithPath(path) {
+  // Shared helper: dropdown trigger AND drag-drop trigger both come through
+  // here so the run-hint state machine is consistent in both flows.
+  const hint = document.getElementById("runHint");
+  const filename = String(path).split(/[\\/]/).pop();
+  if (hint) hint.textContent = `submitting run for ${filename}…`;
+  const r = await auroraFetch("/api/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dataset: path }),
+  });
+  if (r && r.ok !== false) {
+    if (hint) hint.innerHTML = `submitted · <code>${esc(r.run_id || "(running)")}</code>`;
+    setTimeout(refreshOverview, 1500);
+  } else {
+    if (hint) hint.innerHTML =
+      `<span style="color:var(--crit)">run failed: ${esc(r.error || "see Aurora Studio log")}</span>`;
+  }
+}
+
 async function triggerRun() {
   const sel = document.getElementById("runDatasetSelect");
   const hint = document.getElementById("runHint");
@@ -324,19 +354,116 @@ async function triggerRun() {
     if (hint) hint.innerHTML = "<b style=\"color:var(--warn)\">pick a dataset first.</b>";
     return;
   }
-  if (hint) hint.textContent = "submitting run…";
-  const r = await auroraFetch("/api/run", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ dataset: sel.value }),
-  });
-  if (r && r.ok !== false) {
-    if (hint) hint.innerHTML = `submitted · <code>${esc(r.run_id || "(running)")}</code>`;
-    // Refresh overview after a short delay so the new run lands.
-    setTimeout(refreshOverview, 1500);
-  } else {
-    if (hint) hint.innerHTML = `<span style="color:var(--crit)">run failed: ${esc(r.error || "see Aurora Studio log")}</span>`;
+  await runWithPath(sel.value);
+}
+
+
+// ---------------------------------------------------------------------
+// 8b. Drag-and-drop CSV → /api/run
+// ---------------------------------------------------------------------
+// Tauri emits four events on the webview during a drag operation. We
+// highlight the drop-zone visual while a drag is active and POST the
+// dropped file's absolute path to Aurora when it lands. Multiple files
+// dropped → take the first that ends in .csv (then any file as fallback).
+async function wireDragDrop() {
+  if (!TAURI || !TAURI.event) return;
+  const zone = document.getElementById("dropZone");
+  const setActive = (on) => zone && zone.classList.toggle("is-active", on);
+
+  try {
+    await TAURI.event.listen("tauri://drag-enter", () => setActive(true));
+    await TAURI.event.listen("tauri://drag-over",  () => setActive(true));
+    await TAURI.event.listen("tauri://drag-leave", () => setActive(false));
+    await TAURI.event.listen("tauri://drag-drop",  async (event) => {
+      setActive(false);
+      const paths = (event && event.payload && event.payload.paths) || [];
+      if (!paths.length) return;
+      const csv = paths.find((p) => /\.csv$/i.test(p)) || paths[0];
+      setActiveView("overview");
+      await runWithPath(csv);
+    });
+  } catch (err) {
+    console.warn("drag-drop wiring failed:", err);
   }
+}
+
+
+// ---------------------------------------------------------------------
+// 8c. Finding detail panel — click a card, side panel slides in
+// ---------------------------------------------------------------------
+function openFindingDetail(finding) {
+  const panel = document.getElementById("detailPanel");
+  const backdrop = document.getElementById("detailBackdrop");
+  const body = document.getElementById("detailPanelBody");
+  const title = document.getElementById("detailPanelTitle");
+  if (!panel || !body || !title) return;
+
+  const sev = (finding.severity || "info").toLowerCase();
+  title.textContent = `${sev.toUpperCase()} · ${finding.method || "finding"}`;
+
+  // Pull evidence — Aurora puts it under .evidence on the finding, but
+  // also exposes a few common fields at the top level.
+  const ev = finding.evidence || {};
+  const zScore = finding.z_score || finding.z || ev.z || ev.z_score;
+  const row    = finding.row != null ? finding.row : (ev.row != null ? ev.row : ev.row_idx);
+
+  const rows = [
+    ["severity",   sev],
+    ["method",     finding.method || "—"],
+    ["title",      finding.title || finding.name || "—"],
+    ["description",finding.description || finding.summary || "—"],
+    ["row",        row != null ? row : "—"],
+    ["z-score",    zScore != null ? Number(zScore).toFixed(3) : "—"],
+    ["confidence", finding.confidence != null ? finding.confidence : "—"],
+    ["claim_id",   finding.claim_id || "—"],
+    ["fabricated", finding.fabricated != null ? finding.fabricated : 0],
+  ];
+
+  const rowsHtml = rows.map(([k, v]) => {
+    let cls = "detail-row-val";
+    if (k === "claim_id" || k === "method") cls += " detail-row-val--mono";
+    if (k === "z-score" && v !== "—")       cls += " detail-row-val--num";
+    return `<div class="detail-row">
+      <span class="detail-row-key">${esc(k)}</span>
+      <span class="${cls}">${esc(String(v))}</span>
+    </div>`;
+  }).join("");
+
+  // If the finding carries a method_spec / citation, surface it at the bottom.
+  let citation = "";
+  const spec = finding.method_spec || ev.method_spec;
+  if (spec) {
+    const cite = (spec.citation && spec.citation.text) || spec.source || spec.cite || "";
+    if (cite) {
+      citation = `<div class="detail-row" style="border-bottom:none; margin-top:var(--sp-4);">
+        <span class="detail-row-key">citation</span>
+        <span class="detail-row-val" style="color:var(--mint); font-size:11px;">${esc(cite)}</span>
+      </div>`;
+    }
+  }
+
+  body.innerHTML = rowsHtml + citation;
+  panel.classList.add("is-visible");
+  backdrop.classList.add("is-visible");
+  panel.setAttribute("aria-hidden", "false");
+}
+
+function closeFindingDetail() {
+  const panel = document.getElementById("detailPanel");
+  const backdrop = document.getElementById("detailBackdrop");
+  if (panel)    { panel.classList.remove("is-visible");
+                  panel.setAttribute("aria-hidden", "true"); }
+  if (backdrop) { backdrop.classList.remove("is-visible"); }
+}
+
+function wireDetailPanel() {
+  const close    = document.getElementById("detailPanelClose");
+  const backdrop = document.getElementById("detailBackdrop");
+  if (close)    close.addEventListener("click", closeFindingDetail);
+  if (backdrop) backdrop.addEventListener("click", closeFindingDetail);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeFindingDetail();
+  });
 }
 
 
@@ -387,6 +514,8 @@ window.addEventListener("DOMContentLoaded", () => {
   wireTabRouting();
   wireFindingsFilters();
   wireStudioControls();
+  wireDragDrop();
+  wireDetailPanel();
 
   const runBtn = document.getElementById("runBtn");
   if (runBtn) runBtn.addEventListener("click", triggerRun);

@@ -100,6 +100,19 @@
               </article>
             </div>
 
+            <!-- Drag-and-drop CSV target. Tauri's drag-drop event delivers
+                 the dropped file's absolute path, which we POST to /api/run.
+                 The visual is a dashed-border zone that highlights cyan
+                 while a file is being dragged over the window. -->
+            <div class="drop-zone" id="dropZone">
+              <div class="drop-zone-glyph">↓</div>
+              <div class="drop-zone-title">Drop a CSV here</div>
+              <div class="drop-zone-sub">
+                …or pick from the list below and click <b>Run analysis</b>.
+                Drop happens anywhere on the window — the path is sent to Aurora's <code>/api/run</code>.
+              </div>
+            </div>
+
             <div class="run-row">
               <button class="btn btn-primary" id="runBtn" disabled>
                 <span class="btn-ico">▶</span> Run analysis
@@ -191,6 +204,18 @@
 
         </div>
       </main>
+
+      <!-- Click-to-detail side panel for findings. Slides in from the
+           right when a card is clicked; backdrop click or ✕ closes it.
+           Lives outside the view stack so it overlays whatever's behind. -->
+      <aside class="detail-panel" id="detailPanel" aria-hidden="true">
+        <div class="detail-panel-head">
+          <span class="detail-panel-title" id="detailPanelTitle">finding detail</span>
+          <button class="link-btn" id="detailPanelClose" title="Close">✕</button>
+        </div>
+        <div class="detail-panel-body" id="detailPanelBody"></div>
+      </aside>
+      <div class="detail-backdrop" id="detailBackdrop"></div>
     </div>
   </body>
 </html>
