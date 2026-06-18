@@ -89,7 +89,44 @@ without reinstalling Windows. That's Microsoft's design. Most devs leave
 it off because any compiled-from-source toolchain (Rust, Go, native Node
 modules) trips it.
 
-### Build it once
+### Quickest start — one terminal, one command
+
+After you've built once (`cd desktop ; npm install ; npm run tauri build`),
+launch the whole thing — backend + desktop — with a single script:
+
+```powershell
+.\desktop\launch.ps1
+```
+
+What this does, in order:
+
+1. Reloads PATH (picks up Rust if installed in a different session)
+2. Locates Aurora's venv (worktree-local or main repo)
+3. Starts `studio_api.py` as a background job
+4. Polls `/api/preflight` until Aurora is ready (or times out at 30s)
+5. Launches the Aurora desktop window
+6. **On window close → stops the backend job cleanly**
+
+No second terminal. No managing `Activate.ps1` paths. Close the window
+and everything shuts down.
+
+Variants:
+
+```powershell
+.\desktop\launch.ps1 -DevMode           # hot-reload UI (npm run tauri dev)
+.\desktop\launch.ps1 -AuroraPort 8002   # custom port
+```
+
+If the launcher errors "No .venv found", set `$env:AURORA_VENV` to your
+venv path, or create one at the repo root:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+### Build it once (before using the launcher)
 
 ```powershell
 cd desktop
@@ -107,14 +144,23 @@ desktop\src-tauri\target\release\bundle\msi\Aurora_<version>_x64_en-US.msi    # 
 (macOS / Linux: `.dmg` / `.AppImage` produced when built on those OSes.)
 
 Double-click the installer → Aurora gets a Start Menu entry. Or run the
-debug binary directly:
+debug binary directly without the launcher:
 
 ```powershell
 # From PowerShell — note the & call operator for paths with spaces:
 & "desktop\src-tauri\target\debug\desktop.exe"
 ```
 
+(You'll still need `studio_api.py` running in another terminal in that
+case — the launcher is the only path that handles both.)
+
 ### Hot-reload dev mode (for UI iteration)
+
+```powershell
+.\desktop\launch.ps1 -DevMode
+```
+
+Or manually:
 
 ```powershell
 cd desktop
@@ -131,15 +177,22 @@ live in the window.
 | Frameless window | Rounded card on transparent OS background; `aurora ◆` titlebar with min/max/close |
 | Sidebar (left) | Workspace · Data · Full Studio sections + live "aurora: online / offline" status dot |
 | Tab strip (top) | Overview / Findings / Data with one shared sliding underline |
-| **Drag & drop a CSV** | Drop anywhere on the window → the file's path is sent to `/api/run` automatically |
-| Overview | 4 stat cards (Findings · Methods Run · Anomalies · Regimes) populated from `/api/state` |
-| Findings | Severity-filtered card grid; **click a card for the full evidence panel** |
+| **Drag & drop ANY file** | CSV, TSV, JSON, JSONL, Parquet, XLSX — drop anywhere on the window, path is sent to `/api/run` |
+| Overview | 4 stat cards (Findings · Methods Run · Anomalies · Regimes) populated from `/api/state` + run trigger |
+| Findings | Severity-filtered card grid; **click a card for the full evidence panel** (slides in from the right) |
+| Methods | Per-run method tally with share-bars (where each method's findings came from) |
+| Datasets | Bundled fixtures + demo datasets from `/api/demo_datasets` — **click any card to run it** |
+| Bundles | Past runs from `/api/runs` — every signed `.aurora.json` on disk, status-coded |
 | Aurora Studio sidebar | Full legacy UI in an iframe — every existing feature still reachable |
 
 ### Heads up: the shell needs Aurora running
 
-The desktop app is a UI on top of Aurora's HTTP API. Start the backend
-in any terminal first:
+The desktop app is a UI on top of Aurora's HTTP API. **`launch.ps1`
+handles this for you** — it starts `studio_api.py` as a background job,
+waits for `/api/preflight`, then opens the window.
+
+If you skip the launcher and run `desktop.exe` directly, you'll need
+Aurora in another terminal:
 
 ```powershell
 # Activate the venv FIRST (otherwise `python studio_api.py` will fail with
@@ -151,7 +204,7 @@ python studio_api.py
 
 The sidebar's status dot turns green when Aurora answers `/api/preflight`.
 
-For full project structure + Phase 2 roadmap, see [`desktop/README.md`](desktop/README.md).
+For full project structure + Phase 3 roadmap, see [`desktop/README.md`](desktop/README.md).
 
 ---
 

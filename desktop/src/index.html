@@ -100,16 +100,18 @@
               </article>
             </div>
 
-            <!-- Drag-and-drop CSV target. Tauri's drag-drop event delivers
-                 the dropped file's absolute path, which we POST to /api/run.
-                 The visual is a dashed-border zone that highlights cyan
-                 while a file is being dragged over the window. -->
+            <!-- Drag-and-drop target. Tauri's window-scoped drag-drop
+                 delivers the file's absolute path, which we POST to
+                 /api/run. The visual highlights cyan while a file is
+                 being dragged anywhere over the window. Accepts any
+                 Aurora-readable format — CSV, TSV, JSON, JSONL, Parquet,
+                 XLSX, etc. Server does the type detection. -->
             <div class="drop-zone" id="dropZone">
               <div class="drop-zone-glyph">↓</div>
-              <div class="drop-zone-title">Drop a CSV here</div>
+              <div class="drop-zone-title">Drop a file here</div>
               <div class="drop-zone-sub">
-                …or pick from the list below and click <b>Run analysis</b>.
-                Drop happens anywhere on the window — the path is sent to Aurora's <code>/api/run</code>.
+                CSV · TSV · JSON · JSONL · Parquet · XLSX · all welcome.
+                Drop anywhere on the window — the path is sent to Aurora's <code>/api/run</code>.
               </div>
             </div>
 
@@ -158,25 +160,45 @@
             </div>
           </section>
 
-          <!-- METHODS, DATASETS, BUNDLES: stubs that route to the legacy view. -->
+          <!-- METHODS: per-run tally of analytical methods (z-score,
+               iso-forest, granger, robust_pca, etc.) built from findings. -->
           <section class="view" id="view-methods">
-            <div class="breadcrumb">methods / <b>this run</b></div>
-            <div class="empty-state">
-              Coming in Phase 2 — for now, the full method panel is in <b>Aurora Studio</b>.
+            <div class="breadcrumb">methods / <b id="methodsRunId">this run</b></div>
+            <div id="methodsList">
+              <div class="empty-state">Loading…</div>
+            </div>
+            <div class="data-foot-hint">
+              Method tally comes from this run's <code>findings[].method</code> tags.
+              Highest-share method is what gets cited in fired Decision Contract payloads.
             </div>
           </section>
 
+          <!-- DATASETS: available datasets from /api/demo_datasets, with a
+               hardcoded fallback matching the run-dataset dropdown. Click a
+               card to fire that dataset through /api/run. -->
           <section class="view" id="view-datasets">
             <div class="breadcrumb">datasets / <b>available</b></div>
-            <div class="empty-state">
-              Coming in Phase 2 — for now, datasets are managed via <b>Aurora Studio</b>'s upload area.
+            <div id="datasetsList">
+              <div class="empty-state">Loading…</div>
+            </div>
+            <div class="data-foot-hint">
+              Click any card to run Aurora on that dataset. To add your own,
+              drop a file anywhere on the window or use the upload area in
+              <b>Aurora Studio</b>.
             </div>
           </section>
 
+          <!-- BUNDLES: past runs from /api/runs. Each card = one bundle. -->
           <section class="view" id="view-bundles">
             <div class="breadcrumb">bundles / <b>saved runs</b></div>
-            <div class="empty-state">
-              Coming in Phase 2 — browse saved <code>.aurora.json</code> bundles here.
+            <div id="bundlesList">
+              <div class="empty-state">Loading…</div>
+            </div>
+            <div class="data-foot-hint">
+              Every Aurora run produces a signed bundle on disk under
+              <code>outputs/aurora_dataset_runs/</code>. The list above shows
+              the most recent 30 — click into <b>Aurora Studio</b> for the
+              full archive and bundle verification UI.
             </div>
           </section>
 

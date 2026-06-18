@@ -578,6 +578,22 @@ code { font-family: var(--font-mono); font-size: 0.92em; color: var(--cyan); }
   background: rgba(124,92,255,0.04);
 }
 
+/* Methods share-bar (inside the data-table on the Methods view). */
+.bar-track {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-deep);
+  border-radius: var(--r-1);
+  overflow: hidden;
+  position: relative;
+}
+.bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--cyan) 0%, var(--violet) 100%);
+  border-radius: var(--r-1);
+  transition: width var(--dur-norm) var(--ease);
+}
+
 /* Data table — clean rows, hover highlight. */
 .data-table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 12px; }
 .data-table thead th {

@@ -71,10 +71,13 @@ function setActiveView(view) {
   moveTabUnderline();
 
   // Lazy work per view.
-  if (view === "studio")   loadStudioIframe();
-  if (view === "findings") refreshFindings();
-  if (view === "data")     refreshData();
-  if (view === "overview") refreshOverview();
+  if (view === "studio")    loadStudioIframe();
+  if (view === "findings")  refreshFindings();
+  if (view === "data")      refreshData();
+  if (view === "overview")  refreshOverview();
+  if (view === "methods")   refreshMethods();
+  if (view === "datasets")  refreshDatasets();
+  if (view === "bundles")   refreshBundles();
 }
 
 function moveTabUnderline() {
@@ -310,6 +313,173 @@ async function refreshData() {
 
 
 // ---------------------------------------------------------------------
+// 7b. Methods view — table of analytical methods that ran on this run
+// ---------------------------------------------------------------------
+async function refreshMethods() {
+  const wrap = document.getElementById("methodsList");
+  if (!wrap) return;
+  if (!auroraOnline) {
+    wrap.innerHTML = renderEmpty("Aurora offline. Start <b>studio_api.py</b> to populate this view.");
+    return;
+  }
+  const state = await auroraFetch("/api/state");
+  if (!state || state.ok === false) {
+    wrap.innerHTML = renderEmpty("No active run. Run an analysis from <b>Overview</b>.");
+    return;
+  }
+  const s = state.state || state;
+  const findings = Array.isArray(s.findings) ? s.findings : [];
+  // Build a method tally directly from findings — same source the dominant-
+  // method enrichment uses on the backend.
+  const tally = new Map();
+  for (const f of findings) {
+    const m = String((f && f.method) || "").trim();
+    if (!m) continue;
+    tally.set(m, (tally.get(m) || 0) + 1);
+  }
+  if (!tally.size) {
+    wrap.innerHTML = renderEmpty("No methods recorded for this run yet.");
+    return;
+  }
+  const total = findings.length;
+  const rows = [...tally.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([method, count]) => {
+      const pct = total ? Math.round((count / total) * 100) : 0;
+      return `<tr>
+        <td><code>${esc(method)}</code></td>
+        <td style="text-align:right;">${count}</td>
+        <td style="width:40%;">
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${pct}%;"></div>
+          </div>
+        </td>
+        <td style="text-align:right;color:var(--ink-faint);">${pct}%</td>
+      </tr>`;
+    }).join("");
+  wrap.innerHTML = `<table class="data-table">
+    <thead><tr>
+      <th>method</th>
+      <th style="text-align:right;">findings</th>
+      <th>share</th>
+      <th style="text-align:right;">%</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+
+// ---------------------------------------------------------------------
+// 7c. Datasets view — bundled fixtures + generated demo datasets
+// ---------------------------------------------------------------------
+async function refreshDatasets() {
+  const wrap = document.getElementById("datasetsList");
+  if (!wrap) return;
+  if (!auroraOnline) {
+    wrap.innerHTML = renderEmpty("Aurora offline. Start <b>studio_api.py</b> to list datasets.");
+    return;
+  }
+  const r = await auroraFetch("/api/demo_datasets");
+  if (!r || r.ok === false || !Array.isArray(r.datasets || r)) {
+    // Fallback: hardcoded fixture list matching the runDatasetSelect dropdown.
+    const fallback = [
+      { path: "data/fixtures/factory_bearing_demo.csv",           label: "factory_bearing_demo",     domain: "manufacturing" },
+      { path: "demos/datasets/server_metrics/server_metrics.csv", label: "server_metrics",           domain: "ops" },
+      { path: "demos/datasets/falling_ball/falling_ball.csv",     label: "falling_ball",             domain: "physics" },
+      { path: "data/fixtures/climate_buoy_demo.csv",              label: "climate_buoy_demo",        domain: "climate" },
+      { path: "data/fixtures/patient_cohort_demo.csv",            label: "patient_cohort_demo",      domain: "biomed" },
+    ];
+    wrap.innerHTML = renderDatasetGrid(fallback);
+    return;
+  }
+  const list = (r.datasets || r).map((d) => ({
+    path:   d.path || d.file || d.dataset || "",
+    label:  d.name || d.label || (d.path || "").split(/[\\/]/).pop().replace(/\.[^.]+$/, ""),
+    domain: d.domain || d.category || "—",
+    rows:   d.rows || d.row_count || null,
+    cols:   d.cols || d.column_count || null,
+  }));
+  wrap.innerHTML = renderDatasetGrid(list);
+  // Wire click-to-run on every dataset card so the user can fire an
+  // analysis from this view without going back to Overview.
+  wrap.querySelectorAll(".finding-card[data-dataset-path]").forEach((card) => {
+    card.addEventListener("click", async () => {
+      const path = card.dataset.datasetPath;
+      if (!path) return;
+      setActiveView("overview");
+      await runWithPath(path);
+    });
+  });
+}
+
+function renderDatasetGrid(list) {
+  if (!list.length) return renderEmpty("No datasets registered with Aurora.");
+  return `<div class="findings-grid">
+    ${list.map((d) => {
+      const meta = [d.domain, d.rows && `${d.rows} rows`, d.cols && `${d.cols} cols`]
+        .filter(Boolean).join(" · ");
+      return `<article class="finding-card" data-dataset-path="${esc(d.path)}">
+        <span class="finding-sev finding-sev--info">dataset</span>
+        <div class="finding-title">${esc(d.label)}</div>
+        <div class="finding-sub"><code>${esc(d.path)}</code></div>
+        <div class="finding-meta">${esc(meta || "—")}</div>
+      </article>`;
+    }).join("")}
+  </div>`;
+}
+
+
+// ---------------------------------------------------------------------
+// 7d. Bundles view — past runs from /api/runs (Aurora's run history)
+// ---------------------------------------------------------------------
+async function refreshBundles() {
+  const wrap = document.getElementById("bundlesList");
+  if (!wrap) return;
+  if (!auroraOnline) {
+    wrap.innerHTML = renderEmpty("Aurora offline. Start <b>studio_api.py</b> to list saved runs.");
+    return;
+  }
+  const r = await auroraFetch("/api/runs");
+  if (!r || r.ok === false) {
+    wrap.innerHTML = renderEmpty("Couldn't list runs. Check Aurora Studio is reachable.");
+    return;
+  }
+  const runs = r.runs || r.list || (Array.isArray(r) ? r : []);
+  if (!runs.length) {
+    wrap.innerHTML = renderEmpty("No runs on disk yet. Trigger one from <b>Overview</b>.");
+    return;
+  }
+  // Take the 30 most recent (already sorted by Aurora, but be defensive).
+  const sorted = [...runs].sort((a, b) =>
+    String(b.run_id || "").localeCompare(String(a.run_id || ""))).slice(0, 30);
+  wrap.innerHTML = `<div class="findings-grid">
+    ${sorted.map((run) => {
+      const id     = run.run_id || run.id || "(unknown)";
+      const dataset = run.dataset || run.dataset_path || "";
+      const dsName = dataset ? String(dataset).split(/[\\/]/).pop() : "—";
+      const status = (run.status || run.state || "").toLowerCase();
+      const sev    = status === "complete" || status === "completed" ? "info"
+                    : status === "failed" || status === "error"       ? "crit"
+                    : "warn";
+      const findings = run.findings_count != null ? run.findings_count : "—";
+      const fab    = run.fabricated_count != null ? run.fabricated_count : 0;
+      return `<article class="finding-card" data-run-id="${esc(id)}">
+        <span class="finding-sev finding-sev--${sev}">${esc(status || "run")}</span>
+        <div class="finding-title">${esc(dsName)}</div>
+        <div class="finding-sub"><code>${esc(String(id).slice(0, 36))}</code></div>
+        <div class="finding-meta">findings: ${esc(String(findings))} · fabricated: ${esc(String(fab))}</div>
+      </article>`;
+    }).join("")}
+  </div>`;
+}
+
+
+function renderEmpty(html) {
+  return `<div class="empty-state">${html}</div>`;
+}
+
+
+// ---------------------------------------------------------------------
 // 8. Run trigger — POST /api/run
 // ---------------------------------------------------------------------
 async function refreshDatasetOptions() {
@@ -359,28 +529,54 @@ async function triggerRun() {
 
 
 // ---------------------------------------------------------------------
-// 8b. Drag-and-drop CSV → /api/run
+// 8b. Drag-and-drop file → /api/run
 // ---------------------------------------------------------------------
-// Tauri emits four events on the webview during a drag operation. We
-// highlight the drop-zone visual while a drag is active and POST the
-// dropped file's absolute path to Aurora when it lands. Multiple files
-// dropped → take the first that ends in .csv (then any file as fallback).
+// Tauri 2 delivers drag-drop events to the *window*, not via the global
+// event bus. The previous implementation used event.listen('tauri://...')
+// which doesn't fire under Tauri 2's window-scoped drag-drop model.
+//
+// Switched to getCurrentWindow().onDragDropEvent(), which is the correct
+// Tauri 2 API. Payload variants:
+//   { type: 'enter', paths, position }
+//   { type: 'over',  position }
+//   { type: 'leave' }
+//   { type: 'drop',  paths, position }
+//
+// Accept ANY file extension Aurora's pipeline knows — csv, json, jsonl,
+// parquet, xlsx, xls, tsv, txt. Aurora's /api/run does the type detection
+// on the server side, so we don't gate at the shell layer.
+const AURORA_ACCEPTS = /\.(csv|tsv|txt|json|jsonl|parquet|xlsx|xls|feather|arrow)$/i;
+
 async function wireDragDrop() {
-  if (!TAURI || !TAURI.event) return;
+  if (!TAURI || !TAURI.window) {
+    console.warn("Tauri window API not available — drag-drop disabled.");
+    return;
+  }
   const zone = document.getElementById("dropZone");
   const setActive = (on) => zone && zone.classList.toggle("is-active", on);
 
+  const winApi = TAURI.window.getCurrentWindow
+    ? TAURI.window.getCurrentWindow()
+    : TAURI.window.getCurrent();
+
   try {
-    await TAURI.event.listen("tauri://drag-enter", () => setActive(true));
-    await TAURI.event.listen("tauri://drag-over",  () => setActive(true));
-    await TAURI.event.listen("tauri://drag-leave", () => setActive(false));
-    await TAURI.event.listen("tauri://drag-drop",  async (event) => {
-      setActive(false);
-      const paths = (event && event.payload && event.payload.paths) || [];
-      if (!paths.length) return;
-      const csv = paths.find((p) => /\.csv$/i.test(p)) || paths[0];
-      setActiveView("overview");
-      await runWithPath(csv);
+    await winApi.onDragDropEvent(async (event) => {
+      const payload = event && event.payload;
+      if (!payload) return;
+      const kind = payload.type;
+      if (kind === "enter" || kind === "over") {
+        setActive(true);
+      } else if (kind === "leave") {
+        setActive(false);
+      } else if (kind === "drop") {
+        setActive(false);
+        const paths = payload.paths || [];
+        if (!paths.length) return;
+        // Prefer an Aurora-readable file; otherwise just take the first.
+        const path = paths.find((p) => AURORA_ACCEPTS.test(p)) || paths[0];
+        setActiveView("overview");
+        await runWithPath(path);
+      }
     });
   } catch (err) {
     console.warn("drag-drop wiring failed:", err);
