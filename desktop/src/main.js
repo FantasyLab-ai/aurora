@@ -22,7 +22,7 @@ const STATE_POLL_MS  = 6000;
 // Shows in the WebView2 console so we can verify the right JS loaded
 // (WebView2 sometimes caches main.js across builds despite Tauri
 // bundling fresh assets every time).
-const AURORA_SHELL_VERSION = "phase-2.5-poll-run-status";
+const AURORA_SHELL_VERSION = "phase-2.5.1-sticky-rundir";
 console.log(`%c[aurora-shell] ${AURORA_SHELL_VERSION}`,
             "color:#6ee7ff;font-weight:bold;");
 
@@ -41,6 +41,17 @@ const RUN_POLL_MAX_S = 600;     // give up after 10 min (sanity cap)
 
 let _activeRun = null;          // { runId, submittedAt, filename } | null
 let _elapsedTimer = null;
+
+// Sticky run_dir for the views. Once a run completes, every subsequent
+// refresh (including the 6s background polling loop) targets THIS exact
+// run_dir via /api/state?run_dir=X, rather than letting Aurora's default
+// "latest" logic drift the view onto a different run.
+//
+// Why this exists: Aurora's "latest run" pointer doesn't update for
+// cache hits, so polling /api/state without a run_dir kept rolling the
+// Overview back to the old falling_ball run 6s after a factory_bearing
+// completion. Sticky run_dir defeats that drift.
+let _currentRunDir = null;
 
 
 // ---------------------------------------------------------------------
@@ -94,12 +105,14 @@ function setActiveView(view) {
   });
   moveTabUnderline();
 
-  // Lazy work per view.
+  // Lazy work per view. Use the sticky _currentRunDir so tab switches
+  // never drift the view onto a different run than the one we last
+  // completed.
   if (view === "studio")    loadStudioIframe();
-  if (view === "findings")  refreshFindings();
-  if (view === "data")      refreshData();
-  if (view === "overview")  refreshOverview();
-  if (view === "methods")   refreshMethods();
+  if (view === "findings")  refreshFindings(_currentRunDir);
+  if (view === "data")      refreshData(_currentRunDir);
+  if (view === "overview")  refreshOverview(_currentRunDir);
+  if (view === "methods")   refreshMethods(_currentRunDir);
   if (view === "datasets")  refreshDatasets();
   if (view === "bundles")   refreshBundles();
 }
@@ -748,14 +761,14 @@ async function pollUntilRunComplete() {
     _activeRun = null;
     _stopElapsedTimer();
     _showRunningState(filename, "complete", cached);
-    // Refresh every view using the EXACT run_dir returned by status, so
-    // we never pick up some other "latest" run that happens to be on
-    // disk. Falls back to default (no run_dir) if Aurora didn't return
-    // one for some reason.
-    refreshOverview(runDir);
-    refreshFindings(runDir);
-    refreshData(runDir);
-    refreshMethods(runDir);
+    // Pin the views to this run's run_dir going forward. Every poll +
+    // tab-switch + visibility-change fetch will use this exact path
+    // until a new run completes (or the user picks a bundle).
+    _currentRunDir = runDir || null;
+    refreshOverview(_currentRunDir);
+    refreshFindings(_currentRunDir);
+    refreshData(_currentRunDir);
+    refreshMethods(_currentRunDir);
     return;
   }
 
@@ -1024,8 +1037,10 @@ window.addEventListener("DOMContentLoaded", () => {
   // Kick off polling. pollHealth() also drives the run-button enable state.
   pollHealth();
   setInterval(() => {
-    if (auroraOnline && currentView === "overview")  refreshOverview();
-    if (auroraOnline && currentView === "findings")  refreshFindings();
-    if (auroraOnline && currentView === "data")      refreshData();
+    // Background poll always uses the sticky run_dir so it can't drift
+    // a stable view onto a different run after a cache hit.
+    if (auroraOnline && currentView === "overview")  refreshOverview(_currentRunDir);
+    if (auroraOnline && currentView === "findings")  refreshFindings(_currentRunDir);
+    if (auroraOnline && currentView === "data")      refreshData(_currentRunDir);
   }, STATE_POLL_MS);
 });
