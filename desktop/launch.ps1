@@ -32,12 +32,19 @@ function Write-Step($n, $total, $msg) {
 }
 
 function Find-AuroraVenv {
-    # Order: worktree-local, main repo (parent of .claude/), then env override.
-    $cands = @(
-        (Join-Path $WorktreeRoot ".venv"),
-        (Join-Path (Split-Path -Parent (Split-Path -Parent $WorktreeRoot)) ".venv")
-    )
-    if ($env:AURORA_VENV) { $cands = @($env:AURORA_VENV) + $cands }
+    # Walk up from the worktree root all the way to the filesystem root,
+    # checking each directory for a .venv\Scripts\Activate.ps1. This
+    # handles main-repo / worktree / nested-worktree layouts uniformly --
+    # we don't have to know how deep the worktree is buried.
+    $cands = @()
+    if ($env:AURORA_VENV) { $cands += $env:AURORA_VENV }
+    $cur = $WorktreeRoot
+    while ($cur -and (Test-Path $cur)) {
+        $cands += (Join-Path $cur ".venv")
+        $parent = Split-Path -Parent $cur
+        if (-not $parent -or $parent -eq $cur) { break }   # hit FS root
+        $cur = $parent
+    }
     foreach ($p in $cands) {
         if ($p -and (Test-Path (Join-Path $p "Scripts\Activate.ps1"))) {
             return $p
