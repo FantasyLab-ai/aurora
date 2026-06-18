@@ -22,7 +22,7 @@ const STATE_POLL_MS  = 6000;
 // Shows in the WebView2 console so we can verify the right JS loaded
 // (WebView2 sometimes caches main.js across builds despite Tauri
 // bundling fresh assets every time).
-const AURORA_SHELL_VERSION = "phase-2.4-run-state-machine";
+const AURORA_SHELL_VERSION = "phase-2.5-poll-run-status";
 console.log(`%c[aurora-shell] ${AURORA_SHELL_VERSION}`,
             "color:#6ee7ff;font-weight:bold;");
 
@@ -208,13 +208,16 @@ async function pollHealth() {
 // ---------------------------------------------------------------------
 // 5. Overview view — stat cards from /api/state
 // ---------------------------------------------------------------------
-async function refreshOverview() {
+async function refreshOverview(runDir) {
   // Don't overwrite the "running…" state with stale data while we're
   // waiting for a submitted run to complete -- the state machine will
-  // call refreshOverview() once /api/state shows the new run.
+  // call refreshOverview() with the right run_dir once it completes.
   if (_activeRun) return;
 
-  const state = await auroraFetch("/api/state");
+  const url = runDir
+    ? `/api/state?run_dir=${encodeURIComponent(runDir)}`
+    : "/api/state";
+  const state = await auroraFetch(url);
   if (!state || state.ok === false) {
     setStat("statFindings",   "—", "awaiting run");
     setStat("statMethods",    "—", "0 fabricated");
@@ -326,8 +329,11 @@ function setText(id, t) {
 let _findingsCache = [];
 let _findingsFilter = "all";
 
-async function refreshFindings() {
-  const state = await auroraFetch("/api/state");
+async function refreshFindings(runDir) {
+  const url = runDir
+    ? `/api/state?run_dir=${encodeURIComponent(runDir)}`
+    : "/api/state";
+  const state = await auroraFetch(url);
   if (!state || state.ok === false) {
     renderFindings([]);
     return;
@@ -392,8 +398,11 @@ function wireFindingsFilters() {
 // ---------------------------------------------------------------------
 // 7. Data view — dataset preview table
 // ---------------------------------------------------------------------
-async function refreshData() {
-  const state = await auroraFetch("/api/state");
+async function refreshData(runDir) {
+  const url = runDir
+    ? `/api/state?run_dir=${encodeURIComponent(runDir)}`
+    : "/api/state";
+  const state = await auroraFetch(url);
   const wrap = document.getElementById("dataTableWrap");
   if (!wrap) return;
   if (!state || state.ok === false) {
@@ -431,14 +440,17 @@ async function refreshData() {
 // ---------------------------------------------------------------------
 // 7b. Methods view — table of analytical methods that ran on this run
 // ---------------------------------------------------------------------
-async function refreshMethods() {
+async function refreshMethods(runDir) {
   const wrap = document.getElementById("methodsList");
   if (!wrap) return;
   if (!auroraOnline) {
     wrap.innerHTML = renderEmpty("Aurora offline. Start <b>studio_api.py</b> to populate this view.");
     return;
   }
-  const state = await auroraFetch("/api/state");
+  const url = runDir
+    ? `/api/state?run_dir=${encodeURIComponent(runDir)}`
+    : "/api/state";
+  const state = await auroraFetch(url);
   if (!state || state.ok === false) {
     wrap.innerHTML = renderEmpty("No active run. Run an analysis from <b>Overview</b>.");
     return;
@@ -657,8 +669,11 @@ async function runWithPath(path) {
   pollUntilRunComplete();
 }
 
-function _showRunningState(filename, phase) {
+function _showRunningState(filename, phase, cached) {
   // phase: "submitting" | "running" | "complete" | "failed"
+  // cached: optional bool -- when true on completion, surface the
+  //         cache-hit so the user understands why a 30-min analysis
+  //         "finished" in under a second.
   const banner = document.getElementById("runStatusBanner");
   if (banner) {
     banner.hidden = false;
@@ -666,7 +681,10 @@ function _showRunningState(filename, phase) {
     let label = "";
     if (phase === "submitting") label = `submitting <b>${esc(filename)}</b>…`;
     else if (phase === "running") label = `analyzing <b>${esc(filename)}</b> · <span id="runElapsed">0.0s</span>`;
-    else if (phase === "complete") label = `complete · <b>${esc(filename)}</b>`;
+    else if (phase === "complete") {
+      const cacheTag = cached ? ` <span class="run-banner-tag">cache hit</span>` : "";
+      label = `complete · <b>${esc(filename)}</b>${cacheTag}`;
+    }
     else if (phase === "failed")  label = `failed · <b>${esc(filename)}</b>`;
     banner.innerHTML = `<span class="run-banner-dot"></span><span class="run-banner-text">${label}</span>`;
   }
@@ -707,23 +725,52 @@ async function pollUntilRunComplete() {
     if (hint) hint.innerHTML = `<span style="color:var(--warn)">run timed out at ${RUN_POLL_MAX_S}s -- check Aurora Studio log.</span>`;
     return;
   }
-  const state = await auroraFetch("/api/state");
-  const s = state && (state.state || state);
-  const stateRunId = s && s.run_id;
-  if (stateRunId && _activeRun.runId &&
-      String(stateRunId).includes(_activeRun.runId.split("__")[0] || _activeRun.runId)) {
-    // /api/state now reflects our submitted run. We're done.
+
+  // Poll the AUTHORITATIVE endpoint: /api/run/status?run_id=X tells us
+  // exactly whether OUR submitted run is done. /api/state was wrong
+  // because it returns the global "latest" run, which doesn't update
+  // for cache hits and may not reflect the run we just submitted.
+  const status = await auroraFetch(
+    `/api/run/status?run_id=${encodeURIComponent(_activeRun.runId)}`
+  );
+
+  if (!status || status.ok === false) {
+    // Aurora hasn't registered the run yet (race on submission) -- try again.
+    setTimeout(pollUntilRunComplete, RUN_POLL_MS);
+    return;
+  }
+
+  const runState = (status.state || "").toLowerCase();
+  if (runState === "complete" || runState === "completed") {
+    const filename = _activeRun.filename;
+    const runDir   = status.run_dir;
+    const cached   = !!status.cached;
+    _activeRun = null;
+    _stopElapsedTimer();
+    _showRunningState(filename, "complete", cached);
+    // Refresh every view using the EXACT run_dir returned by status, so
+    // we never pick up some other "latest" run that happens to be on
+    // disk. Falls back to default (no run_dir) if Aurora didn't return
+    // one for some reason.
+    refreshOverview(runDir);
+    refreshFindings(runDir);
+    refreshData(runDir);
+    refreshMethods(runDir);
+    return;
+  }
+
+  if (runState === "failed" || runState === "error") {
     const filename = _activeRun.filename;
     _activeRun = null;
     _stopElapsedTimer();
-    _showRunningState(filename, "complete");
-    // Refresh every view that depends on state.
-    refreshOverview();
-    refreshFindings();
-    refreshData();
-    refreshMethods();
+    _showRunningState(filename, "failed");
+    const hint = document.getElementById("runHint");
+    if (hint) hint.innerHTML =
+      `<span style="color:var(--crit)">run failed: ${esc(status.error || "see Aurora Studio log")}</span>`;
     return;
   }
+
+  // Still pending/running -- keep polling.
   setTimeout(pollUntilRunComplete, RUN_POLL_MS);
 }
 
