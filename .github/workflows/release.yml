@@ -31,7 +31,12 @@ jobs:
             backend_exe: aurora-backend.exe
           - os: macos-latest
             backend_exe: aurora-backend
-          - os: ubuntu-latest
+          # Pin Linux to 22.04, NOT ubuntu-latest. ubuntu-latest is now
+          # 24.04, whose webkit2gtk-4.1 / libsoup3 packaging breaks Tauri's
+          # Linux bundler (`npm run tauri build` fails at the AppImage/webkit
+          # step). 22.04 is the well-known stable target for Tauri Linux CI.
+          # Windows + macOS already build cleanly on -latest.
+          - os: ubuntu-22.04
             backend_exe: aurora-backend
 
     runs-on: ${{ matrix.os }}
@@ -42,7 +47,7 @@ jobs:
 
       # ---- Linux system deps for Tauri (webkit2gtk etc.) ----
       - name: Install Linux build deps
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-22.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
