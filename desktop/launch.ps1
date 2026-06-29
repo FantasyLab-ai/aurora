@@ -113,20 +113,26 @@ try {
         # one that has the latest fixes, while a stale release build from
         # a much earlier session sits on disk. Picking by mtime makes
         # "rebuild + relaunch" actually use the rebuilt binary.
-        $release = Join-Path $ScriptDir "src-tauri\target\release\desktop.exe"
-        $debug   = Join-Path $ScriptDir "src-tauri\target\debug\desktop.exe"
+        # The binary is Aurora.exe (mainBinaryName in tauri.conf.json).
+        # Older builds were named desktop.exe (Cargo package name) -- check
+        # both names in both target dirs and take the newest so a stale
+        # build under either name still launches.
         $candidates = @()
-        if (Test-Path $release) { $candidates += Get-Item $release }
-        if (Test-Path $debug)   { $candidates += Get-Item $debug }
+        foreach ($mode in @("release", "debug")) {
+            foreach ($name in @("Aurora.exe", "desktop.exe")) {
+                $p = Join-Path $ScriptDir "src-tauri\target\$mode\$name"
+                if (Test-Path $p) { $candidates += Get-Item $p }
+            }
+        }
         if ($candidates.Count -eq 0) {
-            $exe = $debug    # triggers the missing-build error below
+            $exe = Join-Path $ScriptDir "src-tauri\target\release\Aurora.exe"  # triggers the error below
         } else {
             $newest = $candidates | Sort-Object LastWriteTime -Descending | Select-Object -First 1
             $exe = $newest.FullName
             Write-Host "  picked newer build: $($newest.LastWriteTime.ToString('HH:mm:ss')) -- $($newest.FullName)" -ForegroundColor DarkGray
         }
         if (-not (Test-Path $exe)) {
-            Write-Host "  ERROR: No built desktop.exe under src-tauri\target\(debug|release)\." -ForegroundColor Red
+            Write-Host "  ERROR: No built Aurora.exe under src-tauri\target\(debug|release)\." -ForegroundColor Red
             Write-Host "  Build it once with:    cd desktop ; npm install ; npm run tauri build" -ForegroundColor Yellow
             Write-Host "  Or run with hot reload:   .\desktop\launch.ps1 -DevMode" -ForegroundColor Yellow
         } else {
