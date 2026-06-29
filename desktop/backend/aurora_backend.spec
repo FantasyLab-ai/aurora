@@ -44,7 +44,13 @@ hiddenimports = []
 
 # ---- Aurora's own packages: code (submodules) + data (JSON templates,
 #      seed corpora, equation-translation tables, system-model templates) ----
-for pkg in ("fantasyai", "scripts", "aurora_sdk", "aurora_mcp"):
+# Deliberately do NOT collect_submodules("scripts"): that folder holds
+# dozens of one-off / experimental scripts (real_trends.py imports bs4,
+# pipeline_final.py imports joblib, etc.) whose deps aren't in
+# requirements.txt. collect_submodules imports EVERY module to enumerate
+# it, so collecting the whole folder breaks a clean build. The frozen app
+# only needs the two runner modules, declared explicitly below.
+for pkg in ("fantasyai", "aurora_sdk", "aurora_mcp"):
     try:
         hiddenimports += collect_submodules(pkg)
     except Exception as e:
@@ -54,7 +60,8 @@ for pkg in ("fantasyai", "scripts", "aurora_sdk", "aurora_mcp"):
     except Exception as e:
         print(f"[spec] collect_data_files({pkg}) warning: {e}")
 
-# Explicit entry targets the dispatcher imports by string.
+# Explicit entry targets the dispatcher imports by string. These are the
+# ONLY scripts.* modules the frozen backend needs.
 hiddenimports += [
     "studio_api",
     "scripts.run_aurora_with_steps_1_4",
