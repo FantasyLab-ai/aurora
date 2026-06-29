@@ -70,14 +70,42 @@ cd desktop
 npm run tauri dev
 ```
 
-## Build a distributable
+## Build a self-contained installer
+
+The shipped installer bundles the **Aurora backend** (a PyInstaller-frozen
+`studio_api` + the whole analysis pipeline) as a Tauri resource, so the
+installed app needs no Python and no separate `studio_api.py`. Building it
+is a two-step sequence — PyInstaller first, then Tauri — because Tauri's
+bundle step requires the backend to already exist. The helper script does
+both in order:
 
 ```powershell
-cd desktop
-npm install                          # once
-npm run tauri build                  # release build (slower compile, smaller binary)
-npm run tauri build -- --debug       # debug build (faster compile, useful during dev)
+.\desktop\build_installer.ps1            # release installer
+.\desktop\build_installer.ps1 -Debug     # faster compile, larger binary
 ```
+
+That runs:
+1. `pyinstaller desktop/backend/aurora_backend.spec` → `desktop/backend/dist/aurora-backend/`
+2. `npm run tauri build` → the installer (which bundles that backend)
+
+> **Cross-platform note:** the macOS `.dmg` and Linux `.AppImage`/`.deb` are
+> built by GitHub Actions (`.github/workflows/release.yml`) on a version tag,
+> because PyInstaller must run on each target OS. Push `git tag vX.Y.Z` and
+> the matrix builds all three and attaches them to a draft GitHub Release.
+
+### Manual two-step (if you prefer)
+
+```powershell
+# From the repo root:
+pyinstaller desktop/backend/aurora_backend.spec --noconfirm --distpath desktop/backend/dist --workpath desktop/backend/build
+cd desktop
+npm install
+npm run tauri build
+```
+
+> `npm run tauri dev` ignores bundle resources, so **dev mode does not need
+> the PyInstaller step** — it talks to a separately-running backend (e.g. via
+> `launch.ps1`). You only need the backend bundle for `tauri build`.
 
 Output locations:
 

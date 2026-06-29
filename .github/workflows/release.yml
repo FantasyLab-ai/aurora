@@ -1,0 +1,107 @@
+name: Release Aurora Desktop
+
+# Build the self-contained Aurora desktop installers (Windows / macOS / Linux)
+# and attach them to a GitHub Release. Triggered by pushing a version tag:
+#
+#     git tag v0.2.0
+#     git push origin v0.2.0
+#
+# Each OS runner: builds the PyInstaller backend bundle, then builds the
+# Tauri app (which bundles that backend as a resource), then tauri-action
+# uploads the installer to the release. This is also where the Mac/Linux
+# PyInstaller builds get validated -- they can't be produced from a Windows
+# dev box, so CI is the source of truth for cross-platform artifacts.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}   # allow manual runs from the Actions tab
+
+permissions:
+  contents: write   # needed to create the Release + upload assets
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            backend_exe: aurora-backend.exe
+          - os: macos-latest
+            backend_exe: aurora-backend
+          - os: ubuntu-latest
+            backend_exe: aurora-backend
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---- Linux system deps for Tauri (webkit2gtk etc.) ----
+      - name: Install Linux build deps
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            build-essential \
+            curl wget file libssl-dev libgtk-3-dev
+
+      # ---- Python + Aurora backend (PyInstaller) ----
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python deps + PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Aurora backend (PyInstaller)
+        run: |
+          pyinstaller desktop/backend/aurora_backend.spec --noconfirm --distpath desktop/backend/dist --workpath desktop/backend/build
+
+      - name: Verify backend bundle exists
+        shell: bash
+        run: |
+          test -f "desktop/backend/dist/aurora-backend/${{ matrix.backend_exe }}" \
+            || (echo "Backend exe missing!" && ls -R desktop/backend/dist && exit 1)
+
+      # ---- Node + Rust for the Tauri shell ----
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Install desktop npm deps
+        working-directory: desktop
+        run: npm install
+
+      # ---- Build + publish the installer ----
+      - name: Build Tauri app + upload to release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: desktop
+          tagName: ${{ github.ref_name }}
+          releaseName: "Aurora ${{ github.ref_name }}"
+          releaseBody: "Self-contained Aurora desktop. Download the installer for your OS below. No Python, no API keys, no setup."
+          releaseDraft: true
+          prerelease: false

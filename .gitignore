@@ -137,3 +137,7 @@ config/secrets.yml
 .github/PINNED_ISSUES_TODO.md
 SCRATCH.md
 TODO_PRIVATE.md
+
+# PyInstaller build logs (worktree root)
+pyinstaller-build-*.log
+desktop-build*.log

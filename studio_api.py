@@ -354,6 +354,33 @@ except Exception as e:  # pragma: no cover
 
 REPO_ROOT = Path(__file__).resolve().parent
 
+# ---------------------------------------------------------------------------
+# Frozen-app awareness (PyInstaller bundle).
+# ---------------------------------------------------------------------------
+# When Aurora ships as a packaged desktop app, this module is frozen by
+# PyInstaller. Two things change versus a dev checkout:
+#   1. Read-only resources (the legacy frontend/, demo fixtures) live
+#      inside the bundle at sys._MEIPASS, not next to a .py file.
+#   2. Writable data (analysis outputs, uploads) CANNOT go inside the
+#      bundle dir — it's read-only on macOS/Linux and under Program Files
+#      on Windows. They go to ~/.aurora/ instead, which Aurora already
+#      uses as its home for the knowledge bank and decision contracts.
+#
+# Everything below is gated on _FROZEN so a normal `python studio_api.py`
+# checkout behaves EXACTLY as before — same outputs-detection, same paths.
+_FROZEN = bool(getattr(sys, "frozen", False))
+_BUNDLE_DIR = Path(getattr(sys, "_MEIPASS", REPO_ROOT))
+_AURORA_HOME = Path(os.environ.get("AURORA_HOME") or (Path.home() / ".aurora"))
+
+# In a frozen app, pin the outputs dir to ~/.aurora and export it on the
+# environment BEFORE _detect_outputs_dir runs, so the whole subprocess
+# chain (steps runner -> dataset runner) inherits the same writable path.
+if _FROZEN and not os.environ.get("AURORA_OUTPUTS"):
+    os.environ["AURORA_OUTPUTS"] = str(
+        _AURORA_HOME / "outputs" / "aurora_dataset_runs"
+    )
+
+
 # When running from a worktree (.claude/worktrees/…), prefer outputs in the
 # parent (main) repo so the user sees their existing runs immediately.
 def _detect_outputs_dir() -> Path:
@@ -373,11 +400,22 @@ def _detect_outputs_dir() -> Path:
             return c
     return candidates[0]
 
-FRONTEND_DIR = REPO_ROOT / "frontend"
+
+if _FROZEN:
+    # Read-only resources from inside the bundle; writable data in ~/.aurora.
+    FRONTEND_DIR = _BUNDLE_DIR / "frontend"
+    UPLOADS_DIR = _AURORA_HOME / "uploads"
+else:
+    FRONTEND_DIR = REPO_ROOT / "frontend"
+    UPLOADS_DIR = REPO_ROOT / "data" / "uploads"
+
 DEFAULT_OUTPUTS = _detect_outputs_dir()
-UPLOADS_DIR = REPO_ROOT / "data" / "uploads"
 PYTHON = sys.executable
 RUNNER_MODULE = os.environ.get("AURORA_RUNNER", "scripts.run_aurora_with_steps_1_4")
+
+# Sentinels the frozen exe uses to re-invoke itself as a runner. Must match
+# desktop/backend/aurora_entry.py. Only used when _FROZEN.
+_SENTINEL_STEPS = "__aurora_runner_steps__"
 
 
 # ---------------------------------------------------------------------------
@@ -2285,6 +2323,13 @@ def _detect_runner_repo() -> Path:
       3. nearest ancestor with the runner script (regardless of outputs)
       4. REPO_ROOT itself
     """
+    # Frozen: there are no .py files on disk to detect. The runner runs as
+    # the exe self-invocation (sentinel), and outputs go to ~/.aurora via
+    # AURORA_OUTPUTS. The child just needs a writable cwd — use ~/.aurora.
+    if _FROZEN:
+        _AURORA_HOME.mkdir(parents=True, exist_ok=True)
+        return _AURORA_HOME
+
     env_override = os.environ.get("AURORA_RUNNER_REPO")
     if env_override and (Path(env_override) / "scripts" / "run_aurora_with_steps_1_4.py").exists():
         return Path(env_override)
@@ -2577,7 +2622,13 @@ def _trigger_run(dataset: str, seed: int = 42, also_math: bool = True,
             run_id=run_id,
         )
 
-    cmd = [PYTHON, "-m", RUNNER_MODULE, "--dataset", dataset, "--seed", str(seed)]
+    # Frozen: re-invoke our own exe with the steps-runner sentinel instead
+    # of `python -m scripts.run_aurora_with_steps_1_4` (which doesn't exist
+    # inside a PyInstaller bundle). Dev: the normal -m invocation.
+    if _FROZEN:
+        cmd = [PYTHON, _SENTINEL_STEPS, "--dataset", dataset, "--seed", str(seed)]
+    else:
+        cmd = [PYTHON, "-m", RUNNER_MODULE, "--dataset", dataset, "--seed", str(seed)]
     if also_math:         cmd.append("--also-math")
     if math_v2:           cmd.append("--math-v2")
     if deep_math:         cmd.append("--deep-math")

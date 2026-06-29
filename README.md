@@ -15,8 +15,36 @@
   [![Tests](https://img.shields.io/badge/tests-699%20passing-brightgreen.svg)](#)
   [![Patreon](https://img.shields.io/badge/support-Patreon-f96854.svg)](https://www.patreon.com/c/FantasyLab3DStudio)
 
-  [Quickstart](#-quickstart-60-seconds) · [Desktop app](#%EF%B8%8F-desktop-app-native-shell) · [Aurora Sentinel demos](#-aurora-sentinel--decision-contracts-in-the-room) · [See it in action](#see-aurora-in-action) · [Aurora Copilot](#-aurora-copilot--for-humans) · [Aurora Cortex](#%EF%B8%8F-aurora-cortex--for-ai-systems) · [Roadmap](ROADMAP.md) · [FantasyLab.ai](https://fantasylab.ai)
+  [⬇️ Download](#%EF%B8%8F-download-the-desktop-app) · [Quickstart](#-quickstart-60-seconds) · [Desktop app](#%EF%B8%8F-desktop-app-native-shell) · [Aurora Sentinel demos](#-aurora-sentinel--decision-contracts-in-the-room) · [See it in action](#see-aurora-in-action) · [Aurora Copilot](#-aurora-copilot--for-humans) · [Aurora Cortex](#%EF%B8%8F-aurora-cortex--for-ai-systems) · [Roadmap](ROADMAP.md) · [FantasyLab.ai](https://fantasylab.ai)
 </div>
+
+---
+
+## ⬇️ Download the desktop app
+
+**The easiest way to run Aurora — no Python, no terminal, no setup.** Download
+the installer for your OS, double-click, and Aurora opens as a native app with
+the analysis backend bundled inside it.
+
+### → [**Download the latest release**](https://github.com/FantasyLab-ai/aurora/releases/latest)
+
+| OS | File | Notes |
+|---|---|---|
+| **Windows** | `Aurora_x.x.x_x64-setup.exe` (or `.msi`) | Double-click to install. |
+| **macOS** | `Aurora_x.x.x_x64.dmg` (or `_aarch64` on Apple Silicon) | Open the `.dmg`, drag to Applications. |
+| **Linux** | `Aurora_x.x.x_amd64.AppImage` (or `.deb`) | `chmod +x` the AppImage and run, or install the `.deb`. |
+
+On first launch Aurora bootstraps a small knowledge-bank seed (~50 MB), then
+runs **fully offline** — no API keys, no cloud, no telemetry. Drop a CSV on the
+window and watch it analyze.
+
+> **Heads up on the "Unknown Publisher" warning.** Current releases are not yet
+> code-signed, so Windows SmartScreen may show *"Windows protected your PC"* and
+> macOS Gatekeeper may say *"unidentified developer."* This is expected for a
+> young open-source project. On Windows: **More info → Run anyway**. On macOS:
+> **right-click the app → Open**. Code-signing is on the roadmap.
+
+Want to build it yourself or run from source? Keep reading.
 
 ---
 

@@ -64,16 +64,23 @@ def main() -> int:
     ap.add_argument("--also-llm", action="store_true")
     args = ap.parse_args()
 
-    # Delegate to the dataset runner (keep behavior stable)
-    cmd = [
-        sys.executable,
-        "-m",
-        "scripts.run_aurora_dataset_runner",
-        "--dataset",
-        args.dataset,
-        "--seed",
-        str(args.seed),
-    ]
+    # Delegate to the dataset runner (keep behavior stable).
+    # Frozen: re-invoke our own exe with the dataset-runner sentinel instead
+    # of `python -m scripts.run_aurora_dataset_runner` (which doesn't exist
+    # inside a PyInstaller bundle). Must match desktop/backend/aurora_entry.py.
+    if getattr(sys, "frozen", False):
+        cmd = [sys.executable, "__aurora_runner_dataset__",
+               "--dataset", args.dataset, "--seed", str(args.seed)]
+    else:
+        cmd = [
+            sys.executable,
+            "-m",
+            "scripts.run_aurora_dataset_runner",
+            "--dataset",
+            args.dataset,
+            "--seed",
+            str(args.seed),
+        ]
     if args.also_math:
         cmd.append("--also-math")
     if args.math_v2:

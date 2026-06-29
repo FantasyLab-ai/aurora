@@ -820,7 +820,16 @@ def _main() -> None:
 
     resolved = _resolve_dataset_table(args.dataset)
 
-    out_root = Path(__file__).resolve().parents[1] / "outputs" / "aurora_dataset_runs"
+    # Honor AURORA_OUTPUTS so the frozen desktop app (and any explicit
+    # override) can redirect run artifacts to a writable location. In a
+    # PyInstaller bundle, Path(__file__).parents[1] is read-only, so the
+    # frozen studio_api sets AURORA_OUTPUTS=~/.aurora/outputs/... and it
+    # propagates down this subprocess chain via the inherited environment.
+    _outputs_override = os.environ.get("AURORA_OUTPUTS")
+    if _outputs_override:
+        out_root = Path(_outputs_override)
+    else:
+        out_root = Path(__file__).resolve().parents[1] / "outputs" / "aurora_dataset_runs"
     out_root.mkdir(parents=True, exist_ok=True)
 
     dataset_id = Path(args.dataset).name or str(args.dataset)
