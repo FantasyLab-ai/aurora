@@ -45,6 +45,14 @@ datasets/
 !demos/datasets/**/
 !demos/datasets/**/*.py
 !demos/datasets/**/*.md
+
+# The 3 demo fixtures the bundled desktop app ships for "try a demo".
+# The PyInstaller spec bundles data/fixtures/ as an app resource, so these
+# MUST reach a clean CI checkout -- otherwise the release build fails with
+# "Unable to find data\fixtures". Re-include them past the data/ + *.csv
+# rules above.
+!data/fixtures/
+!data/fixtures/*.csv
 *.exe
 # Allow our actual dependency manifests through the *.txt rule above.
 !requirements.txt

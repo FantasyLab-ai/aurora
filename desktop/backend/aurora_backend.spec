@@ -88,10 +88,19 @@ hiddenimports += ["matplotlib.backends.backend_agg"]
 #      the legacy Studio frontend (iframed by the desktop shell) and the
 #      demo fixtures (/api/demo_datasets). Writable data goes to ~/.aurora
 #      at runtime — NOT bundled here. ----
-datas += [
-    (os.path.join(REPO, "frontend"), "frontend"),
-    (os.path.join(REPO, "data", "fixtures"), os.path.join("data", "fixtures")),
-]
+datas += [(os.path.join(REPO, "frontend"), "frontend")]
+
+# Demo fixtures: only bundle them if present. They live under data/fixtures
+# which is otherwise gitignored, so they MUST be force-tracked to reach a
+# clean CI checkout (see .gitignore exception). Guarding on existence means
+# a missing-fixtures situation degrades to "app without demos" instead of a
+# hard build failure -- PyInstaller errors out if a declared data path is
+# absent, which is exactly what broke the v0.1.0 release on CI.
+_fixtures = os.path.join(REPO, "data", "fixtures")
+if os.path.isdir(_fixtures):
+    datas += [(_fixtures, os.path.join("data", "fixtures"))]
+else:
+    print(f"[spec] WARNING: {_fixtures} not found -- building WITHOUT demo datasets")
 
 # De-dup hidden imports (collect_* can overlap).
 hiddenimports = sorted(set(hiddenimports))
