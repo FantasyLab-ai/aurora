@@ -350,8 +350,14 @@ class TestSpectralEntropy:
 
 class TestExtendedRunner:
 
-    def test_runs_all_7_methods(self):
-        """Orchestrator returns one finding per registered method."""
+    def test_runs_all_registered_methods(self):
+        """Orchestrator returns one finding per registered method.
+
+        The registry grew from 7 to 8 when matrix_profile joined the
+        extended-methods runner. Assert against the per_method dict
+        (self-consistent) + the known method set, rather than a hard-coded
+        count that silently drifts each time a method is added.
+        """
         rng = np.random.default_rng(0)
         # Build a DataFrame that triggers fit for most methods.
         df = pd.DataFrame({
@@ -360,13 +366,15 @@ class TestExtendedRunner:
             "z": rng.standard_normal(150),
         })
         result = run_extended_methods(df)
-        # Each of the 7 methods produces at least one finding.
-        assert result["n_methods_run"] == 7
-        assert result["n_findings"] >= 7
-        # per_method dict has an entry for each.
+        # Self-consistent: the count matches the per_method dict.
+        assert result["n_methods_run"] == len(result["per_method"])
+        # At least the eight currently-registered methods ran.
+        assert result["n_methods_run"] >= 8
+        assert result["n_findings"] >= result["n_methods_run"]
+        # per_method dict has an entry for each known method.
         assert set(result["per_method"].keys()) >= {
             "var", "dtw", "bocpd", "robust_pca", "emd", "kalman",
-            "spectral_entropy",
+            "spectral_entropy", "matrix_profile",
         }
 
     def test_findings_in_aurora_shape(self):

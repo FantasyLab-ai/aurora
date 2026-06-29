@@ -211,8 +211,12 @@ class TestOverlay:
 
     def test_html_loads_app_js_and_style(self):
         html = (DEMOS / "overlay" / "index.html").read_text(encoding="utf-8")
-        assert 'href="style.css"' in html
-        assert 'src="app.js"' in html
+        # Tolerate a ?v=N cache-buster query string on the asset refs --
+        # the overlay appends one (e.g. style.css?v=2) so OBS / Chrome
+        # don't serve a stale cached copy. Match the prefix, not the
+        # exact closing quote.
+        assert 'href="style.css' in html
+        assert 'src="app.js' in html
         # Reads from the relay's SSE endpoint by default.
         # (See app.js for the configurable RELAY constant.)
 
