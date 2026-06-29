@@ -80,8 +80,8 @@ bundle step requires the backend to already exist. The helper script does
 both in order:
 
 ```powershell
-.\desktop\build_installer.ps1            # release installer
-.\desktop\build_installer.ps1 -Debug     # faster compile, larger binary
+.\desktop\build_installer.ps1               # release installer
+.\desktop\build_installer.ps1 -DebugBuild   # faster compile, larger binary
 ```
 
 That runs:
