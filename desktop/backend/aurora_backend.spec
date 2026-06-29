@@ -18,6 +18,7 @@ The entry point is desktop/backend/aurora_entry.py, which dispatches
 on argv to act as the server or as either runner hop (see that file).
 """
 import os
+import sys
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files, collect_all
 
 # The spec is invoked from the repo root, so CWD is the repo root.
@@ -26,6 +27,16 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files, coll
 # path like desktop/backend/... into desktop/backend/desktop/backend/...
 REPO = os.path.abspath(os.getcwd())
 ENTRY = os.path.join(REPO, "desktop", "backend", "aurora_entry.py")
+
+# CRITICAL for CI: ensure the repo root is on sys.path so the collect_*
+# calls below (which import fantasyai / scripts / studio_api at spec-PARSE
+# time) succeed regardless of how PyInstaller was invoked. When run as
+# `python -m PyInstaller` the cwd is on sys.path automatically; when run as
+# the bare `pyinstaller` console script (which CI does), sys.path[0] is the
+# launcher dir, NOT the cwd -- so `import fantasyai` fails and the whole
+# build dies identically on every OS. This insert makes both paths work.
+if REPO not in sys.path:
+    sys.path.insert(0, REPO)
 
 datas = []
 binaries = []

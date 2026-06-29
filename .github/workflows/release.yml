@@ -66,8 +66,12 @@ jobs:
           pip install pyinstaller
 
       - name: Build Aurora backend (PyInstaller)
+        # Invoke via `python -m PyInstaller` (NOT the bare `pyinstaller`
+        # script) so the cwd/repo-root is on sys.path -- the spec imports
+        # fantasyai/scripts/studio_api at parse time. The spec also inserts
+        # REPO onto sys.path defensively, so this is belt-and-braces.
         run: |
-          pyinstaller desktop/backend/aurora_backend.spec --noconfirm --distpath desktop/backend/dist --workpath desktop/backend/build
+          python -m PyInstaller desktop/backend/aurora_backend.spec --noconfirm --distpath desktop/backend/dist --workpath desktop/backend/build
 
       - name: Verify backend bundle exists
         shell: bash
