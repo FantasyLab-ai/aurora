@@ -7,11 +7,11 @@
     <!-- ?v= bump on every meaningful main.js / styles.css change to bust
          WebView2's persistent cache. The cache is keyed on full URL, so
          appending a unique query param forces a fresh fetch. -->
-    <link rel="stylesheet" href="styles.css?v=3.3.1" />
+    <link rel="stylesheet" href="styles.css?v=4.1.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=VT323&display=swap" rel="stylesheet" />
-    <script type="module" src="/main.js?v=3.3.1" defer></script>
+    <script type="module" src="/main.js?v=4.1.0" defer></script>
   </head>
   <body class="aurora-window">
     <!-- Frameless titlebar: drag region + brand + window controls. -->
@@ -40,6 +40,13 @@
           </button>
           <button class="nav-item" data-view="methods">
             <span class="nav-ico">∿</span><span class="nav-label">Methods</span>
+          </button>
+        </nav>
+
+        <nav class="nav-section">
+          <div class="nav-section-label">analysis</div>
+          <button class="nav-item" data-view="phasespace">
+            <span class="nav-ico">◌</span><span class="nav-label">Phase Space</span>
           </button>
         </nav>
 
@@ -222,6 +229,23 @@
             <div class="data-foot-hint">
               Method tally comes from this run's <code>findings[].method</code> tags.
               Highest-share method is what gets cited in fired Decision Contract payloads.
+            </div>
+          </section>
+
+          <!-- PHASE SPACE: native port of the legacy System Graph phase
+               portrait. Plots two variables against each other from
+               state.system_model.phase_space — the system's trajectory
+               through state space. -->
+          <section class="view" id="view-phasespace">
+            <div class="breadcrumb">phase space / <b id="phaseRunId">no active run</b></div>
+            <div class="phase-wrap" id="phaseWrap">
+              <div class="empty-state">Loading…</div>
+            </div>
+            <div class="data-foot-hint">
+              The phase portrait plots two variables against each other — the
+              system's path through state space. The fading trail is the past,
+              the cyan <b>NOW</b> marker is the current state, the dashed red
+              path is the forecast, and dashed ellipses are attractor regimes.
             </div>
           </section>
 

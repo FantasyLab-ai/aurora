@@ -22,7 +22,7 @@ const STATE_POLL_MS  = 6000;
 // Shows in the WebView2 console so we can verify the right JS loaded
 // (WebView2 sometimes caches main.js across builds despite Tauri
 // bundling fresh assets every time).
-const AURORA_SHELL_VERSION = "phase-3.3.1-stale-run-fix";
+const AURORA_SHELL_VERSION = "phase-4.1-phase-space";
 
 // First-run demo launcher. Cards are built from /api/demo_datasets so the
 // paths are whatever the backend can actually resolve -- critically, in the
@@ -154,7 +154,7 @@ function wireWindowControls() {
 // Views the shell knows about. Sidebar entries map to these.
 // Tabs map to the first three (overview/findings/data). Sidebar can
 // take you to the others (methods/datasets/bundles/studio).
-const VIEWS = ["overview", "findings", "data", "methods", "datasets", "bundles", "studio"];
+const VIEWS = ["overview", "findings", "data", "methods", "phasespace", "datasets", "bundles", "studio"];
 const TABS  = ["overview", "findings", "data"];
 
 let currentView = "overview";
@@ -186,9 +186,10 @@ function setActiveView(view) {
   if (view === "findings")  refreshFindings(_currentRunDir);
   if (view === "data")      refreshData(_currentRunDir);
   if (view === "overview")  refreshOverview(_currentRunDir);
-  if (view === "methods")   refreshMethods(_currentRunDir);
-  if (view === "datasets")  refreshDatasets();
-  if (view === "bundles")   refreshBundles();
+  if (view === "methods")    refreshMethods(_currentRunDir);
+  if (view === "phasespace") refreshPhaseSpace(_currentRunDir);
+  if (view === "datasets")   refreshDatasets();
+  if (view === "bundles")    refreshBundles();
 }
 
 function moveTabUnderline() {
@@ -788,6 +789,140 @@ async function refreshMethods(runDir) {
 // ---------------------------------------------------------------------
 // 7c. Datasets view — bundled fixtures + generated demo datasets
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// Phase Space — native port of the legacy System Graph phase portrait.
+// Reads state.system_model.phase_space and renders the trajectory as SVG.
+// ---------------------------------------------------------------------
+async function refreshPhaseSpace(runDir) {
+  if (_activeRun) return;  // run in flight: don't paint stale data
+  const wrap = document.getElementById("phaseWrap");
+  if (!wrap) return;
+  const url = runDir
+    ? `/api/state?run_dir=${encodeURIComponent(runDir)}`
+    : "/api/state";
+  const state = await auroraFetch(url);
+  if (!state || state.ok === false) {
+    wrap.innerHTML = renderEmpty("No active run. Run an analysis from <b>Overview</b>.");
+    return;
+  }
+  const s = state.state || state;
+  const runId = s.run_id || state.run_dir || "current run";
+  setText("phaseRunId", String(runId).split(/[\\/]/).pop().slice(0, 56));
+  const ps = (s.system_model && s.system_model.phase_space) || s.phase_space || null;
+  wrap.innerHTML = renderPhaseSpace(ps);
+}
+
+function renderPhaseSpace(ps) {
+  if (!ps) {
+    return renderEmpty(
+      "Phase space needs ≥ 2 numeric variables with variance, and isn't " +
+      "produced on every run/tier. Try a richer dataset (e.g. the " +
+      "<b>falling ball</b> or <b>server metrics</b> demo) at STANDARD tier.");
+  }
+  const hist = Array.isArray(ps.history) ? ps.history : [];
+  const fut  = Array.isArray(ps.future) ? ps.future : [];
+  const attr = Array.isArray(ps.attractors) ? ps.attractors : [];
+  const cur  = ps.current || (hist.length ? hist[hist.length - 1] : null);
+
+  const xs = [], ys = [];
+  hist.forEach((h) => { if (h.x != null) xs.push(h.x); if (h.y != null) ys.push(h.y); });
+  fut.forEach((f)  => { if (f.x != null) xs.push(f.x); if (f.y != null) ys.push(f.y); });
+  attr.forEach((a) => {
+    if (a.x_center != null) xs.push(a.x_center - (a.x_extent || 0), a.x_center + (a.x_extent || 0));
+    if (a.y_center != null) ys.push(a.y_center - (a.y_extent || 0), a.y_center + (a.y_extent || 0));
+  });
+  if (cur && cur.x != null) xs.push(cur.x);
+  if (cur && cur.y != null) ys.push(cur.y);
+  if (!xs.length || !ys.length) {
+    return renderEmpty(`Phase space: ${esc(ps.x_axis || "?")} × ${esc(ps.y_axis || "?")} — insufficient data to plot.`);
+  }
+
+  const VB_W = 1400, VB_H = 560;
+  const xL = 150, xR = VB_W - 60, yT = 50, yB = VB_H - 80;
+  const xMin = Math.min(...xs), xMax = Math.max(...xs);
+  const yMin = Math.min(...ys), yMax = Math.max(...ys);
+  const xPad = (xMax - xMin) * 0.10 || 1, yPad = (yMax - yMin) * 0.10 || 1;
+  const xLo = xMin - xPad, xHi = xMax + xPad, yLo = yMin - yPad, yHi = yMax + yPad;
+  const mapX = (x) => xL + ((x - xLo) / (xHi - xLo)) * (xR - xL);
+  const mapY = (y) => yB - ((y - yLo) / (yHi - yLo)) * (yB - yT);
+  const f1 = (n) => Number(n).toFixed(1);
+
+  const P = [];
+  P.push(`<defs>
+    <linearGradient id="phaseTrail" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8a7ed8" stop-opacity="0"/>
+      <stop offset="60%" stop-color="#8a7ed8" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#6ee7ff" stop-opacity="1"/>
+    </linearGradient>
+    <filter id="phaseGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>`);
+
+  // Grid + axes.
+  for (let i = 1; i < 4; i++) {
+    const gx = xL + i * (xR - xL) / 4, gy = yB - i * (yB - yT) / 4;
+    P.push(`<line x1="${gx}" y1="${yT}" x2="${gx}" y2="${yB}" stroke="#1a2438" stroke-width="1"/>`);
+    P.push(`<line x1="${xL}" y1="${gy}" x2="${xR}" y2="${gy}" stroke="#1a2438" stroke-width="1"/>`);
+  }
+  P.push(`<line x1="${xL}" y1="${yB}" x2="${xR}" y2="${yB}" stroke="#2a3550" stroke-width="1.4"/>`);
+  P.push(`<line x1="${xL}" y1="${yT}" x2="${xL}" y2="${yB}" stroke="#2a3550" stroke-width="1.4"/>`);
+  for (let i = 0; i <= 4; i++) {
+    const x = xL + i * (xR - xL) / 4, v = (xLo + i * (xHi - xLo) / 4).toFixed(1);
+    P.push(`<text x="${x}" y="${yB + 20}" text-anchor="middle" font-family="VT323" font-size="13" fill="#5a6a8a">${v}</text>`);
+    const y = yB - i * (yB - yT) / 4, w = (yLo + i * (yHi - yLo) / 4).toFixed(1);
+    P.push(`<text x="${xL - 12}" y="${y + 4}" text-anchor="end" font-family="VT323" font-size="13" fill="#5a6a8a">${w}</text>`);
+  }
+  P.push(`<text x="${(xL + xR) / 2}" y="${yB + 44}" text-anchor="middle" font-family="JetBrains Mono" font-size="12" fill="#8a96b5" letter-spacing="2">${esc(ps.x_axis || "x")} →</text>`);
+  P.push(`<text x="${xL - 38}" y="${(yT + yB) / 2}" text-anchor="middle" transform="rotate(-90 ${xL - 38} ${(yT + yB) / 2})" font-family="JetBrains Mono" font-size="12" fill="#8a96b5" letter-spacing="2">${esc(ps.y_axis || "y")} →</text>`);
+
+  // Attractor regimes.
+  const ATTR = ["#88ffd1", "#6ee7ff", "#b794ff", "#ffc857", "#d4b8ff"];
+  attr.forEach((a, i) => {
+    const cx = mapX(a.x_center), cy = mapY(a.y_center);
+    const rx = Math.max(20, Math.abs(mapX(a.x_center + (a.x_extent || 0)) - cx));
+    const ry = Math.max(15, Math.abs(mapY(a.y_center + (a.y_extent || 0)) - cy));
+    const c = ATTR[i % ATTR.length];
+    P.push(`<ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="none" stroke="${c}" stroke-width="1.4" stroke-dasharray="3 5" opacity="0.5"/>`);
+    if (a.label) P.push(`<text x="${cx}" y="${cy}" text-anchor="middle" font-family="JetBrains Mono" font-size="9" letter-spacing="1.5" fill="${c}" opacity="0.85">${esc(String(a.label).toUpperCase())}</text>`);
+  });
+
+  // Bifurcation manifold.
+  if (ps.manifold) {
+    const m = ps.manifold;
+    P.push(`<line x1="${mapX(m.x0)}" y1="${mapY(m.y0)}" x2="${mapX(m.x1)}" y2="${mapY(m.y1)}" stroke="#ff9a4a" stroke-width="1" stroke-dasharray="2 6" opacity="0.55"/>`);
+  }
+
+  // History trail.
+  if (hist.length >= 2) {
+    let d = `M ${f1(mapX(hist[0].x))} ${f1(mapY(hist[0].y))}`;
+    for (let i = 1; i < hist.length; i++) d += ` L ${f1(mapX(hist[i].x))} ${f1(mapY(hist[i].y))}`;
+    P.push(`<path d="${d}" stroke="url(#phaseTrail)" stroke-width="2.5" fill="none" filter="url(#phaseGlow)"/>`);
+  }
+
+  // Forecast trajectory.
+  if (fut.length >= 1 && cur && cur.x != null) {
+    let d = `M ${f1(mapX(cur.x))} ${f1(mapY(cur.y))}`;
+    fut.forEach((p) => { if (p.x != null && p.y != null) d += ` L ${f1(mapX(p.x))} ${f1(mapY(p.y))}`; });
+    P.push(`<path d="${d}" stroke="#ff5577" stroke-width="1.8" stroke-dasharray="4 6" fill="none" opacity="0.6"/>`);
+  }
+
+  // NOW marker.
+  if (cur && cur.x != null && cur.y != null) {
+    const cx = mapX(cur.x), cy = mapY(cur.y);
+    P.push(`<g transform="translate(${cx} ${cy})">
+      <circle r="20" fill="#6ee7ff" opacity="0.18" filter="url(#phaseGlow)"/>
+      <circle r="12" fill="none" stroke="#6ee7ff" stroke-width="1" stroke-dasharray="3 4" opacity="0.7"/>
+      <circle r="6" fill="#6ee7ff" filter="url(#phaseGlow)"/>
+      <text y="-18" text-anchor="middle" font-family="JetBrains Mono" font-size="10" fill="#fff" font-weight="600" letter-spacing="1">NOW</text>
+      <text y="30" text-anchor="middle" font-family="VT323" font-size="14" fill="#6ee7ff">(${(+cur.x).toFixed(2)}, ${(+cur.y).toFixed(2)})</text>
+    </g>`);
+  }
+
+  return `<svg class="phase-svg" viewBox="0 0 ${VB_W} ${VB_H}" preserveAspectRatio="xMidYMid meet">${P.join("")}</svg>`;
+}
+
 async function refreshDatasets() {
   const wrap = document.getElementById("datasetsList");
   if (!wrap) return;
