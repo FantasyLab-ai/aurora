@@ -7,11 +7,11 @@
     <!-- ?v= bump on every meaningful main.js / styles.css change to bust
          WebView2's persistent cache. The cache is keyed on full URL, so
          appending a unique query param forces a fresh fetch. -->
-    <link rel="stylesheet" href="styles.css?v=4.4.1" />
+    <link rel="stylesheet" href="styles.css?v=4.5.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=VT323&display=swap" rel="stylesheet" />
-    <script type="module" src="/main.js?v=4.4.1" defer></script>
+    <script type="module" src="/main.js?v=4.5.0" defer></script>
   </head>
   <body class="aurora-window">
     <!-- Frameless titlebar: drag region + brand + window controls. -->
@@ -66,6 +66,9 @@
           </button>
           <button class="nav-item" data-view="bundles">
             <span class="nav-ico">◇</span><span class="nav-label">Bundles</span>
+          </button>
+          <button class="nav-item" data-view="knowledge">
+            <span class="nav-ico">≣</span><span class="nav-label">Knowledge Bank</span>
           </button>
         </nav>
 
@@ -351,6 +354,26 @@
               <code>outputs/aurora_dataset_runs/</code>. The list above shows
               the most recent 30 — click into <b>Aurora Studio</b> for the
               full archive and bundle verification UI.
+            </div>
+          </section>
+
+          <!-- KNOWLEDGE BANK: native view of the cited knowledge bank.
+               Summary (total + per-source) from /api/knowledge_bank/summary
+               + free-text search via /api/knowledge_bank/search. This is
+               what Aurora cites — surfacing it proves the bank is loaded. -->
+          <section class="view" id="view-knowledge">
+            <div class="breadcrumb">knowledge bank / <b id="kbTotal">—</b></div>
+            <div id="kbSummary"><div class="empty-state">Loading…</div></div>
+            <div class="kb-search-row">
+              <input class="causal-input" id="kbSearchInput"
+                     placeholder="Search the knowledge bank — e.g. Pierson-Moskowitz, Granger causality, SINDy…" />
+              <button class="btn btn-primary" id="kbSearchBtn"><span class="btn-ico">⌕</span> Search</button>
+            </div>
+            <div id="kbResults"></div>
+            <div class="data-foot-hint">
+              The knowledge bank is what Aurora cites — every finding traces to
+              one of these entries. That's how Aurora stays a glass box. New
+              entries arrive via overnight ingest from public scientific sources.
             </div>
           </section>
 

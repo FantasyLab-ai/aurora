@@ -22,7 +22,7 @@ const STATE_POLL_MS  = 6000;
 // Shows in the WebView2 console so we can verify the right JS loaded
 // (WebView2 sometimes caches main.js across builds despite Tauri
 // bundling fresh assets every time).
-const AURORA_SHELL_VERSION = "phase-4.4.1-clean-boot";
+const AURORA_SHELL_VERSION = "phase-4.5-knowledge-bank";
 
 // First-run demo launcher. Cards are built from /api/demo_datasets so the
 // paths are whatever the backend can actually resolve -- critically, in the
@@ -154,7 +154,7 @@ function wireWindowControls() {
 // Views the shell knows about. Sidebar entries map to these.
 // Tabs map to the first three (overview/findings/data). Sidebar can
 // take you to the others (methods/datasets/bundles/studio).
-const VIEWS = ["overview", "findings", "data", "methods", "phasespace", "spacetime", "forecast", "causal", "datasets", "bundles", "studio"];
+const VIEWS = ["overview", "findings", "data", "methods", "phasespace", "spacetime", "forecast", "causal", "datasets", "bundles", "knowledge", "studio"];
 const TABS  = ["overview", "findings", "data"];
 
 let currentView = "overview";
@@ -193,6 +193,7 @@ function setActiveView(view) {
   if (view === "causal")     refreshCausal(_currentRunDir);
   if (view === "datasets")   refreshDatasets();
   if (view === "bundles")    refreshBundles();
+  if (view === "knowledge")  refreshKnowledgeBank();
 }
 
 function moveTabUnderline() {
@@ -1242,6 +1243,70 @@ function _renderCausalResult(kind, j) {
   return html;
 }
 
+// ---------------------------------------------------------------------
+// Knowledge Bank — native view of the cited bank. GLOBAL (not per-run):
+// /api/knowledge_bank/summary for totals + per-source, /search for lookup.
+// ---------------------------------------------------------------------
+async function refreshKnowledgeBank() {
+  const wrap = document.getElementById("kbSummary");
+  if (!wrap) return;
+  const r = await auroraFetch("/api/knowledge_bank/summary");
+  if (!r || r.ok === false || !r.summary) {
+    setText("kbTotal", "unavailable");
+    wrap.innerHTML = renderEmpty(
+      "Knowledge bank unavailable. " + esc((r && r.error) || "Start Aurora and retry.") +
+      " On a fresh install Aurora seeds ~59 curated entries on first run, then grows nightly.");
+    return;
+  }
+  const s = r.summary;
+  const total = Number(s.total_entries || 0);
+  setText("kbTotal", `${total.toLocaleString()} entries`);
+  const sources = (s.per_source || []).slice().sort((a, b) => b.n - a.n);
+  const maxN = Math.max(1, ...sources.map((x) => x.n));
+  wrap.innerHTML = `
+    <div class="kb-headline">
+      <div class="kb-total">${total.toLocaleString()}</div>
+      <div class="kb-total-lbl">cited knowledge entries${
+        s.n_vectors ? ` · ${Number(s.n_vectors).toLocaleString()} vectors` : ""}${
+        s.embedding_model ? ` · ${esc(s.embedding_model)}${s.embedding_dim ? ` (${esc(String(s.embedding_dim))}d)` : ""}` : ""}</div>
+    </div>
+    <div class="kb-sources">
+      ${sources.map((x) => `
+        <div class="kb-source">
+          <div class="kb-source-head">
+            <span class="kb-source-name">${esc(x.source)}</span>
+            <span class="kb-source-n">${Number(x.n).toLocaleString()}</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" style="width:${Math.round((x.n / maxN) * 100)}%"></div></div>
+        </div>`).join("")}
+    </div>`;
+}
+
+async function _kbSearch() {
+  const q = ((document.getElementById("kbSearchInput") || {}).value || "").trim();
+  const res = document.getElementById("kbResults");
+  if (!res) return;
+  if (!q) { res.innerHTML = ""; return; }
+  res.innerHTML = `<div class="empty-state">▶ Searching the bank…</div>`;
+  const r = await auroraFetch(`/api/knowledge_bank/search?q=${encodeURIComponent(q)}&limit=20`);
+  if (!r || r.ok === false) {
+    res.innerHTML = renderEmpty("Search failed: " + esc((r && r.error) || "unknown"));
+    return;
+  }
+  const results = r.results || [];
+  if (!results.length) { res.innerHTML = renderEmpty(`No entries matched “${esc(q)}”.`); return; }
+  res.innerHTML = `<div class="kb-results-label">${results.length} RESULTS</div>` +
+    results.map((e) => `
+      <div class="kb-result">
+        <div class="kb-result-head">
+          <span class="kb-result-name">${esc(e.name || e.id)}</span>
+          <span class="kb-result-rel">${Math.round((e.relevance || 0) * 100)}%</span>
+        </div>
+        <div class="kb-result-meta">${esc(e.domain || "—")} · ${esc(e.source || "—")}</div>
+        ${e.definition ? `<div class="kb-result-def">${esc(e.definition)}</div>` : ""}
+      </div>`).join("");
+}
+
 async function refreshDatasets() {
   const wrap = document.getElementById("datasetsList");
   if (!wrap) return;
@@ -1814,6 +1879,11 @@ window.addEventListener("DOMContentLoaded", () => {
   if (causalDoBtn) causalDoBtn.addEventListener("click", () => _runCausal("do"));
   const causalIdBtn = document.getElementById("causalIdentifyBtn");
   if (causalIdBtn) causalIdBtn.addEventListener("click", () => _runCausal("identify"));
+
+  const kbBtn = document.getElementById("kbSearchBtn");
+  if (kbBtn) kbBtn.addEventListener("click", _kbSearch);
+  const kbInput = document.getElementById("kbSearchInput");
+  if (kbInput) kbInput.addEventListener("keydown", (e) => { if (e.key === "Enter") _kbSearch(); });
 
   refreshDatasetOptions();
 
