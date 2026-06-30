@@ -22,7 +22,7 @@ const STATE_POLL_MS  = 6000;
 // Shows in the WebView2 console so we can verify the right JS loaded
 // (WebView2 sometimes caches main.js across builds despite Tauri
 // bundling fresh assets every time).
-const AURORA_SHELL_VERSION = "phase-4.3-causal-lab";
+const AURORA_SHELL_VERSION = "phase-4.4-spacetime-forecast";
 
 // First-run demo launcher. Cards are built from /api/demo_datasets so the
 // paths are whatever the backend can actually resolve -- critically, in the
@@ -154,7 +154,7 @@ function wireWindowControls() {
 // Views the shell knows about. Sidebar entries map to these.
 // Tabs map to the first three (overview/findings/data). Sidebar can
 // take you to the others (methods/datasets/bundles/studio).
-const VIEWS = ["overview", "findings", "data", "methods", "phasespace", "causal", "datasets", "bundles", "studio"];
+const VIEWS = ["overview", "findings", "data", "methods", "phasespace", "spacetime", "forecast", "causal", "datasets", "bundles", "studio"];
 const TABS  = ["overview", "findings", "data"];
 
 let currentView = "overview";
@@ -188,6 +188,8 @@ function setActiveView(view) {
   if (view === "overview")  refreshOverview(_currentRunDir);
   if (view === "methods")    refreshMethods(_currentRunDir);
   if (view === "phasespace") refreshPhaseSpace(_currentRunDir);
+  if (view === "spacetime")  refreshSpacetime(_currentRunDir);
+  if (view === "forecast")   refreshForecast(_currentRunDir);
   if (view === "causal")     refreshCausal(_currentRunDir);
   if (view === "datasets")   refreshDatasets();
   if (view === "bundles")    refreshBundles();
@@ -344,6 +346,8 @@ function _renderViewsRunning() {
   const dt = document.getElementById("dataTableWrap"); if (dt) dt.innerHTML = msg;
   const ml = document.getElementById("methodsList");  if (ml) ml.innerHTML = msg;
   const pw = document.getElementById("phaseWrap");     if (pw) pw.innerHTML = msg;
+  const sw = document.getElementById("spacetimeWrap"); if (sw) sw.innerHTML = msg;
+  const fw = document.getElementById("forecastWrap");  if (fw) fw.innerHTML = msg;
 }
 
 // Refresh EVERY data view against one run_dir. Used on completion and on
@@ -355,6 +359,9 @@ function _refreshAllViews(runDir) {
   refreshData(runDir);
   refreshMethods(runDir);
   refreshPhaseSpace(runDir);
+  refreshSpacetime(runDir);
+  refreshForecast(runDir);
+  refreshCausal(runDir);
 }
 
 // Populate the persistent run-context bar so every tab agrees on which run
@@ -944,6 +951,181 @@ function renderPhaseSpace(ps) {
 
   return `<svg class="phase-svg" viewBox="0 0 ${VB_W} ${VB_H}" preserveAspectRatio="xMidYMid meet">${P.join("")}</svg>`;
 }
+
+// ---------------------------------------------------------------------
+// Spacetime — native port of the System Graph spacetime view. Each
+// entity from system_model.topology is a horizontal lane: worldline
+// (history -> NOW) + probability cone (NOW -> future).
+// ---------------------------------------------------------------------
+async function refreshSpacetime(runDir) {
+  if (_activeRun) return;
+  runDir = runDir || _currentRunDir;
+  const wrap = document.getElementById("spacetimeWrap");
+  if (!wrap) return;
+  const url = runDir ? `/api/state?run_dir=${encodeURIComponent(runDir)}` : "/api/state";
+  const state = await auroraFetch(url);
+  if (!state || state.ok === false) {
+    wrap.innerHTML = renderEmpty("No active run. Run an analysis from <b>Overview</b>.");
+    return;
+  }
+  const s = state.state || state;
+  const runId = s.run_id || state.run_dir || "current run";
+  setText("spacetimeRunId", String(runId).split(/[\\/]/).pop().slice(0, 56));
+  wrap.innerHTML = renderSpacetime(s.system_model || null);
+}
+
+function renderSpacetime(model) {
+  const nodes = (model && model.topology && model.topology.entities) || [];
+  if (!nodes.length) {
+    return renderEmpty(
+      "Spacetime needs a system model with entities — not produced on every " +
+      "run/tier. Try a richer dataset (e.g. <b>server metrics</b>) at STANDARD tier.");
+  }
+  const VB_W = 1400, VB_H = 560;
+  const X_LEFT = 90, X_NOW = VB_W * 0.5, X_RIGHT = VB_W - 60;
+  const n = nodes.length;
+  const margin = n <= 4 ? 44 : n <= 8 ? 58 : 72;
+  const top = margin, bot = VB_H - margin;
+  const laneH = (bot - top) / n;
+  const fillF = n <= 4 ? 0.42 : n <= 8 ? 0.38 : 0.34;
+  const colorOf = (role, sev) =>
+    sev === "crit" ? "#ff5577" : sev === "warn" ? "#ff9a4a" :
+    role === "forcing" ? "#ff5577" : role === "indicator" ? "#6ee7ff" :
+    role === "event" ? "#b794ff" : "#88ffd1";
+
+  const P = [];
+  let defs = `<filter id="stGlow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
+  nodes.forEach((nd, i) => {
+    const c = colorOf(nd.role, nd.severity);
+    defs += `<linearGradient id="stTrail${i}" x1="0%" x2="100%"><stop offset="0%" stop-color="${c}" stop-opacity="0"/><stop offset="40%" stop-color="${c}" stop-opacity="0.45"/><stop offset="100%" stop-color="${c}" stop-opacity="1"/></linearGradient>`;
+  });
+  P.push(`<defs>${defs}</defs>`);
+
+  // NOW line + past/future markers.
+  P.push(`<line x1="${X_NOW}" y1="22" x2="${X_NOW}" y2="${VB_H - 28}" stroke="#6ee7ff" stroke-width="1" stroke-dasharray="4 4" opacity="0.5"/>`);
+  P.push(`<text x="${X_NOW}" y="16" text-anchor="middle" font-family="JetBrains Mono" font-size="11" fill="#6ee7ff" letter-spacing="2">NOW</text>`);
+  P.push(`<text x="${X_LEFT}" y="${VB_H - 8}" font-family="VT323" font-size="14" fill="#5a6a8a">← past</text>`);
+  P.push(`<text x="${X_RIGHT}" y="${VB_H - 8}" text-anchor="end" font-family="VT323" font-size="14" fill="#5a6a8a">future →</text>`);
+
+  nodes.forEach((nd, i) => {
+    const cy = top + laneH * (i + 0.5);
+    const laneTop = cy - laneH * fillF, laneBot = cy + laneH * fillF;
+    const c = colorOf(nd.role, nd.severity);
+    const hist = (nd.history || []).filter((h) => h.v != null && isFinite(h.v));
+    let lo = null, hi = null;
+    hist.forEach((h) => { if (lo === null || h.v < lo) lo = h.v; if (hi === null || h.v > hi) hi = h.v; });
+    const mapY = (v) => (lo === null || hi === null || hi === lo) ? cy : laneBot - ((v - lo) / (hi - lo)) * (laneBot - laneTop);
+
+    P.push(`<line x1="${X_LEFT}" x2="${X_RIGHT}" y1="${cy.toFixed(1)}" y2="${cy.toFixed(1)}" stroke="#1a2438" stroke-width="0.5" stroke-dasharray="2 6"/>`);
+
+    if (hist.length) {
+      let d = "";
+      hist.forEach((h, j) => {
+        const t = j / Math.max(1, hist.length - 1);
+        const x = X_LEFT + t * (X_NOW - X_LEFT);
+        d += (j === 0 ? "M" : " L") + ` ${x.toFixed(1)} ${mapY(h.v).toFixed(1)}`;
+      });
+      P.push(`<path d="${d}" stroke="url(#stTrail${i})" stroke-width="2" fill="none" filter="url(#stGlow)"/>`);
+    }
+    const curY = hist.length ? mapY(hist[hist.length - 1].v) : cy;
+
+    const fc = (nd.forecast || []).filter((p) => p.t != null && isFinite(p.t));
+    if (fc.length) {
+      const tMax = Math.max(...fc.map((p) => p.t)) || 1;
+      const dx = X_RIGHT - X_NOW;
+      const up = [], lw = [];
+      fc.forEach((p) => {
+        const tn = Math.min(1, p.t / tMax), x = X_NOW + tn * dx;
+        const ym = (p.mean != null && isFinite(p.mean)) ? mapY(p.mean) : curY;
+        up.push([x, p.ci_hi != null && isFinite(p.ci_hi) ? mapY(p.ci_hi) : ym]);
+        lw.push([x, p.ci_lo != null && isFinite(p.ci_lo) ? mapY(p.ci_lo) : ym]);
+      });
+      let fillD = `M ${X_NOW.toFixed(1)} ${curY.toFixed(1)}`;
+      up.forEach((p) => fillD += ` L ${p[0].toFixed(1)} ${p[1].toFixed(1)}`);
+      for (let k = lw.length - 1; k >= 0; k--) fillD += ` L ${lw[k][0].toFixed(1)} ${lw[k][1].toFixed(1)}`;
+      fillD += " Z";
+      P.push(`<path d="${fillD}" fill="${c}" opacity="0.10"/>`);
+      let md = `M ${X_NOW.toFixed(1)} ${curY.toFixed(1)}`;
+      fc.forEach((p) => { const tn = Math.min(1, p.t / tMax), x = X_NOW + tn * dx; const ym = (p.mean != null && isFinite(p.mean)) ? mapY(p.mean) : curY; md += ` L ${x.toFixed(1)} ${ym.toFixed(1)}`; });
+      P.push(`<path d="${md}" stroke="${c}" stroke-width="1.4" stroke-dasharray="4 5" fill="none" opacity="0.6"/>`);
+    }
+
+    P.push(`<circle cx="${X_NOW}" cy="${curY.toFixed(1)}" r="5" fill="${c}" filter="url(#stGlow)"/>`);
+    P.push(`<text x="${X_LEFT - 10}" y="${(cy + 3).toFixed(1)}" text-anchor="end" font-family="JetBrains Mono" font-size="11" fill="${c}">${esc(nd.id || "")}</text>`);
+  });
+
+  return `<svg class="phase-svg" viewBox="0 0 ${VB_W} ${VB_H}" preserveAspectRatio="xMidYMid meet">${P.join("")}</svg>`;
+}
+
+
+// ---------------------------------------------------------------------
+// Forecast — native render of state.forecast (headline peak + CI-band chart
+// + alternate methods).
+// ---------------------------------------------------------------------
+async function refreshForecast(runDir) {
+  if (_activeRun) return;
+  runDir = runDir || _currentRunDir;
+  const wrap = document.getElementById("forecastWrap");
+  if (!wrap) return;
+  const url = runDir ? `/api/state?run_dir=${encodeURIComponent(runDir)}` : "/api/state";
+  const state = await auroraFetch(url);
+  if (!state || state.ok === false) {
+    wrap.innerHTML = renderEmpty("No active run. Run an analysis from <b>Overview</b>.");
+    return;
+  }
+  const s = state.state || state;
+  const runId = s.run_id || state.run_dir || "current run";
+  setText("forecastRunId", String(runId).split(/[\\/]/).pop().slice(0, 56));
+  wrap.innerHTML = renderForecast(s.forecast || null);
+}
+
+function renderForecast(fc) {
+  if (!fc || fc.available === false) {
+    return renderEmpty(
+      "No forecast for this run — Aurora forecasts time-series targets. " +
+      "Cross-sectional data (no time axis) has no forecast, by design.");
+  }
+  const pts = Array.isArray(fc.points) ? fc.points.filter((p) => p.value != null) : [];
+  const head = (fc.headline_value != null)
+    ? `<div class="fc-headline">
+         <div class="fc-headline-lbl">PEAK · NEXT ${esc(String(fc.horizon || pts.length))} STEPS</div>
+         <div class="fc-headline-val">${(+fc.headline_value).toFixed(2)}</div>
+         ${fc.headline_ci_low != null ? `<div class="fc-headline-ci">95% CI ${(+fc.headline_ci_low).toFixed(2)} – ${(+fc.headline_ci_high).toFixed(2)}</div>` : ""}
+       </div>`
+    : "";
+  const meta = `<div class="fc-meta">target <b>${esc(fc.target || "—")}</b> · ${esc(String(fc.method || "ensemble"))}${fc.score != null ? ` · CRPS ${(+fc.score).toFixed(2)}` : ""}</div>`;
+
+  let chart = "";
+  if (pts.length >= 2) {
+    const VB_W = 1200, VB_H = 320, pad = 40;
+    const vals = pts.map((p) => p.value);
+    const los = pts.map((p) => (p.ci_low != null ? p.ci_low : p.value));
+    const his = pts.map((p) => (p.ci_high != null ? p.ci_high : p.value));
+    const lo = Math.min(...vals, ...los), hi = Math.max(...vals, ...his);
+    const span = (hi - lo) || 1;
+    const mx = (i) => pad + (i / Math.max(1, pts.length - 1)) * (VB_W - 2 * pad);
+    const my = (v) => (VB_H - pad) - ((v - lo) / span) * (VB_H - 2 * pad);
+    let band = `M ${mx(0).toFixed(1)} ${my(his[0]).toFixed(1)}`;
+    for (let i = 1; i < pts.length; i++) band += ` L ${mx(i).toFixed(1)} ${my(his[i]).toFixed(1)}`;
+    for (let i = pts.length - 1; i >= 0; i--) band += ` L ${mx(i).toFixed(1)} ${my(los[i]).toFixed(1)}`;
+    band += " Z";
+    let line = "";
+    pts.forEach((p, i) => line += (i === 0 ? "M" : " L") + ` ${mx(i).toFixed(1)} ${my(p.value).toFixed(1)}`);
+    chart = `<svg class="fc-svg" viewBox="0 0 ${VB_W} ${VB_H}" preserveAspectRatio="xMidYMid meet">
+      <path d="${band}" fill="#6ee7ff" opacity="0.12"/>
+      <path d="${line}" stroke="#6ee7ff" stroke-width="2" fill="none" filter=""/>
+      <line x1="${pad}" y1="${VB_H - pad}" x2="${VB_W - pad}" y2="${VB_H - pad}" stroke="#2a3550" stroke-width="1"/>
+    </svg>`;
+  }
+
+  let warn = "";
+  if (fc.warning && fc.warning.breach_probability != null) {
+    warn = `<div class="fc-warn">⚠ Threshold breach: ${esc(String(fc.warning.breach_value))} exceeds ${esc(String(fc.warning.breach_threshold))} with ${(fc.warning.breach_probability * 100).toFixed(0)}% probability.</div>`;
+  }
+
+  return `<div class="fc-wrap">${head}${meta}${chart}${warn}</div>`;
+}
+
 
 // ---------------------------------------------------------------------
 // Causal Lab — native port of the v2.0 Lab do-calculus panel.
@@ -1635,5 +1817,7 @@ window.addEventListener("DOMContentLoaded", () => {
     if (auroraOnline && currentView === "findings")   refreshFindings(_currentRunDir);
     if (auroraOnline && currentView === "data")       refreshData(_currentRunDir);
     if (auroraOnline && currentView === "phasespace") refreshPhaseSpace(_currentRunDir);
+    if (auroraOnline && currentView === "spacetime")  refreshSpacetime(_currentRunDir);
+    if (auroraOnline && currentView === "forecast")   refreshForecast(_currentRunDir);
   }, STATE_POLL_MS);
 });

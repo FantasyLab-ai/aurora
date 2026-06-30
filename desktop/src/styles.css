@@ -855,6 +855,35 @@ code { font-family: var(--font-mono); font-size: 0.92em; color: var(--cyan); }
 .causal-assumptions ul { margin: 0 0 0 18px; color: var(--ink-dim); font-size: 12px; line-height: 1.5; }
 
 
+/* Forecast native view. */
+.fc-wrap {
+  background: var(--bg-card);
+  border: 1px solid var(--bevel-light);
+  border-radius: var(--r-4);
+  padding: var(--sp-5);
+  margin-bottom: var(--sp-4);
+}
+.fc-headline { text-align: center; margin-bottom: var(--sp-3); }
+.fc-headline-lbl {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 2px;
+  text-transform: uppercase; color: var(--ink-faint); margin-bottom: var(--sp-2);
+}
+.fc-headline-val { font-family: var(--font-num); font-size: 44px; color: var(--cyan); line-height: 1; }
+.fc-headline-ci { font-family: var(--font-mono); font-size: 12px; color: var(--ink-dim); margin-top: var(--sp-2); }
+.fc-meta {
+  text-align: center; font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: 1px; color: var(--ink-faint); text-transform: uppercase;
+  margin-bottom: var(--sp-4);
+}
+.fc-meta b { color: var(--ink-dim); }
+.fc-svg { display: block; width: 100%; height: auto; max-height: 44vh; }
+.fc-warn {
+  margin-top: var(--sp-4); padding: var(--sp-3) var(--sp-4);
+  background: rgba(255, 154, 74, 0.10); border-left: 3px solid var(--warn);
+  border-radius: var(--r-2); color: var(--warn); font-size: 13px;
+}
+
+
 /* Phase Space native view — the system-graph phase portrait. */
 .phase-wrap {
   background: var(--bg-card);

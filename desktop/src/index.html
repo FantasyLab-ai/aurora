@@ -7,11 +7,11 @@
     <!-- ?v= bump on every meaningful main.js / styles.css change to bust
          WebView2's persistent cache. The cache is keyed on full URL, so
          appending a unique query param forces a fresh fetch. -->
-    <link rel="stylesheet" href="styles.css?v=4.3.0" />
+    <link rel="stylesheet" href="styles.css?v=4.4.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=VT323&display=swap" rel="stylesheet" />
-    <script type="module" src="/main.js?v=4.3.0" defer></script>
+    <script type="module" src="/main.js?v=4.4.0" defer></script>
   </head>
   <body class="aurora-window">
     <!-- Frameless titlebar: drag region + brand + window controls. -->
@@ -47,6 +47,12 @@
           <div class="nav-section-label">analysis</div>
           <button class="nav-item" data-view="phasespace">
             <span class="nav-ico">◌</span><span class="nav-label">Phase Space</span>
+          </button>
+          <button class="nav-item" data-view="spacetime">
+            <span class="nav-ico">⌖</span><span class="nav-label">Spacetime</span>
+          </button>
+          <button class="nav-item" data-view="forecast">
+            <span class="nav-ico">⤴</span><span class="nav-label">Forecast</span>
           </button>
           <button class="nav-item" data-view="causal">
             <span class="nav-ico">⇄</span><span class="nav-label">Causal Lab</span>
@@ -249,6 +255,35 @@
               system's path through state space. The fading trail is the past,
               the cyan <b>NOW</b> marker is the current state, the dashed red
               path is the forecast, and dashed ellipses are attractor regimes.
+            </div>
+          </section>
+
+          <!-- SPACETIME: native port of the System Graph spacetime view.
+               Each entity is a horizontal lane: worldline (history → NOW)
+               + probability cone (NOW → future) from system_model.topology. -->
+          <section class="view" id="view-spacetime">
+            <div class="breadcrumb">spacetime / <b id="spacetimeRunId">no active run</b></div>
+            <div class="phase-wrap" id="spacetimeWrap">
+              <div class="empty-state">Loading…</div>
+            </div>
+            <div class="data-foot-hint">
+              Each row is a variable's worldline through time. The gradient trail
+              left of <b>NOW</b> is its history; the shaded wedge to the right is
+              its forecast cone (mean + confidence band). Colour encodes the
+              variable's causal role.
+            </div>
+          </section>
+
+          <!-- FORECAST: native render of state.forecast — headline peak,
+               CI band chart, alternate methods. -->
+          <section class="view" id="view-forecast">
+            <div class="breadcrumb">forecast / <b id="forecastRunId">no active run</b></div>
+            <div id="forecastWrap">
+              <div class="empty-state">Loading…</div>
+            </div>
+            <div class="data-foot-hint">
+              The forecast is produced on time-series datasets. To forecast a
+              different column, re-run from <b>Overview</b> with that target.
             </div>
           </section>
 
