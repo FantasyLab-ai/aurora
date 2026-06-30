@@ -22,7 +22,7 @@ const STATE_POLL_MS  = 6000;
 // Shows in the WebView2 console so we can verify the right JS loaded
 // (WebView2 sometimes caches main.js across builds despite Tauri
 // bundling fresh assets every time).
-const AURORA_SHELL_VERSION = "phase-3.2-run-context";
+const AURORA_SHELL_VERSION = "phase-3.2.1-run-lifecycle";
 
 // First-run demo launcher. Cards are built from /api/demo_datasets so the
 // paths are whatever the backend can actually resolve -- critically, in the
@@ -109,6 +109,12 @@ const RUN_POLL_MAX_S = 600;     // give up after 10 min (sanity cap)
 
 let _activeRun = null;          // { runId, submittedAt, filename } | null
 let _elapsedTimer = null;
+let _bannerHideTimer = null;
+
+// The run the USER just triggered + when it completed (from their POV).
+// Used so the run-context bar reads "completed just now" -- even on a cache
+// hit, where the bundle's own timestamp is weeks old. { runDir, at, cached }
+let _lastCompletion = null;
 
 // Sticky run_dir for the views. Once a run completes, every subsequent
 // refresh (including the 6s background polling loop) targets THIS exact
@@ -300,18 +306,31 @@ async function pollHealth() {
 // Parse Aurora's run_id timestamp prefix (YYYYMMDD_HHMMSS) into a friendly
 // relative string. This is what kills the "is this stale?" question -- the
 // user always sees HOW OLD the run on screen is.
-function _relativeTimeFromRunId(runId) {
-  const m = String(runId || "").match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
-  if (!m) return "";
-  const [, Y, Mo, D, H, Mi, S] = m;
-  const then = new Date(+Y, +Mo - 1, +D, +H, +Mi, +S);
-  const sec = Math.floor((Date.now() - then.getTime()) / 1000);
-  if (sec < 0)    return "just now";
+function _relativeTimeFromMs(thenMs) {
+  const sec = Math.floor((Date.now() - thenMs) / 1000);
   if (sec < 45)   return "just now";
   if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
   if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
   if (sec < 604800) return `${Math.floor(sec / 86400)}d ago`;
-  return then.toLocaleDateString();
+  return new Date(thenMs).toLocaleDateString();
+}
+
+function _relativeTimeFromRunId(runId) {
+  const m = String(runId || "").match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+  if (!m) return "";
+  const [, Y, Mo, D, H, Mi, S] = m;
+  return _relativeTimeFromMs(new Date(+Y, +Mo - 1, +D, +H, +Mi, +S).getTime());
+}
+
+// Fade the transient run-banner a few seconds after completion. The
+// persistent run-context bar is the lasting signal, so "complete · cache
+// hit" doesn't sit on screen forever after the cards have populated.
+function _scheduleBannerHide() {
+  if (_bannerHideTimer) clearTimeout(_bannerHideTimer);
+  _bannerHideTimer = setTimeout(() => {
+    const banner = document.getElementById("runStatusBanner");
+    if (banner && !_activeRun) banner.hidden = true;
+  }, 4500);
 }
 
 // Populate the persistent run-context bar so every tab agrees on which run
@@ -330,8 +349,21 @@ function _renderRunContext(state) {
              : (s.run_meta && s.run_meta.confidence);
 
   setText("rcDataset", String(dsName).replace(/\.(csv|tsv|json|jsonl|parquet|xlsx?)$/i, ""));
-  const rel = _relativeTimeFromRunId(runId);
-  setText("rcTime", rel ? `ran ${rel}` : "this run");
+
+  // Time label: if this is the run the user just triggered, show it from
+  // THEIR point of view ("completed just now") even on a cache hit, where
+  // the bundle's own timestamp is weeks old. Otherwise fall back to the
+  // bundle's actual age (relevant when browsing old runs in Bundles).
+  const runDir = s.run_dir || state.run_dir || "";
+  let timeLabel;
+  if (_lastCompletion && runDir && runDir === _lastCompletion.runDir) {
+    const rel = _relativeTimeFromMs(_lastCompletion.at);
+    timeLabel = `completed ${rel}${_lastCompletion.cached ? " · reused cached analysis" : ""}`;
+  } else {
+    const rel = _relativeTimeFromRunId(runId);
+    timeLabel = rel ? `ran ${rel}` : "this run";
+  }
+  setText("rcTime", timeLabel);
   setText("rcFindings", `${findings} finding${findings === 1 ? "" : "s"}`);
   const fabEl = document.getElementById("rcFabricated");
   if (fabEl) {
@@ -891,19 +923,22 @@ function _showRunningState(filename, phase, cached) {
     banner.hidden = false;
     banner.className = `run-banner run-banner--${phase}`;
     let label = "";
-    if (phase === "submitting") label = `submitting <b>${esc(filename)}</b>…`;
-    else if (phase === "running") label = `analyzing <b>${esc(filename)}</b> · <span id="runElapsed">0.0s</span>`;
+    if (phase === "submitting") label = `▶ starting analysis · <b>${esc(filename)}</b>…`;
+    else if (phase === "running") label = `▶ analyzing <b>${esc(filename)}</b> · <span id="runElapsed">0.0s</span>`;
     else if (phase === "complete") {
-      const cacheTag = cached ? ` <span class="run-banner-tag">cache hit</span>` : "";
-      label = `complete · <b>${esc(filename)}</b>${cacheTag}`;
+      // Soften the cache case: "instant (cached)" reads as a speed win, not
+      // an alarming "CACHE HIT" that makes the user think it didn't run.
+      const cacheTag = cached ? ` <span class="run-banner-tag">instant · cached</span>` : "";
+      label = `✓ analysis complete · <b>${esc(filename)}</b>${cacheTag}`;
     }
-    else if (phase === "failed")  label = `failed · <b>${esc(filename)}</b>`;
+    else if (phase === "failed")  label = `✕ analysis failed · <b>${esc(filename)}</b>`;
     banner.innerHTML = `<span class="run-banner-dot"></span><span class="run-banner-text">${label}</span>`;
   }
   // Also blank the stat cards while running so the user doesn't see
   // stale numbers from the previous run. Leave onboarding behind us --
   // the moment a run starts, we're in results mode.
   if (phase === "submitting" || phase === "running") {
+    if (_bannerHideTimer) { clearTimeout(_bannerHideTimer); _bannerHideTimer = null; }
     _setOverviewMode("results");
     _renderRunContext(null);   // banner owns the in-flight state; reappears on completion
     setStat("statFindings",  "—", "running…");
@@ -962,7 +997,15 @@ async function pollUntilRunComplete() {
     const cached   = !!status.cached;
     _activeRun = null;
     _stopElapsedTimer();
+    // Record completion from the USER's POV so the run-context bar can say
+    // "completed just now" even on a cache hit (where the bundle's own
+    // timestamp is ancient and would otherwise read "ran 6/17").
+    _lastCompletion = { runDir: runDir || null, at: Date.now(), cached };
     _showRunningState(filename, "complete", cached);
+    // The run hint was stuck on "running · <id>" -- update it to done.
+    const hint = document.getElementById("runHint");
+    if (hint) hint.innerHTML =
+      `<span style="color:var(--mint)">✓ complete</span> · ${esc(filename)}`;
     // Pin the views to this run's run_dir going forward. Every poll +
     // tab-switch + visibility-change fetch will use this exact path
     // until a new run completes (or the user picks a bundle).
@@ -971,6 +1014,10 @@ async function pollUntilRunComplete() {
     refreshFindings(_currentRunDir);
     refreshData(_currentRunDir);
     refreshMethods(_currentRunDir);
+    // The transient banner fades out a few seconds after completion; the
+    // persistent run-context bar is the lasting "this is what's on screen"
+    // signal, so the "complete · cache hit" banner no longer lingers forever.
+    _scheduleBannerHide();
     return;
   }
 
