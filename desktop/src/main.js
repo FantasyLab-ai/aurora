@@ -22,7 +22,7 @@ const STATE_POLL_MS  = 6000;
 // Shows in the WebView2 console so we can verify the right JS loaded
 // (WebView2 sometimes caches main.js across builds despite Tauri
 // bundling fresh assets every time).
-const AURORA_SHELL_VERSION = "phase-4.5-knowledge-bank";
+const AURORA_SHELL_VERSION = "phase-4.6-run-render-token (one-behind fix)";
 
 // First-run demo launcher. Cards are built from /api/demo_datasets so the
 // paths are whatever the backend can actually resolve -- critically, in the
@@ -126,6 +126,18 @@ let _lastCompletion = null;
 // Overview back to the old falling_ball run 6s after a factory_bearing
 // completion. Sticky run_dir defeats that drift.
 let _currentRunDir = null;
+
+// Monotonic "which run is on screen" token. Bumped every time the displayed
+// run changes (a run is triggered, a run completes and pins, or a bundle is
+// loaded). Every async view refresh snapshots this token BEFORE its
+// `await auroraFetch(...)` and bails if it changed by the time the fetch
+// resolves. This kills the "one run behind" bug: the 6s interval poll and the
+// completion refresh both issue `/api/state?run_dir=X` fetches, and whichever
+// resolves LAST used to win the paint -- so a slow fetch carrying the PREVIOUS
+// run's run_dir would overwrite the new run. The token makes stale paints
+// no-ops, so the screen always reflects the most-recently-pinned run.
+let _viewToken = 0;
+function _bumpViewToken() { _viewToken = (_viewToken + 1) % Number.MAX_SAFE_INTEGER; return _viewToken; }
 
 
 // ---------------------------------------------------------------------
@@ -440,7 +452,9 @@ async function refreshOverview(runDir) {
   }
 
   const url = `/api/state?run_dir=${encodeURIComponent(runDir)}`;
+  const _tok = _viewToken;
   const state = await auroraFetch(url);
+  if (_tok !== _viewToken) return;   // a newer run/pin superseded this fetch — discard stale paint
   if (!state || state.ok === false) {
     setStat("statFindings",   "—", "awaiting run");
     setStat("statMethods",    "—", "0 fabricated");
@@ -579,7 +593,9 @@ async function refreshFindings(runDir) {
   runDir = runDir || _currentRunDir;   // bulletproof pin (see refreshOverview)
   if (!runDir) { renderFindings([]); return; }   // no run this session -> empty
   const url = `/api/state?run_dir=${encodeURIComponent(runDir)}`;
+  const _tok = _viewToken;
   const state = await auroraFetch(url);
+  if (_tok !== _viewToken) return;   // a newer run/pin superseded this fetch — discard stale paint
   if (!state || state.ok === false) {
     renderFindings([]);
     return;
@@ -698,7 +714,9 @@ async function refreshData(runDir) {
   if (!wrap) return;
   if (!runDir) { wrap.innerHTML = renderEmpty("No run loaded — run an analysis from <b>Overview</b>."); return; }
   const url = `/api/state?run_dir=${encodeURIComponent(runDir)}`;
+  const _tok = _viewToken;
   const state = await auroraFetch(url);
+  if (_tok !== _viewToken) return;   // a newer run/pin superseded this fetch — discard stale paint
   if (!state || state.ok === false) {
     wrap.innerHTML = renderEmpty(
       "No dataset state yet. Submit a run from <b>Overview</b> or pick one in <b>Bundles</b>.");
@@ -777,7 +795,9 @@ async function refreshMethods(runDir) {
   if (!wrap) return;
   if (!runDir) { wrap.innerHTML = renderEmpty("No run loaded — run an analysis from <b>Overview</b>."); return; }
   const url = `/api/state?run_dir=${encodeURIComponent(runDir)}`;
+  const _tok = _viewToken;
   const state = await auroraFetch(url);
+  if (_tok !== _viewToken) return;   // a newer run/pin superseded this fetch — discard stale paint
   if (!state || state.ok === false) {
     wrap.innerHTML = renderEmpty("No active run. Run an analysis from <b>Overview</b>.");
     return;
@@ -838,7 +858,9 @@ async function refreshPhaseSpace(runDir) {
   if (!wrap) return;
   if (!runDir) { wrap.innerHTML = renderEmpty("No run loaded — run an analysis from <b>Overview</b>."); return; }
   const url = `/api/state?run_dir=${encodeURIComponent(runDir)}`;
+  const _tok = _viewToken;
   const state = await auroraFetch(url);
+  if (_tok !== _viewToken) return;   // a newer run/pin superseded this fetch — discard stale paint
   if (!state || state.ok === false) {
     wrap.innerHTML = renderEmpty("No active run. Run an analysis from <b>Overview</b>.");
     return;
@@ -973,7 +995,9 @@ async function refreshSpacetime(runDir) {
   if (!wrap) return;
   if (!runDir) { wrap.innerHTML = renderEmpty("No run loaded — run an analysis from <b>Overview</b>."); return; }
   const url = `/api/state?run_dir=${encodeURIComponent(runDir)}`;
+  const _tok = _viewToken;
   const state = await auroraFetch(url);
+  if (_tok !== _viewToken) return;   // a newer run/pin superseded this fetch — discard stale paint
   if (!state || state.ok === false) {
     wrap.innerHTML = renderEmpty("No active run. Run an analysis from <b>Overview</b>.");
     return;
@@ -1079,7 +1103,9 @@ async function refreshForecast(runDir) {
   if (!wrap) return;
   if (!runDir) { wrap.innerHTML = renderEmpty("No run loaded — run an analysis from <b>Overview</b>."); return; }
   const url = `/api/state?run_dir=${encodeURIComponent(runDir)}`;
+  const _tok = _viewToken;
   const state = await auroraFetch(url);
+  if (_tok !== _viewToken) return;   // a newer run/pin superseded this fetch — discard stale paint
   if (!state || state.ok === false) {
     wrap.innerHTML = renderEmpty("No active run. Run an analysis from <b>Overview</b>.");
     return;
@@ -1155,7 +1181,9 @@ async function refreshCausal(runDir) {
     return;
   }
   const url = `/api/state?run_dir=${encodeURIComponent(runDir)}`;
+  const _tok = _viewToken;
   const state = await auroraFetch(url);
+  if (_tok !== _viewToken) return;   // a newer run/pin superseded this fetch — discard stale paint
   const s = state && (state.state || state);
   if (!s || (state && state.ok === false)) {
     tSel.innerHTML = oSel.innerHTML = `<option value="">— no run —</option>`;
@@ -1420,6 +1448,7 @@ async function refreshBundles() {
       // "completed just now" (this bundle wasn't run just now).
       _currentRunDir = dir;
       _lastCompletion = null;
+      _bumpViewToken();   // invalidate any in-flight refresh from the prior pin
       _refreshAllViews(_currentRunDir);
       // Drop the user onto Overview to see what they just loaded.
       setActiveView("overview");
@@ -1470,9 +1499,16 @@ async function runWithPath(path) {
   const hint = document.getElementById("runHint");
   const filename = String(path).split(/[\\/]/).pop();
 
-  // Stop any previous run we were tracking.
+  // Stop any previous run we were tracking. Bump the view token FIRST so any
+  // in-flight refresh from the previous run (interval poll or a still-pending
+  // completion fetch) is invalidated and can't paint over this run.
   _stopElapsedTimer();
-  _activeRun = null;
+  _bumpViewToken();
+  // Set _activeRun BEFORE the await. The 6s interval and online-refresh both
+  // short-circuit on `if (_activeRun) return`, so claiming the slot now closes
+  // the submission window where the PREVIOUS run's data could flash back in
+  // while we await POST /api/run. runId is filled in once the POST returns.
+  _activeRun = { runId: null, submittedAt: Date.now(), filename };
 
   // Immediate visual: clear stale stats, show "submitting" state.
   _showRunningState(filename, "submitting");
@@ -1487,19 +1523,19 @@ async function runWithPath(path) {
   if (!r || r.ok === false) {
     if (hint) hint.innerHTML =
       `<span style="color:var(--crit)">run failed: ${esc((r && r.error) || "see Aurora Studio log")}</span>`;
+    _activeRun = null;   // release the slot so refreshes can resume
     _showRunningState(filename, "failed");
     return;
   }
 
   // Submission accepted. Aurora's /api/state will still return the
   // PREVIOUS run until this one completes, so we now poll until we see
-  // the new run_id in /api/state -- that's our completion signal.
+  // the new run_id in /api/state -- that's our completion signal. We also
+  // capture the POST's run_dir (populated immediately on a sync cache hit)
+  // as a fallback in case a later status snapshot omits it.
   const newRunId = r.run_id || null;
-  _activeRun = {
-    runId: newRunId,
-    submittedAt: Date.now(),
-    filename,
-  };
+  _activeRun.runId = newRunId;
+  _activeRun.postRunDir = r.run_dir || null;
   if (hint) hint.innerHTML = newRunId
     ? `running · <code>${esc(newRunId)}</code>`
     : `running · <code>(pending)</code>`;
@@ -1594,7 +1630,10 @@ async function pollUntilRunComplete() {
   const runState = (status.state || "").toLowerCase();
   if (runState === "complete" || runState === "completed") {
     const filename = _activeRun.filename;
-    const runDir   = status.run_dir;
+    // Prefer the status snapshot's run_dir; fall back to the run_dir the POST
+    // handed us (sync cache hits populate it). This guarantees we never lose
+    // THIS run's dir and fall through to the previous pin.
+    const runDir   = status.run_dir || _activeRun.postRunDir || null;
     const cached   = !!status.cached;
     _activeRun = null;
     _stopElapsedTimer();
@@ -1611,7 +1650,11 @@ async function pollUntilRunComplete() {
     // existing pin -- a cache-hit status occasionally omits run_dir, and
     // nulling the pin would let every later refresh fall through to
     // /api/state's "latest" (the creep bug). Only overwrite with a real dir.
+    // Bump the view token AS we pin so the refresh below carries the newest
+    // token and any older in-flight fetch (e.g. an interval poll that fired
+    // mid-run) is discarded instead of repainting the previous run.
     if (runDir) _currentRunDir = runDir;
+    _bumpViewToken();
     _refreshAllViews(_currentRunDir);
     // The transient banner fades out a few seconds after completion; the
     // persistent run-context bar is the lasting "this is what's on screen"
