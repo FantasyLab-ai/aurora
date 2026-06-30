@@ -22,7 +22,7 @@ const STATE_POLL_MS  = 6000;
 // Shows in the WebView2 console so we can verify the right JS loaded
 // (WebView2 sometimes caches main.js across builds despite Tauri
 // bundling fresh assets every time).
-const AURORA_SHELL_VERSION = "phase-3.1-onboarding";
+const AURORA_SHELL_VERSION = "phase-3.2-run-context";
 
 // First-run demo launcher. Cards are built from /api/demo_datasets so the
 // paths are whatever the backend can actually resolve -- critically, in the
@@ -297,6 +297,54 @@ async function pollHealth() {
 }
 
 
+// Parse Aurora's run_id timestamp prefix (YYYYMMDD_HHMMSS) into a friendly
+// relative string. This is what kills the "is this stale?" question -- the
+// user always sees HOW OLD the run on screen is.
+function _relativeTimeFromRunId(runId) {
+  const m = String(runId || "").match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/);
+  if (!m) return "";
+  const [, Y, Mo, D, H, Mi, S] = m;
+  const then = new Date(+Y, +Mo - 1, +D, +H, +Mi, +S);
+  const sec = Math.floor((Date.now() - then.getTime()) / 1000);
+  if (sec < 0)    return "just now";
+  if (sec < 45)   return "just now";
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ago`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
+  if (sec < 604800) return `${Math.floor(sec / 86400)}d ago`;
+  return then.toLocaleDateString();
+}
+
+// Populate the persistent run-context bar so every tab agrees on which run
+// is on screen. Pass null to hide it (onboarding / no run).
+function _renderRunContext(state) {
+  const bar = document.getElementById("runContext");
+  if (!bar) return;
+  if (!state) { bar.hidden = true; return; }
+  const s = state.state || state;
+  const runId = s.run_id || s.run_dir || state.run_dir || "";
+  const dsName = (s.dataset && s.dataset.name) ||
+    String(runId).split(/[\\/]/).pop() || "run";
+  const findings = Array.isArray(s.findings) ? s.findings.length : 0;
+  const fab = Number(s.fabricated_count || 0);
+  const conf = s.confidence != null ? s.confidence
+             : (s.run_meta && s.run_meta.confidence);
+
+  setText("rcDataset", String(dsName).replace(/\.(csv|tsv|json|jsonl|parquet|xlsx?)$/i, ""));
+  const rel = _relativeTimeFromRunId(runId);
+  setText("rcTime", rel ? `ran ${rel}` : "this run");
+  setText("rcFindings", `${findings} finding${findings === 1 ? "" : "s"}`);
+  const fabEl = document.getElementById("rcFabricated");
+  if (fabEl) {
+    fabEl.textContent = `✓ ${fab} fabricated`;
+    fabEl.style.color = fab === 0 ? "var(--mint)" : "var(--crit)";
+  }
+  const confEl = document.getElementById("rcConfidence");
+  if (confEl) confEl.textContent = (conf != null)
+    ? `confidence ${(Number(conf) * 100).toFixed(0)}%` : "";
+  bar.hidden = false;
+}
+
+
 // ---------------------------------------------------------------------
 // 5. Overview view — stat cards from /api/state
 // ---------------------------------------------------------------------
@@ -319,12 +367,14 @@ async function refreshOverview(runDir) {
     setStat("statRegimes",    "—", "hmm latent states");
     setText("overviewRunId", auroraOnline ? "no active run" : "aurora offline");
     _renderNarrative(null);
+    _renderRunContext(null);
     _setOverviewMode(auroraOnline ? "onboarding" : "results");
     return;
   }
 
   // A real run is loaded -> results mode (hide onboarding, show stats).
   _setOverviewMode("results");
+  _renderRunContext(state);
 
   const s = state.state || state;
   const findings  = Array.isArray(s.findings)  ? s.findings  : [];
@@ -855,6 +905,7 @@ function _showRunningState(filename, phase, cached) {
   // the moment a run starts, we're in results mode.
   if (phase === "submitting" || phase === "running") {
     _setOverviewMode("results");
+    _renderRunContext(null);   // banner owns the in-flight state; reappears on completion
     setStat("statFindings",  "—", "running…");
     setStat("statMethods",   "—", "running…");
     setStat("statAnomalies", "—", "running…");

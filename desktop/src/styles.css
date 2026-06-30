@@ -369,6 +369,52 @@ code { font-family: var(--font-mono); font-size: 0.92em; color: var(--cyan); }
 }
 .breadcrumb b { color: var(--ink-dim); font-weight: 500; }
 
+
+/* ---------------------------------------------------------------------
+   Run-context bar — "which run am I looking at?" Always-visible truth.
+   --------------------------------------------------------------------- */
+.run-context {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-4);
+  margin-bottom: var(--sp-4);
+  background: var(--bg-elev);
+  border: 1px solid var(--bevel-light);
+  border-left: 2px solid var(--cyan);
+  border-radius: var(--r-2);
+  font-size: 12px;
+  color: var(--ink-dim);
+  animation: fadeRise var(--dur-fast) var(--ease);
+}
+.run-context-ico { color: var(--cyan); font-size: 11px; }
+.run-context-dataset {
+  font-family: var(--font-mono);
+  color: var(--ink);
+  font-weight: 500;
+}
+.run-context-sep { color: var(--ink-faint); }
+.run-context-time { color: var(--ink-dim); }
+.run-context-findings { color: var(--ink-dim); }
+.run-context-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--mint);
+  padding: 2px 8px;
+  background: rgba(136, 255, 209, 0.10);
+  border-radius: var(--r-1);
+}
+.run-context-conf {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
