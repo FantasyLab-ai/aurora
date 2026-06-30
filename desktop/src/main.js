@@ -22,7 +22,7 @@ const STATE_POLL_MS  = 6000;
 // Shows in the WebView2 console so we can verify the right JS loaded
 // (WebView2 sometimes caches main.js across builds despite Tauri
 // bundling fresh assets every time).
-const AURORA_SHELL_VERSION = "phase-3.2.1-run-lifecycle";
+const AURORA_SHELL_VERSION = "phase-3.3-findings-insights";
 
 // First-run demo launcher. Cards are built from /api/demo_datasets so the
 // paths are whatever the backend can actually resolve -- critically, in the
@@ -525,6 +525,34 @@ async function refreshFindings(runDir) {
   renderFindings(_findingsCache);
 }
 
+// Pull the credible numbers out of a finding -- the |z|, p-value, and row
+// that make it verifiable. These become inline evidence chips on the card,
+// so a finding reads like an insight with receipts, not a bare label.
+function _findingEvidence(f) {
+  const ev = (f && f.evidence) || {};
+  const out = [];
+  const z = f.z != null ? f.z : (f.z_score != null ? f.z_score : ev.z);
+  if (z != null && !Number.isNaN(Number(z))) {
+    out.push({ k: "|z|", v: `${Number(z).toFixed(1)}σ` });
+  }
+  let p = f.p_value != null ? f.p_value
+        : (f.p_bonferroni != null ? f.p_bonferroni : ev.p_value);
+  if (p != null && !Number.isNaN(Number(p))) {
+    const pn = Number(p);
+    out.push({ k: "p", v: pn < 0.001 ? pn.toExponential(1) : pn.toFixed(3) });
+  }
+  const row = f.row != null ? f.row : (ev.row != null ? ev.row : ev.row_idx);
+  if (row != null) out.push({ k: "row", v: String(row) });
+  return out;
+}
+
+function _citationText(f) {
+  const c = f && f.kb_citation;
+  if (!c) return "";
+  if (typeof c === "string") return c;
+  return c.text || c.source || c.title || "cited source";
+}
+
 function renderFindings(list) {
   const grid = document.getElementById("findingsGrid");
   if (!grid) return;
@@ -540,15 +568,34 @@ function renderFindings(list) {
   }
 
   grid.innerHTML = filtered.map((f, i) => {
-    const sev = (f.severity || "info").toLowerCase();
-    const title = esc(f.title || f.name || "(untitled)");
-    const sub   = esc(f.description || f.summary || "");
-    const meta  = esc(`${(f.method || "—")} · row ${f.row != null ? f.row : "—"}`);
-    return `<article class="finding-card" data-finding-idx="${i}">
-      <span class="finding-sev finding-sev--${sev}">${sev}</span>
+    const sev    = (f.severity || "info").toLowerCase();
+    const title  = esc(f.title || f.name || "(untitled)");
+    const desc   = esc(String(f.description || f.narrative || f.summary || "")
+                        .trim().slice(0, 180));
+    const method = esc(f.method || "—");
+    const conf   = f.confidence != null
+      ? `${Math.round(Number(f.confidence) * 100)}% conf` : "";
+    const ev = _findingEvidence(f);
+    const evHtml = ev.length
+      ? `<div class="finding-evidence">${ev.map((e) =>
+          `<span class="ev"><span class="ev-k">${esc(e.k)}</span>` +
+          `<span class="ev-v">${esc(e.v)}</span></span>`).join("")}</div>`
+      : "";
+    const cite = _citationText(f);
+    const citeHtml = cite
+      ? `<span class="finding-cite" title="${esc(cite)}">✓ cited</span>` : "";
+    return `<article class="finding-card finding-card--${sev}" data-finding-idx="${i}">
+      <div class="finding-card-head">
+        <span class="finding-sev finding-sev--${sev}">${sev}</span>
+        ${conf ? `<span class="finding-conf">${conf}</span>` : ""}
+      </div>
       <div class="finding-title">${title}</div>
-      <div class="finding-sub">${sub}</div>
-      <div class="finding-meta">${meta}</div>
+      ${desc ? `<div class="finding-desc">${desc}</div>` : ""}
+      ${evHtml}
+      <div class="finding-card-foot">
+        <span class="finding-method">${method}</span>
+        ${citeHtml}
+      </div>
     </article>`;
   }).join("");
 

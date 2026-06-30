@@ -668,19 +668,36 @@ code { font-family: var(--font-mono); font-size: 0.92em; color: var(--cyan); }
 }
 
 .finding-card {
+  display: flex;
+  flex-direction: column;
   background: var(--bg-card);
   border: 1px solid var(--bevel-light);
+  border-left: 3px solid var(--bevel-light);
   border-radius: var(--r-3);
   padding: var(--sp-4);
   cursor: pointer;
   transition: transform   var(--dur-fast) var(--ease),
-              border-color var(--dur-fast) var(--ease);
+              border-color var(--dur-fast) var(--ease),
+              box-shadow  var(--dur-fast) var(--ease);
 }
 .finding-card:hover {
   transform: translateY(-2px);
-  border-color: rgba(110, 231, 255, 0.35);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
 }
+/* Severity-tiered left edge so the grid is scannable at a glance. */
+.finding-card--crit { border-left-color: var(--crit); }
+.finding-card--warn { border-left-color: var(--warn); }
+.finding-card--info { border-left-color: var(--cyan); }
+.finding-card--crit:hover { border-color: rgba(255, 85, 119, 0.45); }
+.finding-card--warn:hover { border-color: rgba(255, 154, 74, 0.45); }
+.finding-card--info:hover { border-color: rgba(110, 231, 255, 0.45); }
 
+.finding-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-2);
+}
 .finding-sev {
   font-family: var(--font-mono);
   font-size: 9px;
@@ -689,16 +706,89 @@ code { font-family: var(--font-mono); font-size: 0.92em; color: var(--cyan); }
   padding: 3px 6px;
   border-radius: var(--r-1);
   display: inline-block;
-  margin-bottom: var(--sp-2);
 }
 .finding-sev--crit { background: rgba(255,85,119,0.15);  color: var(--crit); }
 .finding-sev--warn { background: rgba(255,154,74,0.15);  color: var(--warn); }
 .finding-sev--info { background: rgba(110,231,255,0.10); color: var(--cyan); }
+.finding-conf {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
 
-.finding-title { font-weight: 600; color: var(--ink); margin-bottom: var(--sp-1); font-size: 14px; }
-.finding-sub   { font-size: 12px; color: var(--ink-dim); margin-bottom: var(--sp-2); }
-.finding-meta  { font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px;
-                  color: var(--ink-faint); text-transform: uppercase; }
+.finding-title {
+  font-weight: 600; color: var(--ink);
+  margin-bottom: var(--sp-2); font-size: 14px; line-height: 1.3;
+}
+.finding-desc {
+  font-size: 12.5px; color: var(--ink-dim);
+  line-height: 1.5; margin-bottom: var(--sp-3);
+}
+
+/* Evidence chips — the credible numbers, given visual weight. */
+.finding-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+.ev {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 3px 8px;
+  background: var(--bg-deep);
+  border: 1px solid var(--bevel-light);
+  border-radius: var(--r-1);
+}
+.ev-k {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.ev-v {
+  font-family: var(--font-num);
+  font-size: 14px;
+  color: var(--cyan);
+}
+
+.finding-card-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: var(--sp-2);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+.finding-method {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+.finding-cite {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--mint);
+  padding: 2px 7px;
+  background: rgba(136, 255, 209, 0.10);
+  border-radius: var(--r-1);
+  cursor: help;
+}
+
+/* Still used by the Datasets + Bundles cards (which reuse .finding-card
+   with the simpler sub/meta structure -- only the Findings view got the
+   richer evidence layout above). */
+.finding-sub  { font-size: 12px; color: var(--ink-dim); margin-bottom: var(--sp-2); }
+.finding-meta { font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px;
+                color: var(--ink-faint); text-transform: uppercase; }
 
 .empty-state {
   padding: var(--sp-6);
