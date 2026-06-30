@@ -790,6 +790,71 @@ code { font-family: var(--font-mono); font-size: 0.92em; color: var(--cyan); }
 .finding-meta { font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px;
                 color: var(--ink-faint); text-transform: uppercase; }
 
+/* Causal Lab native view — do-calculus form + verdict. */
+.causal-intro {
+  font-size: 13px; color: var(--ink-dim); line-height: 1.55;
+  max-width: 760px; margin-bottom: var(--sp-5);
+}
+.causal-intro b { color: var(--cyan); font-weight: 500; }
+.causal-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.2fr;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+.causal-field { display: flex; flex-direction: column; gap: var(--sp-2); }
+.causal-field label {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--ink-faint);
+}
+.causal-field label .opt { color: var(--ink-faint); opacity: 0.7; }
+.causal-input {
+  background: var(--bg-deep);
+  border: 1px solid var(--bevel-light);
+  border-radius: var(--r-2);
+  padding: 9px 12px;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.causal-input:focus { outline: none; border-color: var(--cyan); }
+.causal-actions { display: flex; gap: var(--sp-3); margin-bottom: var(--sp-5); }
+
+.causal-result { min-height: 80px; margin-bottom: var(--sp-4); }
+.causal-verdict {
+  background: var(--bg-card);
+  border: 1px solid var(--bevel-light);
+  border-left: 3px solid var(--cyan);
+  border-radius: var(--r-3);
+  padding: var(--sp-4);
+}
+.causal-verdict--warn { border-left-color: var(--warn); }
+.cv-warn-label {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 1.5px;
+  text-transform: uppercase; color: var(--warn); margin-bottom: var(--sp-2);
+}
+.cv-warn-text { font-size: 13px; color: var(--ink-dim); line-height: 1.5; }
+.cv-headline {
+  font-family: var(--font-mono); font-size: 12px; letter-spacing: 1px;
+  color: var(--cyan); text-transform: uppercase; margin-bottom: var(--sp-2);
+}
+.cv-effect {
+  font-family: var(--font-num); font-size: 38px; color: var(--ink);
+  margin-bottom: var(--sp-3); line-height: 1;
+}
+.cv-se { font-family: var(--font-mono); font-size: 13px; color: var(--ink-faint); margin-left: var(--sp-3); }
+.cv-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: var(--sp-2) 0; border-top: 1px solid rgba(255,255,255,0.04);
+  font-size: 12.5px;
+}
+.cv-row span { color: var(--ink-faint); font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+.cv-row b { color: var(--ink); font-weight: 500; }
+.causal-assumptions { margin-top: var(--sp-3); }
+.ca-label { font-family: var(--font-mono); font-size: 9px; letter-spacing: 2px; color: var(--ink-faint); margin-bottom: var(--sp-1); }
+.causal-assumptions ul { margin: 0 0 0 18px; color: var(--ink-dim); font-size: 12px; line-height: 1.5; }
+
+
 /* Phase Space native view — the system-graph phase portrait. */
 .phase-wrap {
   background: var(--bg-card);

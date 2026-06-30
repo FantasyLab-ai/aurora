@@ -7,11 +7,11 @@
     <!-- ?v= bump on every meaningful main.js / styles.css change to bust
          WebView2's persistent cache. The cache is keyed on full URL, so
          appending a unique query param forces a fresh fetch. -->
-    <link rel="stylesheet" href="styles.css?v=4.1.1" />
+    <link rel="stylesheet" href="styles.css?v=4.3.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=VT323&display=swap" rel="stylesheet" />
-    <script type="module" src="/main.js?v=4.1.1" defer></script>
+    <script type="module" src="/main.js?v=4.3.0" defer></script>
   </head>
   <body class="aurora-window">
     <!-- Frameless titlebar: drag region + brand + window controls. -->
@@ -47,6 +47,9 @@
           <div class="nav-section-label">analysis</div>
           <button class="nav-item" data-view="phasespace">
             <span class="nav-ico">◌</span><span class="nav-label">Phase Space</span>
+          </button>
+          <button class="nav-item" data-view="causal">
+            <span class="nav-ico">⇄</span><span class="nav-label">Causal Lab</span>
           </button>
         </nav>
 
@@ -246,6 +249,44 @@
               system's path through state space. The fading trail is the past,
               the cyan <b>NOW</b> marker is the current state, the dashed red
               path is the forecast, and dashed ellipses are attractor regimes.
+            </div>
+          </section>
+
+          <!-- CAUSAL LAB: native port of the v2.0 Lab causal panel.
+               do-calculus on the current run's data via the system_model
+               DAG. Identification (backdoor) + estimation (OLS adjustment). -->
+          <section class="view" id="view-causal">
+            <div class="breadcrumb">causal lab / <b id="causalRunId">do-calculus</b></div>
+            <div class="causal-intro">
+              Estimate causal effects on the current run's data using Aurora's
+              system-model DAG. Identification via the <b>backdoor criterion</b>;
+              estimation via OLS adjustment regression — not correlation.
+            </div>
+            <div class="causal-form">
+              <div class="causal-field">
+                <label>Treatment</label>
+                <select class="select" id="causalTreatment"></select>
+              </div>
+              <div class="causal-field">
+                <label>Outcome</label>
+                <select class="select" id="causalOutcome"></select>
+              </div>
+              <div class="causal-field">
+                <label>Intervention value <span class="opt">(optional)</span></label>
+                <input class="causal-input" id="causalIv" placeholder="e.g. 1.5 — the value of do(T = x)" />
+              </div>
+            </div>
+            <div class="causal-actions">
+              <button class="btn btn-secondary" id="causalIdentifyBtn">Identify only</button>
+              <button class="btn btn-primary" id="causalDoBtn"><span class="btn-ico">▶</span> Estimate do()</button>
+            </div>
+            <div class="causal-result" id="causalResult">
+              <div class="empty-state">Pick a treatment and an outcome, then estimate the causal effect.</div>
+            </div>
+            <div class="data-foot-hint">
+              The other v2.0 Lab tools — KB ingest, bundle attestation, the KB
+              marketplace, streaming connectors, and compute device — live in
+              <b>Aurora Studio</b> (sidebar) and are being ported here next.
             </div>
           </section>
 

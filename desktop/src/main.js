@@ -22,7 +22,7 @@ const STATE_POLL_MS  = 6000;
 // Shows in the WebView2 console so we can verify the right JS loaded
 // (WebView2 sometimes caches main.js across builds despite Tauri
 // bundling fresh assets every time).
-const AURORA_SHELL_VERSION = "phase-4.1.1-bulletproof-pin";
+const AURORA_SHELL_VERSION = "phase-4.3-causal-lab";
 
 // First-run demo launcher. Cards are built from /api/demo_datasets so the
 // paths are whatever the backend can actually resolve -- critically, in the
@@ -154,7 +154,7 @@ function wireWindowControls() {
 // Views the shell knows about. Sidebar entries map to these.
 // Tabs map to the first three (overview/findings/data). Sidebar can
 // take you to the others (methods/datasets/bundles/studio).
-const VIEWS = ["overview", "findings", "data", "methods", "phasespace", "datasets", "bundles", "studio"];
+const VIEWS = ["overview", "findings", "data", "methods", "phasespace", "causal", "datasets", "bundles", "studio"];
 const TABS  = ["overview", "findings", "data"];
 
 let currentView = "overview";
@@ -188,6 +188,7 @@ function setActiveView(view) {
   if (view === "overview")  refreshOverview(_currentRunDir);
   if (view === "methods")    refreshMethods(_currentRunDir);
   if (view === "phasespace") refreshPhaseSpace(_currentRunDir);
+  if (view === "causal")     refreshCausal(_currentRunDir);
   if (view === "datasets")   refreshDatasets();
   if (view === "bundles")    refreshBundles();
 }
@@ -944,6 +945,108 @@ function renderPhaseSpace(ps) {
   return `<svg class="phase-svg" viewBox="0 0 ${VB_W} ${VB_H}" preserveAspectRatio="xMidYMid meet">${P.join("")}</svg>`;
 }
 
+// ---------------------------------------------------------------------
+// Causal Lab — native port of the v2.0 Lab do-calculus panel.
+// Populates treatment/outcome from the run's columns, POSTs to
+// /api/causal/do + /api/causal/identify, renders the verdict.
+// ---------------------------------------------------------------------
+async function refreshCausal(runDir) {
+  if (_activeRun) return;
+  runDir = runDir || _currentRunDir;
+  const tSel = document.getElementById("causalTreatment");
+  const oSel = document.getElementById("causalOutcome");
+  if (!tSel || !oSel) return;
+  const url = runDir
+    ? `/api/state?run_dir=${encodeURIComponent(runDir)}`
+    : "/api/state";
+  const state = await auroraFetch(url);
+  const s = state && (state.state || state);
+  if (!s || (state && state.ok === false)) {
+    tSel.innerHTML = oSel.innerHTML = `<option value="">— no run —</option>`;
+    setText("causalRunId", "no active run");
+    return;
+  }
+  const runId = s.run_id || runDir || "current run";
+  setText("causalRunId", String(runId).split(/[\\/]/).pop().slice(0, 40));
+
+  const cols = (s.structure && s.structure.columns) || [];
+  const numeric = cols.filter((c) => String(c.kind || "").toLowerCase() === "n").map((c) => c.name);
+  const opts = numeric.length ? numeric : cols.map((c) => c.name);
+  if (!opts.length) {
+    tSel.innerHTML = oSel.innerHTML = `<option value="">— no numeric columns —</option>`;
+    return;
+  }
+  const optHtml = opts.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  const prevT = tSel.value, prevO = oSel.value;
+  tSel.innerHTML = optHtml;
+  oSel.innerHTML = optHtml;
+  if (prevT && opts.includes(prevT)) tSel.value = prevT;
+  if (prevO && opts.includes(prevO)) oSel.value = prevO;
+  else if (opts.length > 1) oSel.selectedIndex = 1;   // default outcome != treatment
+}
+
+async function _runCausal(kind) {
+  const t  = (document.getElementById("causalTreatment") || {}).value;
+  const o  = (document.getElementById("causalOutcome") || {}).value;
+  const iv = ((document.getElementById("causalIv") || {}).value || "").trim();
+  const res = document.getElementById("causalResult");
+  if (!res) return;
+  if (!t || !o) { res.innerHTML = `<div class="empty-state" style="color:var(--warn)">Pick a treatment and an outcome.</div>`; return; }
+  if (t === o)  { res.innerHTML = `<div class="empty-state" style="color:var(--warn)">Treatment and outcome must be different columns.</div>`; return; }
+  res.innerHTML = `<div class="empty-state">▶ Computing ${kind === "identify" ? "identifiability" : "do() estimate"}…</div>`;
+
+  let j;
+  if (kind === "identify") {
+    const q = `treatment=${encodeURIComponent(t)}&outcome=${encodeURIComponent(o)}` +
+              (_currentRunDir ? `&run_dir=${encodeURIComponent(_currentRunDir)}` : "");
+    j = await auroraFetch(`/api/causal/identify?${q}`);
+  } else {
+    const body = { treatment: t, outcome: o };
+    if (iv !== "") body.intervention_value = iv;
+    if (_currentRunDir) body.run_dir = _currentRunDir;
+    j = await auroraFetch("/api/causal/do", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+  res.innerHTML = _renderCausalResult(kind, j);
+}
+
+function _renderCausalResult(kind, j) {
+  if (!j || j.error || j.ok === false || j.unidentifiable_reason) {
+    const reason = (j && (j.unidentifiable_reason || j.error)) ||
+      "effect not identifiable from this run's DAG";
+    return `<div class="causal-verdict causal-verdict--warn">
+      <div class="cv-warn-label">⚠ not identifiable</div>
+      <div class="cv-warn-text">${esc(reason)}</div>
+    </div>`;
+  }
+  if (kind === "identify") {
+    return `<div class="causal-verdict">
+      <div class="cv-row"><span>identifiable</span><b style="color:${j.identifiable ? "var(--mint)" : "var(--crit)"}">${j.identifiable ? "✓ yes — via backdoor" : "✗ no"}</b></div>
+      <div class="cv-row"><span>adjustment set</span><b>${esc((j.adjustment_set || []).join(", ") || "(empty — none needed)")}</b></div>
+    </div>`;
+  }
+  const beta = j.effect_estimate != null ? (+j.effect_estimate).toFixed(4) : "—";
+  const se   = j.standard_error != null ? (+j.standard_error).toFixed(4) : "—";
+  const adj  = (j.adjustment_set || []).join(", ") || "(empty — none needed)";
+  let html = `<div class="causal-verdict">
+    <div class="cv-headline">do(${esc(j.treatment || "T")}) → ${esc(j.outcome || "Y")}</div>
+    <div class="cv-effect">${beta}<span class="cv-se">± ${se} SE</span></div>
+    <div class="cv-row"><span>adjustment set</span><b>${esc(adj)}</b></div>
+    <div class="cv-row"><span>n observations</span><b>${esc(String(j.n_obs || "—"))}</b></div>`;
+  if (j.intervention_value != null) {
+    html += `<div class="cv-row"><span>do(${esc(j.treatment)} = ${esc(String(j.intervention_value))})</span><b>predicted at sample mean</b></div>`;
+  }
+  html += `</div>`;
+  if ((j.assumptions || []).length) {
+    html += `<div class="causal-assumptions"><div class="ca-label">ASSUMPTIONS</div><ul>` +
+      j.assumptions.map((a) => `<li>${esc(a)}</li>`).join("") + `</ul></div>`;
+  }
+  return html;
+}
+
 async function refreshDatasets() {
   const wrap = document.getElementById("datasetsList");
   if (!wrap) return;
@@ -1510,6 +1613,11 @@ window.addEventListener("DOMContentLoaded", () => {
 
   const runBtn = document.getElementById("runBtn");
   if (runBtn) runBtn.addEventListener("click", triggerRun);
+
+  const causalDoBtn = document.getElementById("causalDoBtn");
+  if (causalDoBtn) causalDoBtn.addEventListener("click", () => _runCausal("do"));
+  const causalIdBtn = document.getElementById("causalIdentifyBtn");
+  if (causalIdBtn) causalIdBtn.addEventListener("click", () => _runCausal("identify"));
 
   refreshDatasetOptions();
 
