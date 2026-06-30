@@ -28,21 +28,53 @@ the analysis backend bundled inside it.
 
 ### → [**Download the latest release**](https://github.com/FantasyLab-ai/aurora/releases/latest)
 
-| OS | File | Notes |
-|---|---|---|
-| **Windows** | `Aurora_x.x.x_x64-setup.exe` (or `.msi`) | Double-click to install. |
-| **macOS** | `Aurora_x.x.x_x64.dmg` (or `_aarch64` on Apple Silicon) | Open the `.dmg`, drag to Applications. |
-| **Linux** | `Aurora_x.x.x_amd64.AppImage` (or `.deb`) | `chmod +x` the AppImage and run, or install the `.deb`. |
+Pick the file that matches your OS (filenames carry the version, e.g. `0.2.0`):
 
-On first launch Aurora bootstraps a small knowledge-bank seed (~50 MB), then
-runs **fully offline** — no API keys, no cloud, no telemetry. Drop a CSV on the
-window and watch it analyze.
+| OS | File to download | Install |
+|---|---|---|
+| **Windows 10/11** | `Aurora_x.x.x_x64-setup.exe` **(recommended)** | Run the setup wizard. |
+| Windows 10/11 | `Aurora_x.x.x_x64_en-US.msi` | Alternative MSI installer (same app). |
+| **macOS** (Apple Silicon · M1/M2/M3/M4) | `Aurora_x.x.x_aarch64.dmg` | Open the `.dmg`, drag Aurora to Applications. |
+| **Linux** (Debian / Ubuntu / Mint) | `Aurora_x.x.x_amd64.deb` | `sudo apt install ./Aurora_x.x.x_amd64.deb` |
+| **Linux** (Fedora / RHEL / openSUSE) | `Aurora-x.x.x-1.x86_64.rpm` | `sudo dnf install ./Aurora-x.x.x-1.x86_64.rpm` |
+
+> `Aurora_aarch64.app.tar.gz` is an auto-updater artifact, **not** a download —
+> use the `.dmg` on macOS. There is currently no Intel-Mac (`x86_64`) or Linux
+> AppImage build; Intel-Mac users can [run from source](#-quickstart-60-seconds).
+
+On first launch Aurora bootstraps a small knowledge-bank seed, then runs **fully
+offline** — no API keys, no cloud, no telemetry. Drop a CSV on the window and
+watch it analyze.
 
 > **Heads up on the "Unknown Publisher" warning.** Current releases are not yet
 > code-signed, so Windows SmartScreen may show *"Windows protected your PC"* and
 > macOS Gatekeeper may say *"unidentified developer."* This is expected for a
 > young open-source project. On Windows: **More info → Run anyway**. On macOS:
 > **right-click the app → Open**. Code-signing is on the roadmap.
+
+### Desktop app — tips & known quirks
+
+A few things that are **expected behavior**, not bugs:
+
+- **First launch shows a welcome screen, not a run.** That's intentional — a
+  fresh start is clean. Drop a CSV (or click a demo card) to begin; your past
+  runs are always available under **Data → Bundles**.
+- **Give the backend a few seconds on first launch.** Aurora starts a local
+  analysis server (`127.0.0.1:8001`) the first time you open it; the status dot
+  reads "connecting…" for ~5–10 s before it goes live. If it lingers, the app
+  is still warming up — it is not frozen.
+- **Big datasets take longer, and results land all at once.** A large file can
+  spend a while in *"analyzing…"*. When it finishes you'll see *"analysis
+  complete"* and the views populate. If the Overview looks momentarily empty
+  right after completion, give it a few seconds or click another tab and back —
+  the assembled state is still being fetched, and it will fill in.
+- **Re-running the same file is instant.** Identical data + settings reuse a
+  cached analysis; the banner reads *"instant · cached."* That's a speed win,
+  not a skipped run.
+- **Knowledge Bank starts small on a fresh install.** The bundled app ships with
+  a seed bank that grows over time; the large multi-thousand-entry bank you may
+  see in screenshots is built up on a machine that's been ingesting data for a
+  while. Citations still work against whatever is local.
 
 Want to build it yourself or run from source? Keep reading.
 
