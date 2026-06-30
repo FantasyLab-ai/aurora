@@ -7,11 +7,11 @@
     <!-- ?v= bump on every meaningful main.js / styles.css change to bust
          WebView2's persistent cache. The cache is keyed on full URL, so
          appending a unique query param forces a fresh fetch. -->
-    <link rel="stylesheet" href="styles.css?v=2.6.0" />
+    <link rel="stylesheet" href="styles.css?v=3.1.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=VT323&display=swap" rel="stylesheet" />
-    <script type="module" src="/main.js?v=2.6.0" defer></script>
+    <script type="module" src="/main.js?v=3.1.0" defer></script>
   </head>
   <body class="aurora-window">
     <!-- Frameless titlebar: drag region + brand + window controls. -->
@@ -85,7 +85,22 @@
                  catches up. Hidden when no run is being tracked. -->
             <div class="run-banner" id="runStatusBanner" hidden></div>
 
-            <div class="stats-grid">
+            <!-- ONBOARDING: the first thing a new user sees. Shown when
+                 Aurora is online but no run is loaded yet. Teaches by
+                 doing -- one click runs a real demo and produces cited
+                 findings in seconds. Hidden the moment a run is loaded. -->
+            <section class="onboarding" id="onboarding" hidden>
+              <div class="onboarding-hero">
+                <div class="onboarding-title">Welcome to Aurora</div>
+                <div class="onboarding-sub">
+                  A local AI that analyzes your data and <b>cites every number</b> it gives back —
+                  no cloud, no API keys, zero fabricated results. Drop a file below, or try a demo:
+                </div>
+              </div>
+              <div class="demo-launcher" id="demoLauncher"><!-- cards injected by JS --></div>
+            </section>
+
+            <div class="stats-grid" id="statsGrid">
               <article class="stat-card">
                 <div class="stat-label">findings</div>
                 <div class="stat-val" id="statFindings">—</div>
@@ -148,9 +163,9 @@
 
             <div class="overview-foot">
               <div class="hint-line">
-                Phase 2.4 desktop shell · sidebar + tabs + sliding underline + frameless chrome.
-                Aurora's existing UI is still available under <b>Aurora Studio</b>.
-                Native views replace the legacy one progressively.
+                Every finding Aurora returns is cited to a named method and traces to a
+                signed, re-verifiable bundle. The full analysis suite lives under
+                <b>Aurora Studio</b> in the sidebar.
               </div>
             </div>
           </section>

@@ -376,6 +376,104 @@ code { font-family: var(--font-mono); font-size: 0.92em; color: var(--cyan); }
   margin-bottom: var(--sp-5);
 }
 
+
+/* ---------------------------------------------------------------------
+   Onboarding — first-run hero + one-click demo launcher.
+   Shown when Aurora is online but no run is loaded. Teaches by doing.
+   --------------------------------------------------------------------- */
+.onboarding {
+  margin-bottom: var(--sp-5);
+  animation: fadeRise var(--dur-norm) var(--ease);
+}
+.onboarding-hero {
+  text-align: center;
+  max-width: 680px;
+  margin: var(--sp-4) auto var(--sp-5);
+}
+.onboarding-title {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  letter-spacing: 1px;
+  color: var(--ink);
+  margin-bottom: var(--sp-3);
+}
+.onboarding-sub {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink-dim);
+}
+.onboarding-sub b { color: var(--cyan); font-weight: 500; }
+
+.demo-launcher {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--sp-4);
+}
+.demo-card {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  background: var(--bg-card);
+  border: 1px solid var(--bevel-light);
+  border-radius: var(--r-4);
+  padding: var(--sp-4);
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: transform   var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease),
+              background  var(--dur-fast) var(--ease),
+              box-shadow  var(--dur-fast) var(--ease);
+}
+.demo-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--cyan);
+  background: var(--bg-elev);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.demo-card-glyph {
+  font-size: 22px;
+  color: var(--cyan);
+  opacity: 0.85;
+  margin-bottom: var(--sp-2);
+  filter: drop-shadow(0 0 8px rgba(110, 231, 255, 0.4));
+}
+.demo-card-domain {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--ink-faint);
+  margin-bottom: var(--sp-2);
+}
+.demo-card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: var(--sp-2);
+}
+.demo-card-hook {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+  flex: 1;
+  margin-bottom: var(--sp-3);
+}
+.demo-card-cta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--cyan);
+  transition: transform var(--dur-fast) var(--ease);
+}
+.demo-card:hover .demo-card-cta { transform: translateX(3px); }
+
+@keyframes fadeRise {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 .stat-card {
   background: var(--bg-card);
   border: 1px solid var(--bevel-light);

@@ -22,7 +22,75 @@ const STATE_POLL_MS  = 6000;
 // Shows in the WebView2 console so we can verify the right JS loaded
 // (WebView2 sometimes caches main.js across builds despite Tauri
 // bundling fresh assets every time).
-const AURORA_SHELL_VERSION = "phase-2.6-all-tabs-live";
+const AURORA_SHELL_VERSION = "phase-3.1-onboarding";
+
+// First-run demo launcher. Cards are built from /api/demo_datasets so the
+// paths are whatever the backend can actually resolve -- critically, in the
+// FROZEN app those are absolute paths into the bundled data/fixtures, NOT
+// repo-relative paths to files that aren't shipped. Hardcoding relative
+// paths would make the demos fail in the installer.
+//
+// Per-dataset hook overrides (keyed by the endpoint's `id`) give newcomer-
+// friendly copy -- the value, not the method name. Falls back to the
+// endpoint's own subtitle/highlights for any dataset without an override.
+const DEMO_HOOKS = {
+  factory_bearing: {
+    glyph: "▲", title: "Catch the anomaly",
+    hook: "Vibration sensor data from a factory bearing. Aurora flags the fault with a cited z-score on the exact row — and zero fabricated numbers.",
+  },
+  climate_buoy: {
+    glyph: "≈", title: "Find the regime shift",
+    hook: "A year of ocean-buoy readings. Aurora pinpoints the mid-year regime change and fits the cooling law behind it — every claim cited.",
+  },
+  patient_cohort: {
+    glyph: "⚗", title: "Cause vs. correlation",
+    hook: "200 patients, no time axis. Aurora surfaces the treatment effect and refuses to mistake correlation for causation.",
+  },
+};
+
+async function renderDemoLauncher() {
+  const wrap = document.getElementById("demoLauncher");
+  if (!wrap || wrap.dataset.rendered === "1") return;
+  const r = await auroraFetch("/api/demo_datasets");
+  const list = (r && Array.isArray(r.datasets)) ? r.datasets : [];
+  if (!list.length) return;  // leave hidden; the drop-zone still works
+
+  wrap.innerHTML = list.map((d) => {
+    const o = DEMO_HOOKS[d.id] || {};
+    const glyph  = o.glyph || "◆";
+    const title  = o.title || d.title || d.id || "dataset";
+    const hook   = o.hook  ||
+      [d.subtitle, d.highlights].filter(Boolean).join(" — ") ||
+      "A bundled demo dataset.";
+    const domain = d.domain || "demo";
+    return `<button class="demo-card" data-demo-path="${esc(d.path)}">
+      <div class="demo-card-glyph">${esc(glyph)}</div>
+      <div class="demo-card-domain">${esc(domain)}</div>
+      <div class="demo-card-title">${esc(title)}</div>
+      <div class="demo-card-hook">${esc(hook)}</div>
+      <div class="demo-card-cta">▶ Run this demo</div>
+    </button>`;
+  }).join("");
+  wrap.querySelectorAll(".demo-card").forEach((card) => {
+    card.addEventListener("click", () => runWithPath(card.dataset.demoPath));
+  });
+  wrap.dataset.rendered = "1";
+}
+
+// Toggle the Overview between its two modes: the onboarding hero (no run
+// loaded) and the results view (stats + narrative). Keeps the drop-zone +
+// run-row visible in both so the user can always start a run.
+function _setOverviewMode(mode) {
+  // mode: "onboarding" | "results"
+  const onboarding = document.getElementById("onboarding");
+  const stats = document.getElementById("statsGrid");
+  const showOnboarding = mode === "onboarding";
+  if (onboarding) {
+    onboarding.hidden = !showOnboarding;
+    if (showOnboarding) renderDemoLauncher();
+  }
+  if (stats) stats.style.display = showOnboarding ? "none" : "";
+}
 console.log(`%c[aurora-shell] ${AURORA_SHELL_VERSION}`,
             "color:#6ee7ff;font-weight:bold;");
 
@@ -200,6 +268,7 @@ async function pingAurora() {
 let auroraOnline = false;
 
 function setAuroraStatus(online) {
+  const wasOnline = auroraOnline;
   auroraOnline = online;
   const dot = document.getElementById("auroraDot");
   const lbl = document.getElementById("auroraStatusLabel");
@@ -210,6 +279,16 @@ function setAuroraStatus(online) {
   }
   if (lbl) lbl.textContent = online ? "aurora: online" : "aurora: offline";
   if (runBtn) runBtn.disabled = !online;
+
+  // On the offline->online transition, refresh the current view immediately
+  // so onboarding (or the latest run) appears the moment Aurora is reachable
+  // instead of waiting for the next 6s state poll. The first boot is exactly
+  // this transition.
+  if (online && !wasOnline && !_activeRun) {
+    if (currentView === "overview")  refreshOverview(_currentRunDir);
+    if (currentView === "findings")  refreshFindings(_currentRunDir);
+    if (currentView === "data")      refreshData(_currentRunDir);
+  }
 }
 
 async function pollHealth() {
@@ -232,14 +311,20 @@ async function refreshOverview(runDir) {
     : "/api/state";
   const state = await auroraFetch(url);
   if (!state || state.ok === false) {
+    // No run loaded. If Aurora is up, show the onboarding hero (teach by
+    // doing); if it's down, keep the neutral empty state.
     setStat("statFindings",   "—", "awaiting run");
     setStat("statMethods",    "—", "0 fabricated");
     setStat("statAnomalies",  "—", "crit + warn");
     setStat("statRegimes",    "—", "hmm latent states");
     setText("overviewRunId", auroraOnline ? "no active run" : "aurora offline");
     _renderNarrative(null);
+    _setOverviewMode(auroraOnline ? "onboarding" : "results");
     return;
   }
+
+  // A real run is loaded -> results mode (hide onboarding, show stats).
+  _setOverviewMode("results");
 
   const s = state.state || state;
   const findings  = Array.isArray(s.findings)  ? s.findings  : [];
@@ -766,8 +851,10 @@ function _showRunningState(filename, phase, cached) {
     banner.innerHTML = `<span class="run-banner-dot"></span><span class="run-banner-text">${label}</span>`;
   }
   // Also blank the stat cards while running so the user doesn't see
-  // stale numbers from the previous run.
+  // stale numbers from the previous run. Leave onboarding behind us --
+  // the moment a run starts, we're in results mode.
   if (phase === "submitting" || phase === "running") {
+    _setOverviewMode("results");
     setStat("statFindings",  "—", "running…");
     setStat("statMethods",   "—", "running…");
     setStat("statAnomalies", "—", "running…");
