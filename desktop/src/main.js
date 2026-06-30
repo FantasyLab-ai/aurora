@@ -22,7 +22,7 @@ const STATE_POLL_MS  = 6000;
 // Shows in the WebView2 console so we can verify the right JS loaded
 // (WebView2 sometimes caches main.js across builds despite Tauri
 // bundling fresh assets every time).
-const AURORA_SHELL_VERSION = "phase-4.1-phase-space";
+const AURORA_SHELL_VERSION = "phase-4.1.1-bulletproof-pin";
 
 // First-run demo launcher. Cards are built from /api/demo_datasets so the
 // paths are whatever the backend can actually resolve -- critically, in the
@@ -342,6 +342,18 @@ function _renderViewsRunning() {
   const fg = document.getElementById("findingsGrid"); if (fg) fg.innerHTML = msg;
   const dt = document.getElementById("dataTableWrap"); if (dt) dt.innerHTML = msg;
   const ml = document.getElementById("methodsList");  if (ml) ml.innerHTML = msg;
+  const pw = document.getElementById("phaseWrap");     if (pw) pw.innerHTML = msg;
+}
+
+// Refresh EVERY data view against one run_dir. Used on completion and on
+// bundle-click so all tabs agree immediately -- no tab is left showing a
+// previous run until the user happens to visit it.
+function _refreshAllViews(runDir) {
+  refreshOverview(runDir);
+  refreshFindings(runDir);
+  refreshData(runDir);
+  refreshMethods(runDir);
+  refreshPhaseSpace(runDir);
 }
 
 // Populate the persistent run-context bar so every tab agrees on which run
@@ -396,6 +408,11 @@ async function refreshOverview(runDir) {
   // waiting for a submitted run to complete -- the state machine will
   // call refreshOverview() with the right run_dir once it completes.
   if (_activeRun) return;
+  // BULLETPROOF PIN: once a run is loaded, ALWAYS target it. Never fall
+  // through to /api/state's global "latest", which can be a different
+  // (newer-timestamped) run -- that's how falling_ball kept creeping back
+  // over server_metrics. Only a fresh boot (no pin yet) hits "latest".
+  runDir = runDir || _currentRunDir;
 
   const url = runDir
     ? `/api/state?run_dir=${encodeURIComponent(runDir)}`
@@ -538,6 +555,7 @@ async function refreshFindings(runDir) {
   // background poll + tab switches repaint the old run over the new one for
   // the whole analysis duration -- the stale-override bug.
   if (_activeRun) return;
+  runDir = runDir || _currentRunDir;   // bulletproof pin (see refreshOverview)
   const url = runDir
     ? `/api/state?run_dir=${encodeURIComponent(runDir)}`
     : "/api/state";
@@ -655,6 +673,7 @@ function wireFindingsFilters() {
 // ---------------------------------------------------------------------
 async function refreshData(runDir) {
   if (_activeRun) return;  // run in flight: don't paint the stale "latest" run
+  runDir = runDir || _currentRunDir;   // bulletproof pin (see refreshOverview)
   const url = runDir
     ? `/api/state?run_dir=${encodeURIComponent(runDir)}`
     : "/api/state";
@@ -734,6 +753,7 @@ async function refreshData(runDir) {
 // ---------------------------------------------------------------------
 async function refreshMethods(runDir) {
   if (_activeRun) return;  // run in flight: don't paint the stale "latest" run
+  runDir = runDir || _currentRunDir;   // bulletproof pin (see refreshOverview)
   const wrap = document.getElementById("methodsList");
   if (!wrap) return;
   const url = runDir
@@ -795,6 +815,7 @@ async function refreshMethods(runDir) {
 // ---------------------------------------------------------------------
 async function refreshPhaseSpace(runDir) {
   if (_activeRun) return;  // run in flight: don't paint stale data
+  runDir = runDir || _currentRunDir;   // bulletproof pin (see refreshOverview)
   const wrap = document.getElementById("phaseWrap");
   if (!wrap) return;
   const url = runDir
@@ -1031,12 +1052,12 @@ async function refreshBundles() {
     card.addEventListener("click", () => {
       const dir = card.dataset.runDir;
       if (!dir) return;
+      // Loading a bundle is an explicit user choice -> pin to it. _lastCompletion
+      // is cleared so the run-context bar shows the bundle's real age, not
+      // "completed just now" (this bundle wasn't run just now).
       _currentRunDir = dir;
-      // Refresh all per-run views to show this bundle's data.
-      refreshOverview(_currentRunDir);
-      refreshFindings(_currentRunDir);
-      refreshData(_currentRunDir);
-      refreshMethods(_currentRunDir);
+      _lastCompletion = null;
+      _refreshAllViews(_currentRunDir);
       // Drop the user onto Overview to see what they just loaded.
       setActiveView("overview");
     });
@@ -1222,14 +1243,12 @@ async function pollUntilRunComplete() {
     const hint = document.getElementById("runHint");
     if (hint) hint.innerHTML =
       `<span style="color:var(--mint)">✓ complete</span> · ${esc(filename)}`;
-    // Pin the views to this run's run_dir going forward. Every poll +
-    // tab-switch + visibility-change fetch will use this exact path
-    // until a new run completes (or the user picks a bundle).
-    _currentRunDir = runDir || null;
-    refreshOverview(_currentRunDir);
-    refreshFindings(_currentRunDir);
-    refreshData(_currentRunDir);
-    refreshMethods(_currentRunDir);
+    // Pin the views to this run's run_dir going forward. NEVER null an
+    // existing pin -- a cache-hit status occasionally omits run_dir, and
+    // nulling the pin would let every later refresh fall through to
+    // /api/state's "latest" (the creep bug). Only overwrite with a real dir.
+    if (runDir) _currentRunDir = runDir;
+    _refreshAllViews(_currentRunDir);
     // The transient banner fades out a few seconds after completion; the
     // persistent run-context bar is the lasting "this is what's on screen"
     // signal, so the "complete · cache hit" banner no longer lingers forever.
@@ -1504,8 +1523,9 @@ window.addEventListener("DOMContentLoaded", () => {
   setInterval(() => {
     // Background poll always uses the sticky run_dir so it can't drift
     // a stable view onto a different run after a cache hit.
-    if (auroraOnline && currentView === "overview")  refreshOverview(_currentRunDir);
-    if (auroraOnline && currentView === "findings")  refreshFindings(_currentRunDir);
-    if (auroraOnline && currentView === "data")      refreshData(_currentRunDir);
+    if (auroraOnline && currentView === "overview")   refreshOverview(_currentRunDir);
+    if (auroraOnline && currentView === "findings")   refreshFindings(_currentRunDir);
+    if (auroraOnline && currentView === "data")       refreshData(_currentRunDir);
+    if (auroraOnline && currentView === "phasespace") refreshPhaseSpace(_currentRunDir);
   }, STATE_POLL_MS);
 });
