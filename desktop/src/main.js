@@ -22,7 +22,7 @@ const STATE_POLL_MS  = 6000;
 // Shows in the WebView2 console so we can verify the right JS loaded
 // (WebView2 sometimes caches main.js across builds despite Tauri
 // bundling fresh assets every time).
-const AURORA_SHELL_VERSION = "phase-3.3-findings-insights";
+const AURORA_SHELL_VERSION = "phase-3.3.1-stale-run-fix";
 
 // First-run demo launcher. Cards are built from /api/demo_datasets so the
 // paths are whatever the backend can actually resolve -- critically, in the
@@ -333,6 +333,16 @@ function _scheduleBannerHide() {
   }, 4500);
 }
 
+// Wipe Findings / Data / Methods to an explicit "analyzing" placeholder when
+// a run starts, so the previous run's data never sits there looking current
+// while the new one computes.
+function _renderViewsRunning() {
+  const msg = `<div class="empty-state">▶ Analyzing… results appear here the moment the run completes.</div>`;
+  const fg = document.getElementById("findingsGrid"); if (fg) fg.innerHTML = msg;
+  const dt = document.getElementById("dataTableWrap"); if (dt) dt.innerHTML = msg;
+  const ml = document.getElementById("methodsList");  if (ml) ml.innerHTML = msg;
+}
+
 // Populate the persistent run-context bar so every tab agrees on which run
 // is on screen. Pass null to hide it (onboarding / no run).
 function _renderRunContext(state) {
@@ -481,12 +491,24 @@ function _renderNarrative(state, findings) {
     insights.innerHTML = "<div class=\"narrative-insights-label\">KEY INSIGHTS</div>" +
       top.map(f => {
         const sev = (f.severity || "info").toLowerCase();
-        return `<div class="narrative-insight">
+        const ev = _findingEvidence(f);
+        const evHtml = ev.length
+          ? `<div class="narrative-insight-ev">${ev.map((e) =>
+              `<span class="ev ev--sm"><span class="ev-k">${esc(e.k)}</span>` +
+              `<span class="ev-v">${esc(e.v)}</span></span>`).join("")}</div>`
+          : "";
+        const cited = _citationText(f)
+          ? `<span class="finding-cite finding-cite--sm">✓ cited</span>` : "";
+        return `<div class="narrative-insight narrative-insight--${sev}">
           <span class="narrative-insight-sev finding-sev--${sev}">${esc(sev)}</span>
           <div class="narrative-insight-text">
             <div class="narrative-insight-title">${esc(f.title || f.name || "(untitled)")}</div>
-            <div class="narrative-insight-method">${esc(f.method || "—")}</div>
+            <div class="narrative-insight-foot">
+              <span class="narrative-insight-method">${esc(f.method || "—")}</span>
+              ${cited}
+            </div>
           </div>
+          ${evHtml}
         </div>`;
       }).join("");
   }
@@ -510,6 +532,11 @@ let _findingsCache = [];
 let _findingsFilter = "all";
 
 async function refreshFindings(runDir) {
+  // A run is in flight: do NOT pull /api/state's global "latest" run, which
+  // is the PREVIOUS dataset until ours completes. Without this guard the
+  // background poll + tab switches repaint the old run over the new one for
+  // the whole analysis duration -- the stale-override bug.
+  if (_activeRun) return;
   const url = runDir
     ? `/api/state?run_dir=${encodeURIComponent(runDir)}`
     : "/api/state";
@@ -626,6 +653,7 @@ function wireFindingsFilters() {
 // 7. Data view — dataset preview table
 // ---------------------------------------------------------------------
 async function refreshData(runDir) {
+  if (_activeRun) return;  // run in flight: don't paint the stale "latest" run
   const url = runDir
     ? `/api/state?run_dir=${encodeURIComponent(runDir)}`
     : "/api/state";
@@ -704,6 +732,7 @@ async function refreshData(runDir) {
 // 7b. Methods view — table of analytical methods that ran on this run
 // ---------------------------------------------------------------------
 async function refreshMethods(runDir) {
+  if (_activeRun) return;  // run in flight: don't paint the stale "latest" run
   const wrap = document.getElementById("methodsList");
   if (!wrap) return;
   const url = runDir
@@ -992,6 +1021,11 @@ function _showRunningState(filename, phase, cached) {
     setStat("statMethods",   "—", "running…");
     setStat("statAnomalies", "—", "running…");
     setStat("statRegimes",   "—", "running…");
+    // Clear Findings / Data / Methods to an explicit "analyzing" placeholder
+    // so the OLD run's data isn't sitting there looking current while the
+    // new run computes. The _activeRun guards keep the background poll from
+    // repainting stale data on top of this.
+    _renderViewsRunning();
   }
 }
 
