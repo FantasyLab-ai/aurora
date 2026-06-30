@@ -22,7 +22,7 @@ const STATE_POLL_MS  = 6000;
 // Shows in the WebView2 console so we can verify the right JS loaded
 // (WebView2 sometimes caches main.js across builds despite Tauri
 // bundling fresh assets every time).
-const AURORA_SHELL_VERSION = "phase-4.4-spacetime-forecast";
+const AURORA_SHELL_VERSION = "phase-4.4.1-clean-boot";
 
 // First-run demo launcher. Cards are built from /api/demo_datasets so the
 // paths are whatever the backend can actually resolve -- critically, in the
@@ -422,13 +422,25 @@ async function refreshOverview(runDir) {
   // over server_metrics. Only a fresh boot (no pin yet) hits "latest".
   runDir = runDir || _currentRunDir;
 
-  const url = runDir
-    ? `/api/state?run_dir=${encodeURIComponent(runDir)}`
-    : "/api/state";
+  // No run pinned this session -> ONBOARDING. Deliberately do NOT auto-load
+  // the latest run on disk: that "auto-loaded falling_ball" on a fresh boot
+  // and fought the user when they went to run something new. The last run
+  // lives in Bundles; a fresh launch starts clean.
+  if (!runDir) {
+    setStat("statFindings",   "—", "awaiting run");
+    setStat("statMethods",    "—", "0 fabricated");
+    setStat("statAnomalies",  "—", "crit + warn");
+    setStat("statRegimes",    "—", "hmm latent states");
+    setText("overviewRunId", auroraOnline ? "no active run" : "aurora offline");
+    _renderNarrative(null);
+    _renderRunContext(null);
+    _setOverviewMode(auroraOnline ? "onboarding" : "results");
+    return;
+  }
+
+  const url = `/api/state?run_dir=${encodeURIComponent(runDir)}`;
   const state = await auroraFetch(url);
   if (!state || state.ok === false) {
-    // No run loaded. If Aurora is up, show the onboarding hero (teach by
-    // doing); if it's down, keep the neutral empty state.
     setStat("statFindings",   "—", "awaiting run");
     setStat("statMethods",    "—", "0 fabricated");
     setStat("statAnomalies",  "—", "crit + warn");
@@ -564,9 +576,8 @@ async function refreshFindings(runDir) {
   // the whole analysis duration -- the stale-override bug.
   if (_activeRun) return;
   runDir = runDir || _currentRunDir;   // bulletproof pin (see refreshOverview)
-  const url = runDir
-    ? `/api/state?run_dir=${encodeURIComponent(runDir)}`
-    : "/api/state";
+  if (!runDir) { renderFindings([]); return; }   // no run this session -> empty
+  const url = `/api/state?run_dir=${encodeURIComponent(runDir)}`;
   const state = await auroraFetch(url);
   if (!state || state.ok === false) {
     renderFindings([]);
@@ -682,12 +693,11 @@ function wireFindingsFilters() {
 async function refreshData(runDir) {
   if (_activeRun) return;  // run in flight: don't paint the stale "latest" run
   runDir = runDir || _currentRunDir;   // bulletproof pin (see refreshOverview)
-  const url = runDir
-    ? `/api/state?run_dir=${encodeURIComponent(runDir)}`
-    : "/api/state";
-  const state = await auroraFetch(url);
   const wrap = document.getElementById("dataTableWrap");
   if (!wrap) return;
+  if (!runDir) { wrap.innerHTML = renderEmpty("No run loaded — run an analysis from <b>Overview</b>."); return; }
+  const url = `/api/state?run_dir=${encodeURIComponent(runDir)}`;
+  const state = await auroraFetch(url);
   if (!state || state.ok === false) {
     wrap.innerHTML = renderEmpty(
       "No dataset state yet. Submit a run from <b>Overview</b> or pick one in <b>Bundles</b>.");
@@ -764,9 +774,8 @@ async function refreshMethods(runDir) {
   runDir = runDir || _currentRunDir;   // bulletproof pin (see refreshOverview)
   const wrap = document.getElementById("methodsList");
   if (!wrap) return;
-  const url = runDir
-    ? `/api/state?run_dir=${encodeURIComponent(runDir)}`
-    : "/api/state";
+  if (!runDir) { wrap.innerHTML = renderEmpty("No run loaded — run an analysis from <b>Overview</b>."); return; }
+  const url = `/api/state?run_dir=${encodeURIComponent(runDir)}`;
   const state = await auroraFetch(url);
   if (!state || state.ok === false) {
     wrap.innerHTML = renderEmpty("No active run. Run an analysis from <b>Overview</b>.");
@@ -826,9 +835,8 @@ async function refreshPhaseSpace(runDir) {
   runDir = runDir || _currentRunDir;   // bulletproof pin (see refreshOverview)
   const wrap = document.getElementById("phaseWrap");
   if (!wrap) return;
-  const url = runDir
-    ? `/api/state?run_dir=${encodeURIComponent(runDir)}`
-    : "/api/state";
+  if (!runDir) { wrap.innerHTML = renderEmpty("No run loaded — run an analysis from <b>Overview</b>."); return; }
+  const url = `/api/state?run_dir=${encodeURIComponent(runDir)}`;
   const state = await auroraFetch(url);
   if (!state || state.ok === false) {
     wrap.innerHTML = renderEmpty("No active run. Run an analysis from <b>Overview</b>.");
@@ -962,7 +970,8 @@ async function refreshSpacetime(runDir) {
   runDir = runDir || _currentRunDir;
   const wrap = document.getElementById("spacetimeWrap");
   if (!wrap) return;
-  const url = runDir ? `/api/state?run_dir=${encodeURIComponent(runDir)}` : "/api/state";
+  if (!runDir) { wrap.innerHTML = renderEmpty("No run loaded — run an analysis from <b>Overview</b>."); return; }
+  const url = `/api/state?run_dir=${encodeURIComponent(runDir)}`;
   const state = await auroraFetch(url);
   if (!state || state.ok === false) {
     wrap.innerHTML = renderEmpty("No active run. Run an analysis from <b>Overview</b>.");
@@ -1067,7 +1076,8 @@ async function refreshForecast(runDir) {
   runDir = runDir || _currentRunDir;
   const wrap = document.getElementById("forecastWrap");
   if (!wrap) return;
-  const url = runDir ? `/api/state?run_dir=${encodeURIComponent(runDir)}` : "/api/state";
+  if (!runDir) { wrap.innerHTML = renderEmpty("No run loaded — run an analysis from <b>Overview</b>."); return; }
+  const url = `/api/state?run_dir=${encodeURIComponent(runDir)}`;
   const state = await auroraFetch(url);
   if (!state || state.ok === false) {
     wrap.innerHTML = renderEmpty("No active run. Run an analysis from <b>Overview</b>.");
@@ -1138,9 +1148,12 @@ async function refreshCausal(runDir) {
   const tSel = document.getElementById("causalTreatment");
   const oSel = document.getElementById("causalOutcome");
   if (!tSel || !oSel) return;
-  const url = runDir
-    ? `/api/state?run_dir=${encodeURIComponent(runDir)}`
-    : "/api/state";
+  if (!runDir) {
+    tSel.innerHTML = oSel.innerHTML = `<option value="">— run an analysis first —</option>`;
+    setText("causalRunId", "no active run");
+    return;
+  }
+  const url = `/api/state?run_dir=${encodeURIComponent(runDir)}`;
   const state = await auroraFetch(url);
   const s = state && (state.state || state);
   if (!s || (state && state.ok === false)) {
@@ -1458,6 +1471,7 @@ function _showRunningState(filename, phase, cached) {
     if (_bannerHideTimer) { clearTimeout(_bannerHideTimer); _bannerHideTimer = null; }
     _setOverviewMode("results");
     _renderRunContext(null);   // banner owns the in-flight state; reappears on completion
+    _renderNarrative(null);    // clear the PREVIOUS run's narrative during the run
     setStat("statFindings",  "—", "running…");
     setStat("statMethods",   "—", "running…");
     setStat("statAnomalies", "—", "running…");
