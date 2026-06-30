@@ -30,7 +30,8 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "_targets_note": "Explicit list = 'all' MINUS 'appimage'. The AppImage bundler (linuxdeploy) fails reproducibly on GitHub CI ('failed to run linuxdeploy') even with libfuse2 + APPIMAGE_EXTRACT_AND_RUN; .deb + .rpm build cleanly and cover Debian/Ubuntu/Mint + Fedora/RHEL/openSUSE. Windows still gets msi + nsis (setup.exe); macOS gets app + dmg.",
+    "targets": ["deb", "rpm", "msi", "nsis", "app", "dmg"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
