@@ -22,7 +22,7 @@ const STATE_POLL_MS  = 6000;
 // Shows in the WebView2 console so we can verify the right JS loaded
 // (WebView2 sometimes caches main.js across builds despite Tauri
 // bundling fresh assets every time).
-const AURORA_SHELL_VERSION = "phase-4.6-run-render-token (one-behind fix)";
+const AURORA_SHELL_VERSION = "phase-4.7-simulate-intervene-share";
 
 // First-run demo launcher. Cards are built from /api/demo_datasets so the
 // paths are whatever the backend can actually resolve -- critically, in the
@@ -126,6 +126,7 @@ let _lastCompletion = null;
 // Overview back to the old falling_ball run 6s after a factory_bearing
 // completion. Sticky run_dir defeats that drift.
 let _currentRunDir = null;
+let _currentDatasetName = "";   // best-effort dataset name for the share payload
 
 // Monotonic "which run is on screen" token. Bumped every time the displayed
 // run changes (a run is triggered, a run completes and pins, or a bundle is
@@ -602,6 +603,7 @@ async function refreshFindings(runDir) {
   }
   const s = state.state || state;
   _findingsCache = Array.isArray(s.findings) ? s.findings : [];
+  _currentDatasetName = (s.dataset && s.dataset.name) || _currentDatasetName;
   const runId = s.run_id || state.run_dir || "current run";
   setText("findingsRunId", String(runId).split(/[\\/]/).pop().slice(0, 56));
   renderFindings(_findingsCache);
@@ -677,6 +679,7 @@ function renderFindings(list) {
       <div class="finding-card-foot">
         <span class="finding-method">${method}</span>
         ${citeHtml}
+        <button class="finding-share" data-share-idx="${i}" title="Share this finding">⤴</button>
       </div>
     </article>`;
   }).join("");
@@ -688,6 +691,15 @@ function renderFindings(list) {
     card.addEventListener("click", () => {
       const idx = parseInt(card.dataset.findingIdx, 10);
       if (!Number.isNaN(idx) && filtered[idx]) openFindingDetail(filtered[idx]);
+    });
+  });
+
+  // Share button — stopPropagation so it doesn't also open the detail panel.
+  grid.querySelectorAll(".finding-share").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.shareIdx, 10);
+      if (!Number.isNaN(idx) && filtered[idx]) openShareModal(filtered[idx]);
     });
   });
 }
@@ -1006,6 +1018,7 @@ async function refreshSpacetime(runDir) {
   const runId = s.run_id || state.run_dir || "current run";
   setText("spacetimeRunId", String(runId).split(/[\\/]/).pop().slice(0, 56));
   wrap.innerHTML = renderSpacetime(s.system_model || null);
+  populateSimEntities("spacetime", s.system_model || null);
 }
 
 function renderSpacetime(model) {
@@ -1114,6 +1127,7 @@ async function refreshForecast(runDir) {
   const runId = s.run_id || state.run_dir || "current run";
   setText("forecastRunId", String(runId).split(/[\\/]/).pop().slice(0, 56));
   wrap.innerHTML = renderForecast(s.forecast || null);
+  populateSimEntities("forecast", s.system_model || null);
 }
 
 function renderForecast(fc) {
@@ -1839,7 +1853,12 @@ function openFindingDetail(finding) {
     }
   }
 
-  body.innerHTML = rowsHtml + citation;
+  body.innerHTML = rowsHtml + citation +
+    `<div class="detail-share-row">
+       <button class="btn btn-secondary" id="detailShareBtn"><span class="btn-ico">⤴</span> Share this finding</button>
+     </div>`;
+  const dsb = document.getElementById("detailShareBtn");
+  if (dsb) dsb.addEventListener("click", () => { closeFindingDetail(); openShareModal(finding); });
   panel.classList.add("is-visible");
   backdrop.classList.add("is-visible");
   panel.setAttribute("aria-hidden", "false");
@@ -1860,6 +1879,313 @@ function wireDetailPanel() {
   if (backdrop) backdrop.addEventListener("click", closeFindingDetail);
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") closeFindingDetail();
+  });
+}
+
+
+// ---------------------------------------------------------------------
+// 8b. Simulate / Intervene panels (Forecast + Spacetime).
+//
+// Both views show the same run's system_model, so the panel is identical;
+// we build one per view under a scope-prefixed id namespace.
+//   Simulate  -> POST /api/system_model/simulate  -> forward trajectory
+//   Intervene -> POST /api/system_model/intervene -> propagated deltas
+// ---------------------------------------------------------------------
+const SIM_SCOPES = ["forecast", "spacetime"];
+const _simHostId = (scope) => scope === "forecast" ? "simPanelForecast" : "simPanelSpacetime";
+const _simId = (scope, key) => `sim-${scope}-${key}`;
+
+function buildSimPanel(scope) {
+  const host = document.getElementById(_simHostId(scope));
+  if (!host) return;
+  const ph = `<option value="">— run an analysis —</option>`;
+  host.innerHTML = `
+    <div class="sim-tabs">
+      <button class="sim-tab is-active" data-simtab="simulate">▶ Simulate</button>
+      <button class="sim-tab" data-simtab="intervene">⤲ Intervene</button>
+    </div>
+    <div class="sim-pane" data-simpane="simulate">
+      <p class="sim-help">Forward-step the run's discovered dynamics from the last observed value.</p>
+      <label class="sim-field-lbl">Target variable</label>
+      <select class="select sim-select" id="${_simId(scope,'sim-entity')}">${ph}</select>
+      <label class="sim-field-lbl">Steps ahead</label>
+      <input class="sim-input" id="${_simId(scope,'sim-steps')}" type="number" min="1" max="500" value="50" />
+      <button class="btn btn-primary sim-run" id="${_simId(scope,'sim-run')}"><span class="btn-ico">▶</span> Run simulation</button>
+      <div class="sim-result" id="${_simId(scope,'sim-result')}">
+        <div class="empty-state sim-empty">Pick a variable and run a forward simulation.</div>
+      </div>
+    </div>
+    <div class="sim-pane" data-simpane="intervene" hidden>
+      <p class="sim-help">Perturb one variable and propagate the change through the model's relationships.</p>
+      <label class="sim-field-lbl">Source variable</label>
+      <select class="select sim-select" id="${_simId(scope,'int-entity')}">${ph}</select>
+      <label class="sim-field-lbl">Perturbation (Δ)</label>
+      <input class="sim-input" id="${_simId(scope,'int-delta')}" type="number" step="any" value="1.0" />
+      <label class="sim-field-lbl">Max depth</label>
+      <input class="sim-input" id="${_simId(scope,'int-depth')}" type="number" min="1" max="6" value="3" />
+      <button class="btn btn-primary sim-run" id="${_simId(scope,'int-run')}"><span class="btn-ico">⤲</span> Propagate</button>
+      <div class="sim-result" id="${_simId(scope,'int-result')}">
+        <div class="empty-state sim-empty">Pick a variable, set a Δ, and propagate.</div>
+      </div>
+    </div>`;
+}
+
+function wireSimPanel(scope) {
+  const host = document.getElementById(_simHostId(scope));
+  if (!host) return;
+  host.querySelectorAll(".sim-tab").forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const which = tab.dataset.simtab;
+      host.querySelectorAll(".sim-tab").forEach((t) => t.classList.toggle("is-active", t === tab));
+      host.querySelectorAll(".sim-pane").forEach((p) => { p.hidden = (p.dataset.simpane !== which); });
+    });
+  });
+  const sr = document.getElementById(_simId(scope, "sim-run"));
+  if (sr) sr.addEventListener("click", () => runSimulate(scope));
+  const ir = document.getElementById(_simId(scope, "int-run"));
+  if (ir) ir.addEventListener("click", () => runIntervene(scope));
+}
+
+// Fill the target/source dropdowns from the run's entities. Called by the
+// forecast/spacetime refreshers, which already hold the state.
+function populateSimEntities(scope, model) {
+  const ents = (model && model.topology && model.topology.entities) || [];
+  const sSel = document.getElementById(_simId(scope, "sim-entity"));
+  const iSel = document.getElementById(_simId(scope, "int-entity"));
+  if (!sSel || !iSel) return;
+  if (!ents.length) {
+    const none = `<option value="">— no system-model entities —</option>`;
+    sSel.innerHTML = none; iSel.innerHTML = none;
+    return;
+  }
+  const opt = ents.map((e) =>
+    `<option value="${esc(e.id)}">${esc(e.id)}${e.role ? ` · ${esc(e.role)}` : ""}</option>`).join("");
+  const ids = ents.map((e) => e.id);
+  const prevS = sSel.value, prevI = iSel.value;
+  sSel.innerHTML = opt; iSel.innerHTML = opt;
+  if (prevS && ids.includes(prevS)) sSel.value = prevS;
+  if (prevI && ids.includes(prevI)) iSel.value = prevI;
+}
+
+async function runSimulate(scope) {
+  const ent = (document.getElementById(_simId(scope, "sim-entity")) || {}).value;
+  const steps = parseInt((document.getElementById(_simId(scope, "sim-steps")) || {}).value, 10) || 50;
+  const res = document.getElementById(_simId(scope, "sim-result"));
+  if (!res) return;
+  if (!_currentRunDir) { res.innerHTML = `<div class="empty-state sim-empty" style="color:var(--warn)">Run an analysis first.</div>`; return; }
+  if (!ent) { res.innerHTML = `<div class="empty-state sim-empty" style="color:var(--warn)">Pick a target variable.</div>`; return; }
+  res.innerHTML = `<div class="empty-state sim-empty">▶ Simulating ${esc(ent)} · ${steps} steps…</div>`;
+  const j = await auroraFetch("/api/system_model/simulate", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ run_dir: _currentRunDir, target_entity_id: ent, n_steps: steps }),
+  });
+  res.innerHTML = _renderSimResult(j);
+}
+
+function _renderSimResult(j) {
+  const r = j && j.result;
+  if (!j || j.ok === false || !r) {
+    return `<div class="sim-verdict sim-verdict--warn">⚠ ${esc((j && j.error) || "simulation unavailable")}</div>`;
+  }
+  if (!r.ok) {
+    return `<div class="sim-verdict sim-verdict--warn">⚠ ${esc(r.error || "no fitted law to simulate from — try a time-series dataset")}</div>`;
+  }
+  const traj = Array.isArray(r.trajectory) ? r.trajectory : [];
+  if (!traj.length) return `<div class="sim-verdict sim-verdict--warn">No trajectory returned.</div>`;
+  const last = traj[traj.length - 1];
+  const eq = last.source_equation || (traj[0] && traj[0].source_equation) || "";
+  let html = `<div class="sim-verdict">
+    <div class="sim-verdict-head">${esc(r.target_entity_id || "target")} · ${esc(r.method || "sim")}</div>
+    ${_simMiniChart(traj)}
+    <div class="sim-kv"><span>final value</span><b>${last.value != null ? (+last.value).toFixed(3) : "—"}</b></div>
+    <div class="sim-kv"><span>final 95% CI</span><b>${last.ci_low != null ? (+last.ci_low).toFixed(2) : "—"} – ${last.ci_high != null ? (+last.ci_high).toFixed(2) : "—"}</b></div>`;
+  if (eq) html += `<div class="sim-eq">${esc(eq)}</div>`;
+  if (r.paused) html += `<div class="sim-note">⏸ paused: ${esc(r.paused_reason || "CI exceeded threshold")}</div>`;
+  html += `</div>`;
+  if ((r.assumptions || []).length) {
+    html += `<div class="sim-assumptions"><div class="sim-assume-lbl">ASSUMPTIONS</div><ul>` +
+      r.assumptions.map((a) => `<li>${esc(a)}</li>`).join("") + `</ul></div>`;
+  }
+  return html;
+}
+
+function _simMiniChart(traj) {
+  const pts = traj.filter((s) => s.value != null && isFinite(s.value));
+  if (pts.length < 2) return "";
+  const W = 280, H = 88, pad = 6;
+  const vals = pts.map((s) => s.value);
+  const los = pts.map((s) => (s.ci_low != null && isFinite(s.ci_low) ? s.ci_low : s.value));
+  const his = pts.map((s) => (s.ci_high != null && isFinite(s.ci_high) ? s.ci_high : s.value));
+  const lo = Math.min(...vals, ...los), hi = Math.max(...vals, ...his);
+  const span = (hi - lo) || 1;
+  const mx = (i) => pad + (i / (pts.length - 1)) * (W - 2 * pad);
+  const my = (v) => (H - pad) - ((v - lo) / span) * (H - 2 * pad);
+  let band = `M ${mx(0).toFixed(1)} ${my(his[0]).toFixed(1)}`;
+  for (let i = 1; i < pts.length; i++) band += ` L ${mx(i).toFixed(1)} ${my(his[i]).toFixed(1)}`;
+  for (let i = pts.length - 1; i >= 0; i--) band += ` L ${mx(i).toFixed(1)} ${my(los[i]).toFixed(1)}`;
+  band += " Z";
+  let line = "";
+  pts.forEach((s, i) => line += (i === 0 ? "M" : " L") + ` ${mx(i).toFixed(1)} ${my(s.value).toFixed(1)}`);
+  return `<svg class="sim-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <path d="${band}" fill="#6ee7ff" opacity="0.13"/>
+    <path d="${line}" stroke="#6ee7ff" stroke-width="1.5" fill="none"/>
+  </svg>`;
+}
+
+async function runIntervene(scope) {
+  const ent = (document.getElementById(_simId(scope, "int-entity")) || {}).value;
+  const delta = parseFloat((document.getElementById(_simId(scope, "int-delta")) || {}).value);
+  const depth = parseInt((document.getElementById(_simId(scope, "int-depth")) || {}).value, 10) || 3;
+  const res = document.getElementById(_simId(scope, "int-result"));
+  if (!res) return;
+  if (!_currentRunDir) { res.innerHTML = `<div class="empty-state sim-empty" style="color:var(--warn)">Run an analysis first.</div>`; return; }
+  if (!ent) { res.innerHTML = `<div class="empty-state sim-empty" style="color:var(--warn)">Pick a source variable.</div>`; return; }
+  if (Number.isNaN(delta)) { res.innerHTML = `<div class="empty-state sim-empty" style="color:var(--warn)">Enter a numeric Δ.</div>`; return; }
+  res.innerHTML = `<div class="empty-state sim-empty">⤲ Propagating Δ${delta} from ${esc(ent)}…</div>`;
+  const j = await auroraFetch("/api/system_model/intervene", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ run_dir: _currentRunDir, source_entity_id: ent, perturbation: delta, max_depth: depth }),
+  });
+  res.innerHTML = _renderInterveneResult(j, ent, delta);
+}
+
+function _renderInterveneResult(j, srcEnt, delta) {
+  const r = j && j.result;
+  if (!j || j.ok === false || !r) {
+    return `<div class="sim-verdict sim-verdict--warn">⚠ ${esc((j && j.error) || "intervention unavailable")}</div>`;
+  }
+  const deltas = (r.deltas || []).filter((d) => d.entity_id !== r.source_entity_id);
+  deltas.sort((a, b) => Math.abs(b.delta || 0) - Math.abs(a.delta || 0));
+  let html = `<div class="sim-verdict">
+    <div class="sim-verdict-head">do(${esc(r.source_entity_id || srcEnt)} += ${esc(String(r.perturbation != null ? r.perturbation : delta))})</div>`;
+  if (r.rationale) html += `<div class="sim-rationale">${esc(r.rationale)}</div>`;
+  if (!deltas.length) {
+    html += `<div class="sim-note">No downstream effects — this variable has no outgoing relationships in the model.</div>`;
+  } else {
+    html += `<div class="sim-deltas">` + deltas.slice(0, 10).map((d) => {
+      const v = d.delta != null ? ((d.delta >= 0 ? "+" : "") + (+d.delta).toFixed(3)) : "—";
+      const cls = (d.delta || 0) >= 0 ? "up" : "down";
+      const ci = (d.ci_low != null && d.ci_high != null) ? `${(+d.ci_low).toFixed(2)}–${(+d.ci_high).toFixed(2)}` : "";
+      return `<div class="sim-delta-row">
+        <span class="sim-delta-ent">${esc(d.entity_id)}</span>
+        <span class="sim-delta-val sim-delta-val--${cls}">${v}</span>
+        ${ci ? `<span class="sim-delta-ci">95% ${ci}</span>` : ""}
+      </div>`;
+    }).join("") + `</div>`;
+  }
+  html += `</div>`;
+  if ((r.warnings || []).length) {
+    html += `<div class="sim-assumptions"><div class="sim-assume-lbl">WARNINGS</div><ul>` +
+      r.warnings.map((w) => `<li>${esc(w)}</li>`).join("") + `</ul></div>`;
+  }
+  return html;
+}
+
+
+// ---------------------------------------------------------------------
+// 8c. Share a finding -> /api/community/share. Copy-to-clipboard always
+// works; "Share to community" appends to the local feed and (if a webhook
+// is configured) posts to Discord/Slack. Only finding text + cited method
+// + dataset NAME are shared — never the raw rows.
+// ---------------------------------------------------------------------
+let _shareFinding = null;
+
+function _shareText(f) {
+  const sev = (f.severity || "info").toUpperCase();
+  const title = f.title || f.name || "Aurora finding";
+  const desc = String(f.description || f.narrative || f.summary || "").trim();
+  const parts = [`[${sev}] ${title}`];
+  if (desc) parts.push(desc);
+  const meta = [];
+  if (f.method) meta.push(`method: ${f.method}`);
+  if (_currentDatasetName) meta.push(`dataset: ${_currentDatasetName}`);
+  if (meta.length) parts.push(meta.join(" · "));
+  parts.push("— found with Aurora (glass-box analysis)");
+  return parts.join("\n");
+}
+
+function openShareModal(finding) {
+  _shareFinding = finding;
+  const modal = document.getElementById("shareModal");
+  const preview = document.getElementById("sharePreview");
+  const text = document.getElementById("shareText");
+  const status = document.getElementById("shareStatus");
+  if (!modal || !text) return;
+  const sev = (finding.severity || "info").toLowerCase();
+  if (preview) preview.innerHTML =
+    `<span class="finding-sev finding-sev--${sev}">${sev}</span>` +
+    `<span class="share-prev-title">${esc(finding.title || finding.name || "finding")}</span>` +
+    (finding.method ? `<span class="share-prev-method">${esc(finding.method)}</span>` : "");
+  text.value = _shareText(finding);
+  if (status) { status.textContent = ""; status.className = "share-status"; }
+  modal.classList.add("is-visible");
+  modal.setAttribute("aria-hidden", "false");
+}
+
+function closeShareModal() {
+  const modal = document.getElementById("shareModal");
+  if (modal) { modal.classList.remove("is-visible"); modal.setAttribute("aria-hidden", "true"); }
+  _shareFinding = null;
+}
+
+async function copyShareText() {
+  const text = document.getElementById("shareText");
+  const status = document.getElementById("shareStatus");
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text.value);
+    if (status) { status.textContent = "✓ copied to clipboard"; status.className = "share-status share-status--ok"; }
+  } catch (e) {
+    text.focus(); text.select();
+    if (status) { status.textContent = "press Ctrl+C to copy"; status.className = "share-status"; }
+  }
+}
+
+async function doCommunityShare() {
+  const f = _shareFinding;
+  const text = document.getElementById("shareText");
+  const status = document.getElementById("shareStatus");
+  const btn = document.getElementById("shareSendBtn");
+  if (!f) return;
+  if (status) { status.textContent = "▶ sharing…"; status.className = "share-status"; }
+  if (btn) btn.disabled = true;
+  const payload = {
+    title: f.title || f.name || "Aurora finding",
+    detail: (text && text.value) || String(f.description || ""),
+    method: f.method || "",
+    dataset: _currentDatasetName || "",
+    run_id: _currentRunDir ? String(_currentRunDir).split(/[\\/]/).pop() : "",
+    severity: (f.severity || "info").toLowerCase(),
+    confidence: f.confidence != null ? f.confidence : null,
+  };
+  const j = await auroraFetch("/api/community/share", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (btn) btn.disabled = false;
+  if (!j || j.ok === false) {
+    if (status) { status.textContent = `✕ ${(j && j.error) || "share failed"}`; status.className = "share-status share-status--err"; }
+    return;
+  }
+  let msg;
+  if (j.delivered) msg = `✓ shared to the community · #${j.feed_count} in your feed`;
+  else if (j.configured) msg = `saved to your feed — webhook delivery failed (${j.deliver_error || "network"})`;
+  else msg = `✓ saved to your local feed (#${j.feed_count}). Set AURORA_COMMUNITY_WEBHOOK to also post to Discord/Slack.`;
+  if (status) { status.textContent = msg; status.className = "share-status share-status--ok"; }
+}
+
+function wireShareModal() {
+  const close = document.getElementById("shareClose");
+  const back = document.getElementById("shareBackdrop");
+  const copy = document.getElementById("shareCopyBtn");
+  const send = document.getElementById("shareSendBtn");
+  if (close) close.addEventListener("click", closeShareModal);
+  if (back) back.addEventListener("click", closeShareModal);
+  if (copy) copy.addEventListener("click", copyShareText);
+  if (send) send.addEventListener("click", doCommunityShare);
+  document.addEventListener("keydown", (e) => {
+    const modal = document.getElementById("shareModal");
+    if (e.key === "Escape" && modal && modal.classList.contains("is-visible")) closeShareModal();
   });
 }
 
@@ -1914,6 +2240,11 @@ window.addEventListener("DOMContentLoaded", () => {
   wireDragDrop();
   wireDropZoneClick();
   wireDetailPanel();
+
+  // Build + wire the Simulate/Intervene panels (Forecast + Spacetime) and
+  // the share-finding modal.
+  SIM_SCOPES.forEach((sc) => { buildSimPanel(sc); wireSimPanel(sc); });
+  wireShareModal();
 
   const runBtn = document.getElementById("runBtn");
   if (runBtn) runBtn.addEventListener("click", triggerRun);

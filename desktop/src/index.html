@@ -7,11 +7,11 @@
     <!-- ?v= bump on every meaningful main.js / styles.css change to bust
          WebView2's persistent cache. The cache is keyed on full URL, so
          appending a unique query param forces a fresh fetch. -->
-    <link rel="stylesheet" href="styles.css?v=4.6.0" />
+    <link rel="stylesheet" href="styles.css?v=4.7.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=VT323&display=swap" rel="stylesheet" />
-    <script type="module" src="/main.js?v=4.6.0" defer></script>
+    <script type="module" src="/main.js?v=4.7.0" defer></script>
   </head>
   <body class="aurora-window">
     <!-- Frameless titlebar: drag region + brand + window controls. -->
@@ -266,8 +266,11 @@
                + probability cone (NOW → future) from system_model.topology. -->
           <section class="view" id="view-spacetime">
             <div class="breadcrumb">spacetime / <b id="spacetimeRunId">no active run</b></div>
-            <div class="phase-wrap" id="spacetimeWrap">
-              <div class="empty-state">Loading…</div>
+            <div class="sim-layout">
+              <div class="phase-wrap sim-graph" id="spacetimeWrap">
+                <div class="empty-state">Loading…</div>
+              </div>
+              <aside class="sim-panel" id="simPanelSpacetime"></aside>
             </div>
             <div class="data-foot-hint">
               Each row is a variable's worldline through time. The gradient trail
@@ -281,8 +284,11 @@
                CI band chart, alternate methods. -->
           <section class="view" id="view-forecast">
             <div class="breadcrumb">forecast / <b id="forecastRunId">no active run</b></div>
-            <div id="forecastWrap">
-              <div class="empty-state">Loading…</div>
+            <div class="sim-layout">
+              <div class="sim-graph" id="forecastWrap">
+                <div class="empty-state">Loading…</div>
+              </div>
+              <aside class="sim-panel" id="simPanelForecast"></aside>
             </div>
             <div class="data-foot-hint">
               The forecast is produced on time-series datasets. To forecast a
@@ -413,6 +419,32 @@
         <div class="detail-panel-body" id="detailPanelBody"></div>
       </aside>
       <div class="detail-backdrop" id="detailBackdrop"></div>
+
+      <!-- Share-a-finding modal. Opens from a finding card / detail panel.
+           Shares only the finding text + cited method + dataset NAME (never
+           raw rows): copy to clipboard, or post to the Aurora community
+           webhook via /api/community/share. -->
+      <div class="share-modal" id="shareModal" aria-hidden="true">
+        <div class="share-backdrop" id="shareBackdrop"></div>
+        <div class="share-dialog" role="dialog" aria-modal="true" aria-labelledby="shareTitle">
+          <div class="share-head">
+            <span class="share-title" id="shareTitle">⤴ Share finding</span>
+            <button class="link-btn" id="shareClose" title="Close">✕</button>
+          </div>
+          <div class="share-sub">
+            Shares the finding text, the cited method, and the dataset name —
+            <b>never your raw data</b>.
+          </div>
+          <div class="share-preview" id="sharePreview"></div>
+          <label class="share-label" for="shareText">Message (editable)</label>
+          <textarea class="share-text" id="shareText" rows="5"></textarea>
+          <div class="share-status" id="shareStatus"></div>
+          <div class="share-actions">
+            <button class="btn btn-secondary" id="shareCopyBtn"><span class="btn-ico">⧉</span> Copy</button>
+            <button class="btn btn-primary" id="shareSendBtn"><span class="btn-ico">⤴</span> Share to community</button>
+          </div>
+        </div>
+      </div>
     </div>
   </body>
 </html>

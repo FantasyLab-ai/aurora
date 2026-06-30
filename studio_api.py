@@ -5267,6 +5267,133 @@ def api_system_model_simulate():
     return jsonify({"ok": True, "result": res.to_dict()})
 
 
+@app.route("/api/community/share", methods=["POST"])
+def api_community_share():
+    """Share a single finding to the Aurora community.
+
+    Body: ``{title, detail?, method?, dataset?, run_id?, severity?, confidence?}``
+
+    Two effects, both honest:
+      1. Always appends the share to a durable local feed
+         (``~/.aurora/community_feed.jsonl``) so there's a record even with no
+         network sink — this is also the attributable "a human ran an analysis
+         and chose to share it" usage signal.
+      2. If ``AURORA_COMMUNITY_WEBHOOK`` is configured, delivers a formatted
+         message to that Discord/Slack webhook.
+
+    Only the finding text + cited method + dataset NAME are shared — never the
+    underlying data rows. The response reports the true delivery status (it does
+    NOT claim "posted to community" when no webhook is configured).
+    """
+    body = request.get_json(silent=True) or {}
+    title = str(body.get("title") or "").strip()
+    if not title:
+        return jsonify({"ok": False, "error": "title required"}), 400
+    detail   = str(body.get("detail") or "").strip()
+    method   = str(body.get("method") or "").strip()
+    dataset  = str(body.get("dataset") or "").strip()
+    severity = str(body.get("severity") or "info").strip().lower()
+    run_id   = str(body.get("run_id") or "").strip()
+    conf     = body.get("confidence")
+
+    record = {
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "title": title[:300],
+        "detail": detail[:1000],
+        "method": method[:200],
+        "dataset": dataset[:200],
+        "severity": severity[:20],
+        "run_id": run_id[:160],
+        "confidence": conf,
+    }
+
+    # 1) Durable local feed (best-effort, never fatal to the share).
+    feed_count = 0
+    try:
+        _AURORA_HOME.mkdir(parents=True, exist_ok=True)
+        feed = _AURORA_HOME / "community_feed.jsonl"
+        with feed.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+        try:
+            with feed.open("r", encoding="utf-8") as fh:
+                feed_count = sum(1 for _ in fh)
+        except Exception:
+            feed_count = 0
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"could not write feed: {e}"}), 200
+
+    # 2) Optional webhook delivery. {"content": ...} feeds Discord, {"text": ...}
+    #    feeds Slack — sending both keys makes one payload work for either sink.
+    hook = os.environ.get("AURORA_COMMUNITY_WEBHOOK")
+    delivered = False
+    deliver_error = None
+    if hook:
+        sev_ico = {"crit": "🔴", "warn": "🟠", "info": "🔵"}.get(severity, "🔵")
+        lines = [f"{sev_ico} **{title}**"]
+        if detail:
+            lines.append(detail)
+        meta = []
+        if method:
+            meta.append(f"method: {method}")
+        if dataset:
+            meta.append(f"dataset: {dataset}")
+        if conf is not None:
+            meta.append(f"confidence: {conf}")
+        if meta:
+            lines.append("_" + " · ".join(meta) + "_")
+        lines.append("— shared from Aurora")
+        msg = "\n".join(lines)
+        payload = json.dumps({"content": msg, "text": msg}).encode("utf-8")
+        try:
+            import urllib.request
+            req = urllib.request.Request(
+                hook, data=payload,
+                headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=6)  # nosec - operator-configured URL
+            delivered = True
+        except Exception as e:
+            deliver_error = str(e)
+
+    return jsonify({
+        "ok": True,
+        "shared_at": record["ts"],
+        "feed_count": feed_count,
+        "configured": bool(hook),
+        "delivered": delivered,
+        "deliver_error": deliver_error,
+    })
+
+
+@app.route("/api/community/feed")
+def api_community_feed():
+    """Return the most recent shared findings from the local feed.
+
+    Query: ?limit=N (default 30). Lets the desktop surface "what you've shared"
+    without any cloud dependency — the feed is the local usage record.
+    """
+    try:
+        limit = max(1, min(200, int(request.args.get("limit") or 30)))
+    except Exception:
+        limit = 30
+    feed = _AURORA_HOME / "community_feed.jsonl"
+    items = []
+    if feed.exists():
+        try:
+            with feed.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        items.append(json.loads(line))
+                    except Exception:
+                        continue
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 200
+    items = items[-limit:][::-1]
+    return jsonify({"ok": True, "count": len(items), "items": items})
+
+
 @app.route("/api/tier/status")
 def api_tier_status():
     """Read current sampling state for a run_dir.
