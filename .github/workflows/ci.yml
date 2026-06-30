@@ -11,6 +11,16 @@ jobs:
   test:
     name: Tests (Python ${{ matrix.python }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # Force bash on every OS. Windows runners default to PowerShell, where a
+    # trailing "\" is NOT a line-continuation (PowerShell uses backtick). The
+    # pytest step below relies on bash "\"-continuations to pass its explicit
+    # file list; under PowerShell it collapsed to `pytest ... \`, where the lone
+    # "\" is the drive root, so pytest tried to collect all of D:\ (hence the
+    # "System Volume Information" PermissionError + stray scripts/test_*.py
+    # collection). Git Bash ships on the Windows runner, so this is safe.
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:

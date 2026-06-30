@@ -56,7 +56,11 @@ jobs:
             librsvg2-dev \
             patchelf \
             build-essential \
-            curl wget file libssl-dev libgtk-3-dev
+            curl wget file libssl-dev libgtk-3-dev \
+            libfuse2
+          # libfuse2: linuxdeploy (the AppImage bundler) is itself an AppImage
+          # and self-mounts via FUSE2. GitHub runners ship only FUSE3, so the
+          # AppImage step fails with "failed to run linuxdeploy" without this.
 
       # ---- Python + Aurora backend (PyInstaller) ----
       - name: Set up Python
@@ -107,6 +111,12 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Belt-and-braces for the Linux AppImage bundler: force linuxdeploy
+          # and its plugins to extract-and-run instead of FUSE-mounting (works
+          # even if libfuse2 is unavailable), and skip the strip pass that has
+          # its own intermittent linuxdeploy failures on CI runners.
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          NO_STRIP: true
         with:
           projectPath: desktop
           tagName: ${{ github.ref_name }}
