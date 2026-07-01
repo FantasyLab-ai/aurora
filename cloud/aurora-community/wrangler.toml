@@ -1,0 +1,20 @@
+name = "aurora-community"
+main = "src/worker.js"
+compatibility_date = "2024-11-01"
+
+# KV namespace that stores shared findings.
+# Create it once, then paste the returned id below:
+#
+#   wrangler kv namespace create FINDINGS
+#
+# (wrangler prints something like: id = "abc123..." — paste it here.)
+kv_namespaces = [
+  { binding = "FINDINGS", id = "REPLACE_WITH_KV_NAMESPACE_ID" }
+]
+
+# Optional admin token for takedowns (DELETE /finding/:id). Set as a secret:
+#
+#   wrangler secret put ADMIN_TOKEN
+#
+# Then: curl -X DELETE -H "Authorization: Bearer <token>" \
+#         https://aurora-community.<your-subdomain>.workers.dev/finding/<id>

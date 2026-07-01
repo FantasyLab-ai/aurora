@@ -372,6 +372,16 @@ _FROZEN = bool(getattr(sys, "frozen", False))
 _BUNDLE_DIR = Path(getattr(sys, "_MEIPASS", REPO_ROOT))
 _AURORA_HOME = Path(os.environ.get("AURORA_HOME") or (Path.home() / ".aurora"))
 
+# Hosted Aurora Community feed (the tiny Cloudflare Worker in
+# cloud/aurora-community). Shares forward here and the in-app Community tab
+# reads from here so the feed is shared across machines. Override per-machine
+# with AURORA_COMMUNITY_API; set to "" to disable hosted forwarding entirely
+# (the local ~/.aurora/community_feed.jsonl record is always kept).
+_AURORA_COMMUNITY_API = (
+    os.environ.get("AURORA_COMMUNITY_API",
+                   "https://aurora-community.fantasy-labai.workers.dev")
+).rstrip("/")
+
 # In a frozen app, pin the outputs dir to ~/.aurora and export it on the
 # environment BEFORE _detect_outputs_dir runs, so the whole subprocess
 # chain (steps runner -> dataset runner) inherits the same writable path.
@@ -5354,6 +5364,27 @@ def api_community_share():
         except Exception as e:
             deliver_error = str(e)
 
+    # 3) Forward to the hosted community feed (cloud/aurora-community Worker)
+    #    so the share is visible across machines + on the landing page. The
+    #    local feed above is always kept regardless of this call's outcome.
+    hosted_shared = False
+    hosted_error = None
+    if _AURORA_COMMUNITY_API:
+        try:
+            import urllib.request
+            hpayload = json.dumps({
+                "title": title, "detail": detail, "method": method,
+                "dataset": dataset, "severity": severity,
+                "run_id": run_id, "confidence": conf,
+            }).encode("utf-8")
+            hreq = urllib.request.Request(
+                _AURORA_COMMUNITY_API + "/share", data=hpayload,
+                headers={"Content-Type": "application/json"})
+            with urllib.request.urlopen(hreq, timeout=6) as resp:  # nosec
+                hosted_shared = (200 <= getattr(resp, "status", 200) < 300)
+        except Exception as e:
+            hosted_error = str(e)
+
     return jsonify({
         "ok": True,
         "shared_at": record["ts"],
@@ -5361,20 +5392,43 @@ def api_community_share():
         "configured": bool(hook),
         "delivered": delivered,
         "deliver_error": deliver_error,
+        "hosted_shared": hosted_shared,
+        "hosted_error": hosted_error,
+        "community_api": bool(_AURORA_COMMUNITY_API),
     })
 
 
 @app.route("/api/community/feed")
 def api_community_feed():
-    """Return the most recent shared findings from the local feed.
+    """Return the most recent shared findings for the in-app Community tab.
 
-    Query: ?limit=N (default 30). Lets the desktop surface "what you've shared"
-    without any cloud dependency — the feed is the local usage record.
+    Query: ?limit=N (default 30). Prefers the hosted community feed (the tiny
+    cloud/aurora-community Worker) so the desktop shows shares from EVERY
+    machine, not just this one. Falls back to the local
+    ~/.aurora/community_feed.jsonl record if the hosted feed is unreachable —
+    the ``source`` field tells the UI which it got.
     """
     try:
         limit = max(1, min(200, int(request.args.get("limit") or 30)))
     except Exception:
         limit = 30
+
+    # 1) Preferred: the shared hosted feed (cross-machine).
+    if _AURORA_COMMUNITY_API:
+        try:
+            import urllib.request
+            url = f"{_AURORA_COMMUNITY_API}/feed?limit={limit}"
+            with urllib.request.urlopen(url, timeout=6) as resp:  # nosec
+                data = json.loads(resp.read().decode("utf-8"))
+            if data.get("ok") and isinstance(data.get("items"), list):
+                return jsonify({
+                    "ok": True, "source": "community",
+                    "count": len(data["items"]), "items": data["items"],
+                })
+        except Exception:
+            pass  # fall through to local
+
+    # 2) Fallback: the local record (offline / hosted feed down).
     feed = _AURORA_HOME / "community_feed.jsonl"
     items = []
     if feed.exists():
@@ -5391,7 +5445,8 @@ def api_community_feed():
         except Exception as e:
             return jsonify({"ok": False, "error": str(e)}), 200
     items = items[-limit:][::-1]
-    return jsonify({"ok": True, "count": len(items), "items": items})
+    return jsonify({"ok": True, "source": "local",
+                    "count": len(items), "items": items})
 
 
 @app.route("/api/tier/status")

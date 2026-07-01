@@ -7,11 +7,11 @@
     <!-- ?v= bump on every meaningful main.js / styles.css change to bust
          WebView2's persistent cache. The cache is keyed on full URL, so
          appending a unique query param forces a fresh fetch. -->
-    <link rel="stylesheet" href="styles.css?v=4.7.0" />
+    <link rel="stylesheet" href="styles.css?v=4.8.0" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=VT323&display=swap" rel="stylesheet" />
-    <script type="module" src="/main.js?v=4.7.0" defer></script>
+    <script type="module" src="/main.js?v=4.8.0" defer></script>
   </head>
   <body class="aurora-window">
     <!-- Frameless titlebar: drag region + brand + window controls. -->
@@ -69,6 +69,9 @@
           </button>
           <button class="nav-item" data-view="knowledge">
             <span class="nav-ico">≣</span><span class="nav-label">Knowledge Bank</span>
+          </button>
+          <button class="nav-item" data-view="community">
+            <span class="nav-ico">✦</span><span class="nav-label">Community</span>
           </button>
         </nav>
 
@@ -380,6 +383,25 @@
               The knowledge bank is what Aurora cites — every finding traces to
               one of these entries. That's how Aurora stays a glass box. New
               entries arrive via overnight ingest from public scientific sources.
+            </div>
+          </section>
+
+          <!-- COMMUNITY: findings shared by Aurora users. Reads the hosted
+               feed (cloud/aurora-community Worker) via /api/community/feed so
+               it updates across machines; falls back to the local feed. -->
+          <section class="view" id="view-community">
+            <div class="breadcrumb">community / <b id="communityMeta">findings</b></div>
+            <div class="community-intro">
+              Findings Aurora users chose to share — the live pulse of the
+              glass box. Hit <b>⤴ Share</b> on any of your own findings (Findings
+              tab) to post here.
+              <button class="btn btn-secondary community-refresh" id="communityRefreshBtn"><span class="btn-ico">↻</span> Refresh</button>
+            </div>
+            <div id="communityFeed"><div class="empty-state">Loading…</div></div>
+            <div class="data-foot-hint">
+              Shares carry only the finding text, the cited method, and the
+              dataset name — never raw data. The feed is also Aurora's honest
+              usage signal: real people running real analyses.
             </div>
           </section>
 

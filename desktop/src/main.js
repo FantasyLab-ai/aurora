@@ -22,7 +22,7 @@ const STATE_POLL_MS  = 6000;
 // Shows in the WebView2 console so we can verify the right JS loaded
 // (WebView2 sometimes caches main.js across builds despite Tauri
 // bundling fresh assets every time).
-const AURORA_SHELL_VERSION = "phase-4.7-simulate-intervene-share";
+const AURORA_SHELL_VERSION = "phase-4.8-community-feed";
 
 // First-run demo launcher. Cards are built from /api/demo_datasets so the
 // paths are whatever the backend can actually resolve -- critically, in the
@@ -167,7 +167,7 @@ function wireWindowControls() {
 // Views the shell knows about. Sidebar entries map to these.
 // Tabs map to the first three (overview/findings/data). Sidebar can
 // take you to the others (methods/datasets/bundles/studio).
-const VIEWS = ["overview", "findings", "data", "methods", "phasespace", "spacetime", "forecast", "causal", "datasets", "bundles", "knowledge", "studio"];
+const VIEWS = ["overview", "findings", "data", "methods", "phasespace", "spacetime", "forecast", "causal", "datasets", "bundles", "knowledge", "community", "studio"];
 const TABS  = ["overview", "findings", "data"];
 
 let currentView = "overview";
@@ -207,6 +207,7 @@ function setActiveView(view) {
   if (view === "datasets")   refreshDatasets();
   if (view === "bundles")    refreshBundles();
   if (view === "knowledge")  refreshKnowledgeBank();
+  if (view === "community")  refreshCommunity();
 }
 
 function moveTabUnderline() {
@@ -2191,6 +2192,59 @@ function wireShareModal() {
 
 
 // ---------------------------------------------------------------------
+// 8d. Community — findings shared by Aurora users. Reads /api/community/feed
+// (the hosted cross-machine feed, with local fallback).
+// ---------------------------------------------------------------------
+async function refreshCommunity() {
+  const wrap = document.getElementById("communityFeed");
+  if (!wrap) return;
+  const r = await auroraFetch("/api/community/feed?limit=50");
+  if (!r || r.ok === false) {
+    setText("communityMeta", "unavailable");
+    wrap.innerHTML = renderEmpty(
+      "Community feed unavailable. " + esc((r && r.error) || "Start Aurora and retry."));
+    return;
+  }
+  const items = Array.isArray(r.items) ? r.items : [];
+  const src = r.source === "community" ? "live · across machines" : "local only";
+  setText("communityMeta", `${items.length} shared · ${src}`);
+  if (!items.length) {
+    wrap.innerHTML = renderEmpty(
+      "No shared findings yet. Be the first — open <b>Findings</b>, hit <b>⤴ Share</b> on a " +
+      "finding, then <b>Share to community</b>.");
+    return;
+  }
+  wrap.innerHTML = `<div class="community-grid">` + items.map((it) => {
+    const sev = (it.severity || "info").toLowerCase();
+    const when = _relativeTimeFromIso(it.ts);
+    const meta = [];
+    if (it.method)  meta.push(esc(it.method));
+    if (it.dataset) meta.push(esc(it.dataset));
+    return `<article class="comm-card comm-card--${sev}">
+      <div class="comm-card-head">
+        <span class="finding-sev finding-sev--${sev}">${sev}</span>
+        ${when ? `<span class="comm-when">${esc(when)}</span>` : ""}
+      </div>
+      <div class="comm-title">${esc(it.title || "finding")}</div>
+      ${it.detail ? `<div class="comm-detail">${esc(String(it.detail).slice(0, 220))}</div>` : ""}
+      ${meta.length ? `<div class="comm-meta">${meta.join(" · ")}</div>` : ""}
+    </article>`;
+  }).join("") + `</div>`;
+}
+
+function _relativeTimeFromIso(iso) {
+  if (!iso) return "";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return "";
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 60)    return "just now";
+  if (s < 3600)  return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+
+// ---------------------------------------------------------------------
 // 9. Studio iframe — lazy-load + offline fallback
 // ---------------------------------------------------------------------
 function loadStudioIframe() {
@@ -2256,6 +2310,9 @@ window.addEventListener("DOMContentLoaded", () => {
 
   const kbBtn = document.getElementById("kbSearchBtn");
   if (kbBtn) kbBtn.addEventListener("click", _kbSearch);
+
+  const commRefresh = document.getElementById("communityRefreshBtn");
+  if (commRefresh) commRefresh.addEventListener("click", refreshCommunity);
   const kbInput = document.getElementById("kbSearchInput");
   if (kbInput) kbInput.addEventListener("keydown", (e) => { if (e.key === "Enter") _kbSearch(); });
 
