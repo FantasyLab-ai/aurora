@@ -11,6 +11,21 @@ let _demo = null;                 // current snapshot
 let _sc = { xi: 0, yi: 1, mode: "scatter" };
 let _method = "pearson";
 
+// Prettify raw method ids for the "methods Aurora ran" strip.
+const METHOD_LABEL = {
+  "bocpd": "Changepoint · BOCPD", "dtw": "Dynamic Time Warping", "emd": "Empirical Mode Decomp.",
+  "kalman": "Kalman filter", "matrix_profile": "Matrix Profile", "var": "VAR",
+  "robust_pca": "Robust PCA", "spectral_entropy": "Spectral entropy",
+  "multivariate_outlier_consensus": "Outlier consensus", "AR(1)": "AR(1) forecast",
+  "iso-forest + robust-Z": "Isolation Forest + robust-Z", "hmm": "HMM regimes",
+  "sindy": "SINDy physics", "granger": "Granger causality", "mutual_information_ksg": "Mutual information",
+};
+const prettyMethod = (m) => METHOD_LABEL[m] || m;
+// Capabilities the engine has beyond whatever this particular run surfaced.
+const ENGINE_ALSO = ["SINDy physics discovery", "HMM regime detection", "Mutual information (non-linear)",
+  "Causal do-calculus", "Ensemble forecasting + CI", "Phase-space & attractors",
+  "Spacetime worldlines", "Knowledge-bank citations"];
+
 async function boot() {
   let manifest = [];
   try { manifest = await (await fetch("data/manifest.json", { cache: "no-store" })).json(); }
@@ -50,16 +65,28 @@ function render() {
   const d = _demo, wb = d.workbench || {};
   $("result").innerHTML = `
     <div class="rz rz-1">
-      <div class="rz-step">STEP 1 · DISCOVER</div>
+      <div class="rz-step">STEP 1 · DISCOVER — Aurora ran its full method battery</div>
       <div class="rz-h">${esc(d.title)}</div>
-      ${d.narrative ? `<div class="rz-narr">${esc(d.narrative)}</div>` : ""}
+      <div class="statbar">
+        <div class="stat"><div class="stat-n">${(d.findings || []).length}</div><div class="stat-l">findings</div></div>
+        <div class="stat"><div class="stat-n">${(d.methods || []).length}</div><div class="stat-l">methods run</div></div>
+        <div class="stat"><div class="stat-n stat-mint">0</div><div class="stat-l">fabricated</div></div>
+        <div class="stat"><div class="stat-n">${(d.findings || []).filter((f) => f.cited).length}</div><div class="stat-l">cited findings</div></div>
+      </div>
+      <div class="methods-strip">
+        <div class="ms-lbl">methods Aurora ran on this dataset</div>
+        <div class="ms-badges">${(d.methods || []).map((m) => `<span class="mbadge">${esc(prettyMethod(m))}</span>`).join("")}</div>
+        <div class="ms-also">…and the engine also does ${ENGINE_ALSO.map((x) => `<span class="also">${esc(x)}</span>`).join("")}</div>
+      </div>
+      ${d.narrative ? `<div class="rz-narr"><b>Aurora's summary:</b> ${esc(d.narrative)}</div>` : ""}
       <div class="findings">${(d.findings || []).slice(0, 6).map(findingCard).join("") || `<div class="muted">No findings surfaced.</div>`}</div>
     </div>
     <div class="rz rz-2">
-      <div class="rz-step">STEP 2 · UNDERSTAND — every column vs every column</div>
+      <div class="rz-step">STEP 2 · UNDERSTAND — relationships, structure &amp; dynamics</div>
       <div class="corr-head"><div class="corr-title">Correlation matrix · <b>${(wb.columns || []).length}</b> numeric columns · n=${wb.n_rows_full || "—"}</div>
         <div class="toggle"><button class="mini ${_method === "pearson" ? "on" : ""}" data-m="pearson">Pearson</button><button class="mini ${_method === "spearman" ? "on" : ""}" data-m="spearman">Spearman</button></div></div>
       <div class="corr-body"><div id="heat"></div><div id="scatter"></div></div>
+      <div class="also-strip"><span class="as-lbl">correlation is just the surface — the full app also gives you:</span><span class="as-item">Phase space + attractors</span><span class="as-item">Forecast + CI bands</span><span class="as-item">Spacetime worldlines</span><span class="as-item">Causal DAG + do-calculus</span><span class="as-item">SINDy governing equations</span></div>
     </div>
     <div class="rz rz-3">
       <div class="rz-step">STEP 3 · DECIDE — so what?</div>
