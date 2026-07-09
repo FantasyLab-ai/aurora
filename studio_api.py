@@ -5449,6 +5449,132 @@ def api_community_feed():
                     "count": len(items), "items": items})
 
 
+def _resolve_run_csv(run_dir):
+    """Best-effort locate the source CSV for a run so the data workbench can
+    read raw values. The run-dir name embeds the original filename after '__';
+    search the known homes (any CSV in the run dir, uploads, demo fixtures,
+    cwd) for it. Returns a Path or None."""
+    try:
+        nm = run_dir.name
+        fname = nm.split("__", 1)[1] if "__" in nm else nm
+    except Exception:
+        return None
+    cands = []
+    try:
+        cands += list(run_dir.glob("*.csv"))
+    except Exception:
+        pass
+    roots = [UPLOADS_DIR, _AURORA_HOME / "uploads",
+             REPO_ROOT / "data" / "fixtures", Path("data") / "fixtures",
+             Path.cwd()]
+    for r in roots:
+        try:
+            cands.append(Path(r) / fname)
+        except Exception:
+            continue
+    for c in cands:
+        try:
+            if c and c.exists() and c.is_file():
+                return c
+        except Exception:
+            continue
+    return None
+
+
+@app.route("/api/analysis/workbench")
+def api_analysis_workbench():
+    """Data workbench for a run: Pearson + Spearman correlation matrices,
+    per-column stats/histograms (Distributions + Quality), and a downsampled
+    numeric sample the frontend uses to draw scatter plots for any pair.
+
+    Query: ?run_dir=...  (defaults to latest)
+
+    Fast path: reads the source CSV directly (single read_csv, no build_state,
+    no LLM). Honest ok:false when the raw file can't be located.
+    """
+    try:
+        import numpy as np
+        import pandas as pd
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 503
+    rd = request.args.get("run_dir")
+    run = Path(rd) if rd else None
+    if run is None:
+        try:
+            from fantasyai.aurora.state_builder import find_latest_run
+            run = find_latest_run(DEFAULT_OUTPUTS)
+        except Exception:
+            run = None
+    if not run or not run.exists():
+        return jsonify({"ok": False, "error": "no run available"}), 404
+    csv = _resolve_run_csv(run)
+    if not csv:
+        return jsonify({"ok": False, "error": "raw data not available for this run "
+                        "(source file not found in uploads or demo fixtures)"}), 200
+    try:
+        df = pd.read_csv(csv, low_memory=False)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"could not read dataset: {e}"}), 200
+
+    n_full = int(len(df))
+    num = df.select_dtypes(include="number")
+    MAXCOL = 25
+    cols = [str(c) for c in list(num.columns[:MAXCOL])]
+    num = num[num.columns[:MAXCOL]]
+
+    # Per-column stats + 10-bin histogram (covers Distributions + Quality tabs).
+    col_stats = []
+    numset = set(num.columns)
+    for c in list(df.columns[:60]):
+        s = df[c]
+        is_num = c in numset
+        missing = int(s.isna().sum())
+        st = {"name": str(c), "dtype": "number" if is_num else str(s.dtype),
+              "count": int(s.notna().sum()), "missing": missing,
+              "missing_pct": round(100.0 * missing / max(1, n_full), 1)}
+        if is_num:
+            v = pd.to_numeric(s, errors="coerce").dropna().to_numpy()
+            if v.size:
+                st.update({"min": float(np.min(v)), "max": float(np.max(v)),
+                           "mean": float(np.mean(v)), "std": float(np.std(v))})
+                try:
+                    counts, edges = np.histogram(v, bins=10)
+                    st["hist"] = {"counts": [int(x) for x in counts],
+                                  "edges": [round(float(x), 4) for x in edges]}
+                except Exception:
+                    pass
+        col_stats.append(st)
+
+    def _matrix(method):
+        try:
+            m = num.corr(method=method)
+            return [[None if pd.isna(x) else round(float(x), 4) for x in row]
+                    for row in m.to_numpy()]
+        except Exception:
+            return None
+
+    # Downsampled numeric sample (row order preserved) for client-side scatter.
+    MAXROWS = 1500
+    sample_df = num
+    if len(sample_df) > MAXROWS:
+        step = max(1, len(sample_df) // MAXROWS)
+        sample_df = sample_df.iloc[::step].head(MAXROWS)
+    sample = [[None if pd.isna(x) else round(float(x), 6) for x in row]
+              for row in sample_df.to_numpy()]
+
+    return jsonify({
+        "ok": True,
+        "dataset": csv.name,
+        "n_rows_full": n_full,
+        "columns": cols,
+        "col_stats": col_stats,
+        "corr_pearson": _matrix("pearson"),
+        "corr_spearman": _matrix("spearman"),
+        "sample": sample,
+        "sample_n": len(sample),
+    })
+
+
 @app.route("/api/tier/status")
 def api_tier_status():
     """Read current sampling state for a run_dir.

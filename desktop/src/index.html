@@ -225,12 +225,30 @@
           <!-- DATA: dataset preview table. -->
           <section class="view" id="view-data">
             <div class="breadcrumb">data / <b id="dataRunId">no dataset loaded</b></div>
-            <div class="data-table-wrap" id="dataTableWrap">
-              <div class="empty-state">No dataset loaded. Open <b>Aurora Studio</b> to upload a CSV, then come back.</div>
+            <div class="wb-tabs">
+              <button class="wb-tab is-active" data-wbtab="table">Table</button>
+              <button class="wb-tab" data-wbtab="correlations">Correlations</button>
+              <button class="wb-tab" data-wbtab="distributions">Distributions</button>
+              <button class="wb-tab" data-wbtab="quality">Quality</button>
+            </div>
+            <div class="wb-pane" data-wbpane="table">
+              <div class="data-table-wrap" id="dataTableWrap">
+                <div class="empty-state">No dataset loaded. Open <b>Aurora Studio</b> to upload a CSV, then come back.</div>
+              </div>
+            </div>
+            <div class="wb-pane" data-wbpane="correlations" hidden>
+              <div id="wbCorr"><div class="empty-state">Open this tab to compute correlations.</div></div>
+            </div>
+            <div class="wb-pane" data-wbpane="distributions" hidden>
+              <div id="wbDist"><div class="empty-state">Open this tab to see per-column distributions.</div></div>
+            </div>
+            <div class="wb-pane" data-wbpane="quality" hidden>
+              <div id="wbQual"><div class="empty-state">Open this tab for a data-quality summary.</div></div>
             </div>
             <div class="data-foot-hint">
-              For large datasets, this view will eventually use a virtualized renderer
-              so 100k rows stay at 60fps — only the visible rows mount.
+              Correlations are the <b>hook</b> — but correlation isn't causation. Click any
+              pair to open the scatter and hit <b>Is it real?</b> to run do-calculus and see
+              whether the relationship survives as a causal effect.
             </div>
           </section>
 

@@ -22,7 +22,7 @@ const STATE_POLL_MS  = 6000;
 // Shows in the WebView2 console so we can verify the right JS loaded
 // (WebView2 sometimes caches main.js across builds despite Tauri
 // bundling fresh assets every time).
-const AURORA_SHELL_VERSION = "phase-4.8-community-feed";
+const AURORA_SHELL_VERSION = "phase-4.9-data-workbench-decisions";
 
 // First-run demo launcher. Cards are built from /api/demo_datasets so the
 // paths are whatever the backend can actually resolve -- critically, in the
@@ -1854,12 +1854,8 @@ function openFindingDetail(finding) {
     }
   }
 
-  body.innerHTML = rowsHtml + citation +
-    `<div class="detail-share-row">
-       <button class="btn btn-secondary" id="detailShareBtn"><span class="btn-ico">⤴</span> Share this finding</button>
-     </div>`;
-  const dsb = document.getElementById("detailShareBtn");
-  if (dsb) dsb.addEventListener("click", () => { closeFindingDetail(); openShareModal(finding); });
+  body.innerHTML = rowsHtml + citation + _decisionHTML(finding);
+  wireDecisionCard(finding);
   panel.classList.add("is-visible");
   backdrop.classList.add("is-visible");
   panel.setAttribute("aria-hidden", "false");
@@ -2245,6 +2241,359 @@ function _relativeTimeFromIso(iso) {
 
 
 // ---------------------------------------------------------------------
+// 8d. Data workbench — Correlations / Distributions / Quality tabs on the
+// Data view. One /api/analysis/workbench fetch per run (Pearson + Spearman
+// matrices + per-column stats/histograms + a downsampled numeric sample);
+// everything else (heatmap, scatter, regression stats, causal check) is
+// computed client-side for instant interaction.
+// ---------------------------------------------------------------------
+let _wbCache = { runDir: null, data: null };
+let _wbCorrMethod = "pearson";
+let _wbScatter = { xi: 0, yi: 1, mode: "scatter" };
+
+function wireDataTabs() {
+  document.querySelectorAll(".wb-tab").forEach((t) => {
+    t.addEventListener("click", () => {
+      const which = t.dataset.wbtab;
+      document.querySelectorAll(".wb-tab").forEach((x) => x.classList.toggle("is-active", x === t));
+      document.querySelectorAll(".wb-pane").forEach((p) => { p.hidden = (p.dataset.wbpane !== which); });
+      if (which !== "table") loadWorkbench(which);
+    });
+  });
+}
+
+const _wbHostId = (tab) => tab === "correlations" ? "wbCorr" : tab === "distributions" ? "wbDist" : "wbQual";
+function _wbMsg(tab, msg, warn) {
+  const el = document.getElementById(_wbHostId(tab));
+  if (el) el.innerHTML = `<div class="empty-state"${warn ? ' style="color:var(--warn)"' : ""}>${esc(msg)}</div>`;
+}
+
+async function loadWorkbench(tab) {
+  if (!_currentRunDir) { _wbMsg(tab, "Run an analysis first — the workbench reads that run's dataset.", true); return; }
+  if (_wbCache.runDir === _currentRunDir && _wbCache.data) { _renderWbTab(tab, _wbCache.data); return; }
+  _wbMsg(tab, "▶ computing correlations from the raw dataset…");
+  const j = await auroraFetch(`/api/analysis/workbench?run_dir=${encodeURIComponent(_currentRunDir)}`);
+  if (!j || j.ok === false) { _wbMsg(tab, (j && j.error) || "workbench unavailable", true); return; }
+  _wbCache = { runDir: _currentRunDir, data: j };
+  _wbScatter = { xi: 0, yi: (j.columns && j.columns.length > 1) ? 1 : 0, mode: "scatter" };
+  _renderWbTab(tab, j);
+}
+
+function _renderWbTab(tab, data) {
+  if (tab === "correlations") renderWbCorrelations(data);
+  else if (tab === "distributions") renderWbDistributions(data);
+  else if (tab === "quality") renderWbQuality(data);
+}
+
+const _wbShort = (s) => { s = String(s); return s.length > 11 ? s.slice(0, 10) + "…" : s; };
+function _corrColor(v) {
+  if (v == null) return "rgba(255,255,255,0.03)";
+  const a = Math.min(1, Math.abs(v));
+  return v >= 0 ? `rgba(110,231,255,${(0.10 + 0.78 * a).toFixed(3)})`
+                : `rgba(255,110,199,${(0.10 + 0.78 * a).toFixed(3)})`;
+}
+
+function renderWbCorrelations(data) {
+  const host = document.getElementById("wbCorr");
+  if (!host) return;
+  const cols = data.columns || [];
+  if (cols.length < 2) { host.innerHTML = `<div class="empty-state">Need ≥2 numeric columns for a correlation matrix (this dataset has ${cols.length}).</div>`; return; }
+  const M = _wbCorrMethod === "spearman" ? data.corr_spearman : data.corr_pearson;
+  const n = cols.length;
+  let hm = `<div class="wb-heatmap" style="grid-template-columns:100px repeat(${n},minmax(30px,1fr))"><div class="wb-hcorner"></div>`;
+  cols.forEach((c) => hm += `<div class="wb-hcol" title="${esc(c)}">${esc(_wbShort(c))}</div>`);
+  for (let i = 0; i < n; i++) {
+    hm += `<div class="wb-hrow" title="${esc(cols[i])}">${esc(_wbShort(cols[i]))}</div>`;
+    for (let j = 0; j < n; j++) {
+      const v = (M && M[i]) ? M[i][j] : null;
+      const t = v == null ? "" : (Math.abs(v) >= 0.995 ? "1" : v.toFixed(2).replace("0.", ".").replace("-0.", "-."));
+      hm += `<div class="wb-cell${i === j ? " wb-cell--diag" : ""}" data-xi="${i}" data-yi="${j}" style="background:${_corrColor(v)}" title="${esc(cols[i])} × ${esc(cols[j])} = ${v == null ? "—" : v.toFixed(3)}">${t}</div>`;
+    }
+  }
+  hm += `</div>`;
+  host.innerHTML = `
+    <div class="wb-corr-head">
+      <div class="wb-corr-title">Correlation matrix · <b>${n}</b> numeric columns · n=${data.n_rows_full}</div>
+      <div class="wb-toggle">
+        <button class="wb-mini ${_wbCorrMethod === "pearson" ? "is-active" : ""}" data-corrm="pearson">Pearson</button>
+        <button class="wb-mini ${_wbCorrMethod === "spearman" ? "is-active" : ""}" data-corrm="spearman">Spearman</button>
+      </div>
+    </div>
+    <div class="wb-corr-body">
+      <div class="wb-heatmap-wrap">${hm}${_topPairsHTML(cols, M)}</div>
+      <div class="wb-scatter-wrap" id="wbScatterWrap"></div>
+    </div>`;
+  host.querySelectorAll("[data-corrm]").forEach((b) => b.addEventListener("click", () => { _wbCorrMethod = b.dataset.corrm; renderWbCorrelations(_wbCache.data); }));
+  host.querySelectorAll(".wb-cell[data-xi]").forEach((c) => c.addEventListener("click", () => {
+    _wbScatter.xi = +c.dataset.xi; _wbScatter.yi = +c.dataset.yi; renderWbScatter(_wbCache.data);
+  }));
+  host.querySelectorAll(".wb-pair[data-xi]").forEach((c) => c.addEventListener("click", () => {
+    _wbScatter.xi = +c.dataset.xi; _wbScatter.yi = +c.dataset.yi; renderWbScatter(_wbCache.data);
+  }));
+  renderWbScatter(data);
+}
+
+function _topPairsHTML(cols, M) {
+  const pairs = [];
+  for (let i = 0; i < cols.length; i++)
+    for (let j = i + 1; j < cols.length; j++) {
+      const v = (M && M[i]) ? M[i][j] : null;
+      if (v != null) pairs.push({ i, j, v });
+    }
+  pairs.sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
+  const top = pairs.slice(0, 8);
+  if (!top.length) return "";
+  return `<div class="wb-toppairs"><div class="wb-tp-title">Strongest relationships — click to inspect</div>` +
+    top.map((p) => {
+      const a = Math.min(1, Math.abs(p.v)), col = p.v >= 0 ? "var(--cyan)" : "var(--magenta)";
+      return `<div class="wb-pair" data-xi="${p.i}" data-yi="${p.j}">
+        <span class="wb-pair-name">${esc(cols[p.i])} <span class="wb-pair-x">×</span> ${esc(cols[p.j])}</span>
+        <span class="wb-pair-bar"><span style="width:${(a * 100).toFixed(0)}%;background:${col}"></span></span>
+        <span class="wb-pair-r" style="color:${col}">${p.v >= 0 ? "+" : ""}${p.v.toFixed(2)}</span>
+      </div>`;
+    }).join("") + `</div>`;
+}
+
+function _normCdf(x) {
+  const t = 1 / (1 + 0.2316419 * Math.abs(x));
+  const d = 0.3989423 * Math.exp(-x * x / 2);
+  const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+  return x > 0 ? 1 - p : p;
+}
+function _corrStats(r, n) {
+  if (r == null || n == null || n < 4 || Math.abs(r) >= 1) return { p: "—", ci: "—" };
+  const z = 0.5 * Math.log((1 + r) / (1 - r)), se = 1 / Math.sqrt(n - 3);
+  const lo = Math.tanh(z - 1.96 * se), hi = Math.tanh(z + 1.96 * se);
+  const pv = 2 * (1 - _normCdf(Math.abs(z) / se));
+  return { p: pv < 1e-4 ? "<0.0001" : pv.toFixed(4), ci: `${lo.toFixed(2)} – ${hi.toFixed(2)}` };
+}
+
+function renderWbScatter(data) {
+  const wrap = document.getElementById("wbScatterWrap");
+  if (!wrap) return;
+  const cols = data.columns, xi = _wbScatter.xi, yi = _wbScatter.yi;
+  if (xi === yi) { wrap.innerHTML = `<div class="empty-state" style="padding:24px">Click any off-diagonal cell (or a pair on the left) to inspect two variables.</div>`; return; }
+  const pts = [];
+  (data.sample || []).forEach((row) => { const x = row[xi], y = row[yi]; if (x != null && y != null && isFinite(x) && isFinite(y)) pts.push([x, y]); });
+  const rFull = (data.corr_pearson && data.corr_pearson[xi]) ? data.corr_pearson[xi][yi] : null;
+  const rSp = (data.corr_spearman && data.corr_spearman[xi]) ? data.corr_spearman[xi][yi] : null;
+  const stats = _corrStats(rFull, data.n_rows_full);
+  const rCol = rFull == null ? "var(--ink)" : (rFull >= 0 ? "var(--cyan)" : "var(--magenta)");
+  const nonlin = (rFull != null && rSp != null && Math.abs(rSp) - Math.abs(rFull) > 0.15);
+  wrap.innerHTML = `
+    <div class="wb-sc-head">
+      <div class="wb-sc-title">${esc(cols[xi])} <span class="wb-pair-x">vs</span> ${esc(cols[yi])}</div>
+      <div class="wb-toggle">
+        <button class="wb-mini ${_wbScatter.mode === "scatter" ? "is-active" : ""}" data-scm="scatter">Scatter</button>
+        <button class="wb-mini ${_wbScatter.mode === "line" ? "is-active" : ""}" data-scm="line">Line</button>
+        <button class="wb-mini ${_wbScatter.mode === "residual" ? "is-active" : ""}" data-scm="residual">Residual</button>
+      </div>
+    </div>
+    ${_scatterSVG(pts, _wbScatter.mode)}
+    <div class="wb-sc-stats">
+      <span class="wb-stat">r <b style="color:${rCol}">${rFull == null ? "—" : (rFull >= 0 ? "+" : "") + rFull.toFixed(3)}</b></span>
+      <span class="wb-stat">r² <b>${rFull == null ? "—" : (rFull * rFull).toFixed(3)}</b></span>
+      <span class="wb-stat">n <b>${data.n_rows_full}</b></span>
+      <span class="wb-stat">p <b>${stats.p}</b></span>
+      <span class="wb-stat">95% CI <b>${stats.ci}</b></span>
+    </div>
+    ${nonlin ? `<div class="wb-sc-note">⚠ Non-linear — Spearman ρ=${rSp.toFixed(2)} is well above Pearson r; the relationship isn't a straight line.</div>` : ""}
+    <div class="wb-sc-actions">
+      <button class="btn btn-primary" id="wbCausalBtn"><span class="btn-ico">◎</span> Is it real? — run do-calculus</button>
+    </div>
+    <div class="wb-causal" id="wbCausalResult"></div>`;
+  wrap.querySelectorAll("[data-scm]").forEach((b) => b.addEventListener("click", () => { _wbScatter.mode = b.dataset.scm; renderWbScatter(_wbCache.data); }));
+  const cb = document.getElementById("wbCausalBtn");
+  if (cb) cb.addEventListener("click", () => _wbRunCausal(cols[xi], cols[yi], rFull));
+}
+
+function _scatterSVG(pts, mode) {
+  if (pts.length < 2) return `<div class="empty-state" style="padding:24px">Not enough overlapping numeric points to plot.</div>`;
+  const W = 560, H = 260, pad = 34;
+  const n = pts.length;
+  let sx = 0, sy = 0, sxx = 0, sxy = 0;
+  pts.forEach(([x, y]) => { sx += x; sy += y; sxx += x * x; sxy += x * y; });
+  const mx = sx / n, my = sy / n;
+  const slope = (sxy - n * mx * my) / ((sxx - n * mx * mx) || 1e-9), intercept = my - slope * mx;
+  if (mode === "line") return _dualLineSVG(pts, W, H, pad);
+  if (mode === "residual") return _cloudSVG(pts.map(([x, y]) => [x, y - (slope * x + intercept)]), W, H, pad, null, null, true);
+  return _cloudSVG(pts, W, H, pad, slope, intercept, false);
+}
+function _extent(a) { let lo = Infinity, hi = -Infinity; a.forEach((v) => { if (v < lo) lo = v; if (v > hi) hi = v; }); if (lo === hi) { lo -= 1; hi += 1; } return [lo, hi]; }
+function _cloudSVG(pts, W, H, pad, slope, intercept, isResid) {
+  const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+  const [xl, xh] = _extent(xs), [yl, yh] = _extent(ys);
+  const mX = (x) => pad + ((x - xl) / (xh - xl)) * (W - 2 * pad);
+  const mY = (y) => (H - pad) - ((y - yl) / (yh - yl)) * (H - 2 * pad);
+  let dots = "";
+  pts.forEach((p) => { dots += `<circle cx="${mX(p[0]).toFixed(1)}" cy="${mY(p[1]).toFixed(1)}" r="1.7" fill="#6ee7ff" opacity="0.5"/>`; });
+  let line = "";
+  if (isResid) { const y0 = mY(0); line = `<line x1="${pad}" y1="${y0.toFixed(1)}" x2="${W - pad}" y2="${y0.toFixed(1)}" stroke="#88ffd1" stroke-width="1.2" stroke-dasharray="5 4"/>`; }
+  else if (slope != null) { const x0 = xl, x1 = xh; line = `<line x1="${mX(x0).toFixed(1)}" y1="${mY(slope * x0 + intercept).toFixed(1)}" x2="${mX(x1).toFixed(1)}" y2="${mY(slope * x1 + intercept).toFixed(1)}" stroke="#88ffd1" stroke-width="1.6"/>`; }
+  return `<svg class="wb-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+    <line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="#2a3550"/>
+    <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H - pad}" stroke="#2a3550"/>
+    ${dots}${line}</svg>`;
+}
+function _dualLineSVG(pts, W, H, pad) {
+  const norm = (arr) => { const [lo, hi] = _extent(arr); return arr.map((v) => (v - lo) / (hi - lo)); };
+  const xN = norm(pts.map((p) => p[0])), yN = norm(pts.map((p) => p[1]));
+  const mX = (i) => pad + (i / (pts.length - 1)) * (W - 2 * pad);
+  const mY = (t) => (H - pad) - t * (H - 2 * pad);
+  const path = (vals) => vals.map((t, i) => (i ? "L" : "M") + ` ${mX(i).toFixed(1)} ${mY(t).toFixed(1)}`).join(" ");
+  return `<svg class="wb-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+    <line x1="${pad}" y1="${H - pad}" x2="${W - pad}" y2="${H - pad}" stroke="#2a3550"/>
+    <path d="${path(xN)}" stroke="#6ee7ff" stroke-width="1.4" fill="none" opacity="0.9"/>
+    <path d="${path(yN)}" stroke="#88ffd1" stroke-width="1.4" fill="none" opacity="0.9"/>
+    <text x="${W - pad}" y="16" text-anchor="end" font-family="'JetBrains Mono',monospace" font-size="10" fill="#6ee7ff">X</text>
+    <text x="${W - pad}" y="30" text-anchor="end" font-family="'JetBrains Mono',monospace" font-size="10" fill="#88ffd1">Y (both normalized)</text>
+  </svg>`;
+}
+
+async function _wbRunCausal(x, y, r) {
+  const res = document.getElementById("wbCausalResult");
+  if (!res) return;
+  res.innerHTML = `<div class="wb-causal-box">▶ running do-calculus for do(${esc(x)}) → ${esc(y)}…</div>`;
+  const body = { treatment: x, outcome: y };
+  if (_currentRunDir) body.run_dir = _currentRunDir;
+  const j = await auroraFetch("/api/causal/do", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!j || j.error || j.ok === false || j.unidentifiable_reason) {
+    const reason = (j && (j.unidentifiable_reason || j.error)) || "effect not identifiable from this run's DAG";
+    res.innerHTML = `<div class="wb-causal-box wb-causal-box--warn">
+      <div class="wb-cv-h">⚠ correlation ≠ causation here</div>
+      <div class="wb-cv-t">r = ${r == null ? "—" : r.toFixed(2)}, but the causal effect is <b>not identifiable</b>: ${esc(reason)}. Don't act on this as if it were causal.</div></div>`;
+    return;
+  }
+  const beta = j.effect_estimate != null ? (+j.effect_estimate).toFixed(3) : "—";
+  const se = j.standard_error != null ? (+j.standard_error).toFixed(3) : "—";
+  const adj = (j.adjustment_set || []).join(", ") || "(none needed)";
+  const near0 = j.effect_estimate != null && Math.abs(+j.effect_estimate) < (0.05 * (Math.abs(+(j.standard_error || 0)) + 1));
+  res.innerHTML = `<div class="wb-causal-box">
+    <div class="wb-cv-h">◎ causal verdict — do(${esc(x)}) → ${esc(y)}</div>
+    <div class="wb-cv-effect">effect ${beta}<span class="wb-cv-se"> ± ${se} SE</span></div>
+    <div class="wb-cv-row">correlation r = <b>${r == null ? "—" : r.toFixed(2)}</b> · adjusted for: <b>${esc(adj)}</b> · n=${esc(String(j.n_obs || "—"))}</div>
+    <div class="wb-cv-take">${near0
+      ? "The correlation largely <b>collapses</b> once you adjust — likely confounded. Be cautious about acting on it."
+      : "The effect <b>survives</b> adjustment — this is a candidate to act on. Validate the magnitude before committing."}</div>
+  </div>`;
+}
+
+function renderWbDistributions(data) {
+  const host = document.getElementById("wbDist");
+  if (!host) return;
+  const nums = (data.col_stats || []).filter((c) => c.hist && c.hist.counts && c.hist.counts.length);
+  if (!nums.length) { host.innerHTML = `<div class="empty-state">No numeric columns to plot distributions for.</div>`; return; }
+  host.innerHTML = `<div class="wb-dist-grid">` + nums.map((c) => {
+    const mx = Math.max(1, ...c.hist.counts);
+    const bars = c.hist.counts.map((n) => `<span class="wb-bar" style="height:${(6 + 94 * n / mx).toFixed(0)}%" title="${n}"></span>`).join("");
+    return `<div class="wb-dist-card">
+      <div class="wb-dist-name">${esc(c.name)}</div>
+      <div class="wb-dist-bars">${bars}</div>
+      <div class="wb-dist-foot">${(c.min != null ? c.min.toFixed(1) : "")} <span>μ ${c.mean != null ? c.mean.toFixed(1) : "—"} · σ ${c.std != null ? c.std.toFixed(1) : "—"}</span> ${(c.max != null ? c.max.toFixed(1) : "")}</div>
+    </div>`;
+  }).join("") + `</div>`;
+}
+
+function renderWbQuality(data) {
+  const host = document.getElementById("wbQual");
+  if (!host) return;
+  const rows = data.col_stats || [];
+  if (!rows.length) { host.innerHTML = `<div class="empty-state">No columns to summarize.</div>`; return; }
+  host.innerHTML = `<div class="wb-qual-head">${data.columns.length} numeric of ${rows.length} columns · ${data.n_rows_full} rows</div>
+    <table class="wb-qual"><thead><tr><th>column</th><th>type</th><th>missing</th><th>min</th><th>mean</th><th>max</th></tr></thead><tbody>` +
+    rows.map((c) => {
+      const miss = c.missing_pct || 0;
+      const mc = miss === 0 ? "var(--mint)" : miss < 5 ? "var(--warn)" : "var(--crit)";
+      return `<tr>
+        <td class="wb-q-name">${esc(c.name)}</td>
+        <td class="wb-q-type">${esc(c.dtype)}</td>
+        <td><span class="wb-q-miss"><span class="wb-q-missbar" style="width:${Math.min(100, miss).toFixed(0)}%;background:${mc}"></span></span> ${miss}%</td>
+        <td class="wb-q-num">${c.min != null ? c.min.toFixed(2) : "—"}</td>
+        <td class="wb-q-num">${c.mean != null ? c.mean.toFixed(2) : "—"}</td>
+        <td class="wb-q-num">${c.max != null ? c.max.toFixed(2) : "—"}</td>
+      </tr>`;
+    }).join("") + `</tbody></table>`;
+}
+
+
+// ---------------------------------------------------------------------
+// 8e. Decision layer — turn a finding into a recommended decision + a
+// one-page brief. The "so what?" that Correlation Studio's analysis never
+// reaches: it stops at "investigate further"; Aurora ends at a decision.
+// ---------------------------------------------------------------------
+function _decisionForFinding(f) {
+  const sev = (f.severity || "info").toLowerCase();
+  const m = (f.method || "").toLowerCase();
+  let rec;
+  if (/change|break|cusum|bocpd|ruptur/.test(m))
+    rec = "A structural break was detected. Find out what changed at that point and recalibrate thresholds/forecasts to the post-break regime before trusting older baselines.";
+  else if (/regime|hmm|markov/.test(m))
+    rec = "The system shifted regimes. Confirm which regime you're in now and apply the policy that fits it — a rule tuned for the other regime will misfire.";
+  else if (/anom|outlier|iso|z-?score|mad|robust/.test(m))
+    rec = "An outlier was flagged. First rule out a data error; if it's real, decide whether it's a one-off to log or a signal to act on now.";
+  else if (/causal|granger|do-?calc|backdoor/.test(m))
+    rec = "A directional relationship was estimated. If it holds up under do-calculus you can intervene on the driver to move the outcome — validate the effect size first.";
+  else if (/forecast|arima|ensemble|prophet|ets|sindy|physics/.test(m))
+    rec = "The model projects a notable move. Pre-position for the predicted value and set an alert at the confidence bound so you're warned if reality diverges.";
+  else
+    rec = "Verify the relationship is causal (not confounded) before acting on it, then take the smallest reversible action that tests it.";
+  const risk = sev === "crit" ? "High — flagged critical; ignoring it risks a material miss."
+             : sev === "warn" ? "Moderate — worth acting on this cycle."
+             : "Low — monitor; no immediate action needed.";
+  const conf = f.confidence != null ? `${Math.round(Number(f.confidence) * 100)}% confidence` : "";
+  return { rec, risk, conf, sev };
+}
+
+function _decisionHTML(f) {
+  const d = _decisionForFinding(f);
+  return `<div class="decision-card">
+    <div class="decision-lbl">▸ DECISION</div>
+    <div class="decision-rec">${esc(d.rec)}</div>
+    <div class="decision-meta">
+      <span class="decision-risk decision-risk--${d.sev}">risk if ignored: ${esc(d.risk)}</span>
+      ${d.conf ? `<span class="decision-conf">${esc(d.conf)}</span>` : ""}
+    </div>
+    <div class="decision-actions">
+      <button class="btn btn-secondary" id="decBriefBtn"><span class="btn-ico">⧉</span> Copy decision brief</button>
+      <button class="btn btn-secondary" id="decShareBtn"><span class="btn-ico">⤴</span> Share</button>
+    </div>
+    <div class="decision-status" id="decStatus"></div>
+  </div>`;
+}
+
+function _briefMarkdown(f) {
+  const d = _decisionForFinding(f);
+  const ev = _findingEvidence(f).map((e) => `- ${e.k}: ${e.v}`);
+  const cite = _citationText(f);
+  const out = [
+    "# Aurora Decision Brief", "",
+    `**Finding:** ${f.title || f.name || "(untitled)"}`,
+    `**Severity:** ${(f.severity || "info").toUpperCase()}${d.conf ? " · " + d.conf : ""}`,
+    `**Method:** ${f.method || "—"}`,
+  ];
+  const desc = String(f.description || f.narrative || f.summary || "").trim();
+  if (desc) out.push("", desc);
+  if (ev.length) out.push("", "## Evidence", ...ev);
+  if (cite) out.push("", `**Cited source:** ${cite}`);
+  out.push("", "## Recommended decision", d.rec, "", `**Risk if ignored:** ${d.risk}`);
+  if (_currentDatasetName) out.push("", `_Dataset: ${_currentDatasetName}_`);
+  out.push("_Generated by Aurora — glass-box analysis; every claim is cited._");
+  return out.join("\n");
+}
+
+function wireDecisionCard(finding) {
+  const brief = document.getElementById("decBriefBtn");
+  const share = document.getElementById("decShareBtn");
+  const status = document.getElementById("decStatus");
+  if (brief) brief.addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(_briefMarkdown(finding)); if (status) { status.textContent = "✓ decision brief copied — paste into a doc, Slack, or email"; status.className = "decision-status decision-status--ok"; } }
+    catch (e) { if (status) status.textContent = "copy failed — select the finding text manually"; }
+  });
+  if (share) share.addEventListener("click", () => { closeFindingDetail(); openShareModal(finding); });
+}
+
+
+// ---------------------------------------------------------------------
 // 9. Studio iframe — lazy-load + offline fallback
 // ---------------------------------------------------------------------
 function loadStudioIframe() {
@@ -2299,6 +2648,7 @@ window.addEventListener("DOMContentLoaded", () => {
   // the share-finding modal.
   SIM_SCOPES.forEach((sc) => { buildSimPanel(sc); wireSimPanel(sc); });
   wireShareModal();
+  wireDataTabs();
 
   const runBtn = document.getElementById("runBtn");
   if (runBtn) runBtn.addEventListener("click", triggerRun);
