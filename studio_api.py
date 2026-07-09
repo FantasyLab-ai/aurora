@@ -1936,14 +1936,23 @@ def _load_run_df_and_dag(run_dir: Path):
         state = None
     system_model = (state or {}).get("system_model")
     dag = load_dag_from_system_model(system_model)
-    # Resolve the dataset path from run meta.
-    meta = _read_json(run_dir / "_RUN_META.json") or {}
+    # Resolve the dataset: prefer an explicit path in run meta, else locate the
+    # source CSV by the run-dir's embedded filename (uploads / demo fixtures).
+    # (Two prior bugs here: `_read_json` was an undefined name — the helper is
+    # `_read_run_json(run_dir, name)` — and _RUN_META.json carries no
+    # `dataset_path`, so `df` was always None. Both broke every causal do()
+    # call with a 500. `_resolve_run_csv` is the same resolver the data
+    # workbench uses.)
+    meta = _read_run_json(run_dir, "_RUN_META.json") or {}
     ds_path = meta.get("dataset_path")
+    csv = Path(ds_path) if ds_path else None
+    if not (csv and csv.exists()):
+        csv = _resolve_run_csv(run_dir)
     df = None
-    if ds_path and Path(ds_path).exists():
+    if csv and csv.exists():
         try:
             import pandas as pd
-            df = pd.read_csv(ds_path)
+            df = pd.read_csv(csv, low_memory=False)
         except Exception:
             df = None
     return df, dag, state
