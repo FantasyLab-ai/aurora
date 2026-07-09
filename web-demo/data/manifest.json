@@ -1,0 +1,14 @@
+[
+ {
+  "slug": "factory-bearing",
+  "title": "Factory bearing sensors",
+  "icon": "\u2699",
+  "blurb": "Vibration & temperature from an industrial bearing \u2014 catch failure before it happens."
+ },
+ {
+  "slug": "climate-buoy",
+  "title": "Ocean climate buoy",
+  "icon": "\ud83c\udf0a",
+  "blurb": "A year of sea-surface readings \u2014 what actually drives wave height?"
+ }
+]
