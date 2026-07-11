@@ -44,7 +44,8 @@ Pick the file that matches your OS (filenames carry the version, e.g. `0.2.0`):
 
 On first launch Aurora bootstraps a small knowledge-bank seed, then runs **fully
 offline** — no API keys, no cloud, no telemetry. Drop a CSV on the window and
-watch it analyze.
+watch it analyze. Aurora is **local-first: your data never leaves your machine**
+unless you explicitly share a single finding — see [PRIVACY.md](PRIVACY.md).
 
 > **Heads up on the "Unknown Publisher" warning.** Current releases are not yet
 > code-signed, so Windows SmartScreen may show *"Windows protected your PC"* and
