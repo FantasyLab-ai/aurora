@@ -10,8 +10,16 @@ LLM agents need quantitative reasoning grounded in citations. Right now they don
 
 ## Install
 
+From PyPI (recommended — one command, no checkout):
+
 ```bash
-pip install mcp                                # MCP Python SDK (optional dep)
+pip install aurora-mcp        # or:  uvx aurora-mcp  (zero-install run)
+```
+
+From a source checkout:
+
+```bash
+pip install mcp                                # MCP Python SDK
 pip install -r requirements.txt               # Aurora itself
 ```
 

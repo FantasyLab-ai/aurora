@@ -292,7 +292,7 @@ def _run_pipeline(dataset_path: Path,
                            .hexdigest()[:8], 16) % (2**31)
 
     cmd = [
-        sys.executable, "-m", "scripts.run_aurora_dataset_runner",
+        sys.executable, "-m", "fantasyai.aurora.scripts.run_aurora_dataset_runner",
         "--dataset", str(dataset_path),
         "--seed", str(seed_int),
         *flags,
@@ -320,6 +320,14 @@ def _run_pipeline(dataset_path: Path,
     # Project root on PYTHONPATH (some launchers don't inherit cwd into it).
     existing_pp = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = (str(project_root) + _os.pathsep + existing_pp).rstrip(_os.pathsep)
+    # pip-installed (no repo checkout around us): site-packages is read-only
+    # territory, so route run artifacts to the user's home unless the caller
+    # already chose a location. Same mechanism the frozen desktop app uses.
+    if not (project_root / "scripts").is_dir():
+        env.setdefault(
+            "AURORA_OUTPUTS",
+            str(Path.home() / ".aurora" / "outputs" / "aurora_dataset_runs"),
+        )
 
     # Use temp files instead of OS pipes so a chatty subprocess can't
     # deadlock by filling the pipe buffer. Files have no size limit.
@@ -364,8 +372,9 @@ def _run_pipeline(dataset_path: Path,
     # run_dir we can salvage. Try stdout-JSON first, then disk scan.
     run_dir = _extract_run_dir_from_stdout(stdout) if stdout else None
     if run_dir is None:
-        out_root_path = Path(output_root) if output_root else (
-            project_root / "outputs" / "aurora_dataset_runs"
+        out_root_path = Path(output_root) if output_root else Path(
+            env.get("AURORA_OUTPUTS")
+            or (project_root / "outputs" / "aurora_dataset_runs")
         )
         if out_root_path.exists():
             dataset_slug = Path(str(dataset_path)).name

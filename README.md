@@ -1,3 +1,4 @@
+<!-- mcp-name: io.github.fantasylab-ai/aurora -->
 <div align="center">
   <img src="docs/screenshots/aurora-mascot-wizard.png" alt="Aurora" width="200"/>
 
@@ -361,7 +362,7 @@ b.verify()                                  # raises if tampered
 |---|---|---|
 | **Aurora SDK** ([docs](docs/sdk.md)) | Python devs, notebooks, pipelines | `pip install` away from cited, glass-box quantitative reasoning |
 | **Aurora Jupyter** ([docs](docs/jupyter.md)) | Notebook users | `aurora.run(df)` with rich HTML reprs, `to_html_report()` exports |
-| **Aurora MCP** ([docs](docs/mcp.md)) | LLM agents (Claude Desktop, Claude Code, Cursor, custom) | 7 MCP tools via stdio or HTTP transport; path-allowlisted, output-capped, JSON-only |
+| **Aurora MCP** ([docs](docs/mcp.md)) | LLM agents (Claude Desktop, Claude Code, Cursor, custom) | `uvx aurora-mcp` — 7 tools via stdio or HTTP transport; path-allowlisted, output-capped, JSON-only |
 | **Decision Contracts** ([docs](docs/decision-contracts.md)) | Automation pipelines | Programmable predicates → webhook / log / file / **Slack / Discord / email** when findings match. SSRF + recipient-cap guards. Streaming bridge fires contracts on live findings |
 | **Aurora Streaming** ([docs](docs/streaming.md)) | Live data feeds | File-watcher + rolling window + SSE event bus; per-finding dedupe; optional contracts auto-fire. **Kafka + Postgres CDC connectors** (deps gated) |
 | **Aurora Causal** ([docs](docs/causal-inference.md)) | Analysts asking "what if X?" | Pearl do-calculus: backdoor identification + adjustment OLS + counterfactual queries on the run's system_model DAG |
@@ -423,12 +424,14 @@ Add to your `claude_desktop_config.json`:
 {
   "mcpServers": {
     "aurora": {
-      "command": "/path/to/aurora/.venv/bin/python",
-      "args": ["-m", "aurora_mcp.server", "--allow-root", "/Users/you/data"]
+      "command": "uvx",
+      "args": ["aurora-mcp", "--allow-root", "/Users/you/data"]
     }
   }
 }
 ```
+
+No install step — `uvx` fetches [`aurora-mcp` from PyPI](https://pypi.org/project/aurora-mcp/) on first run. (Running from a source checkout instead? Use `"command": "/path/to/aurora/.venv/bin/python", "args": ["-m", "aurora_mcp.server", "--allow-root", "/Users/you/data"]`.)
 
 Then ask Claude:
 

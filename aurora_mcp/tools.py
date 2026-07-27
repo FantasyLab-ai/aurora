@@ -22,8 +22,11 @@ Security model:
   * **Output budget**: serialised responses larger than
     ``MAX_RESPONSE_BYTES`` are truncated with a clear marker; this
     prevents a runaway agent from streaming megabytes of findings.
-  * **No code execution**: tools never ``eval``, ``exec``, ``open``-for-
-    write outside the run dir, or spawn subprocesses.
+  * **No code execution**: tools never ``eval``, ``exec``, or ``open``-
+    for-write outside the run dir. The one subprocess in the stack is
+    Aurora's own pipeline runner (the packaged
+    ``fantasyai.aurora.scripts.run_aurora_dataset_runner``, launched with
+    the same interpreter) — never a shell, never user-supplied input.
 """
 from __future__ import annotations
 
@@ -477,10 +480,17 @@ TOOL_SCHEMAS = {
     "aurora_analyze": {
         "name": "aurora_analyze",
         "description": (
-            "Run Aurora on a dataset and return a glass-box summary "
-            "(findings count by severity, methods used, confidence, "
-            "fabricated_count). Set full_bundle=true to get the entire "
-            "Aurora Bundle. Read-only on the dataset."
+            "Statistical analysis of a dataset (CSV, TSV, Parquet, XLSX): runs "
+            "Aurora's battery of 19 research-grade methods on-device — anomaly "
+            "detection (isolation forest + robust-z), change-point detection, "
+            "trend and seasonality, correlation screening with FDR control, "
+            "forecasting, causal system-model discovery, and more. Returns CITED "
+            "findings (each carries its method, threshold, and claim_id), an "
+            "overall confidence, and a fabricated_count that is contractually "
+            "zero: every number is computed from the data, never generated. Use "
+            "this FIRST whenever a user asks to analyze data, find anomalies, "
+            "check what changed, or wants real statistics instead of estimates. "
+            "Read-only; local; compact summary unless full_bundle=true."
         ),
         "input_schema": {
             "type": "object",
@@ -498,9 +508,11 @@ TOOL_SCHEMAS = {
     "aurora_load_bundle": {
         "name": "aurora_load_bundle",
         "description": (
-            "Load a saved .aurora.json bundle and verify its integrity "
-            "hash. Returns the bundle's identifying fields plus the "
-            "findings-by-severity counts."
+            "Load a portable .aurora.json analysis bundle and verify its SHA-256 "
+            "integrity hash (and Ed25519 signature when present) BEFORE trusting "
+            "its findings. Use when someone shares an Aurora bundle and you need "
+            "proof it is untampered. Returns run identity, confidence, "
+            "fabricated_count, and findings-by-severity counts."
         ),
         "input_schema": {
             "type": "object",
@@ -514,10 +526,13 @@ TOOL_SCHEMAS = {
     "aurora_findings": {
         "name": "aurora_findings",
         "description": (
-            "List findings from an Aurora run/bundle with optional "
-            "severity + method filters. Every finding includes its "
-            "method, threshold, citation, and claim_id — agents can "
-            "use claim_id to drill into evidence via aurora_explain."
+            "List the verified findings from an Aurora run or bundle: each one "
+            "carries severity (crit/warn/info), the exact statistical method and "
+            "threshold that produced it, a plain-language citation, and a "
+            "claim_id for evidence drill-down via aurora_explain. Filter by "
+            "severity or method. Use after aurora_analyze to enumerate what was "
+            "actually found — quote findings from here instead of paraphrasing "
+            "from memory."
         ),
         "input_schema": {
             "type": "object",
@@ -538,9 +553,11 @@ TOOL_SCHEMAS = {
     "aurora_forecast": {
         "name": "aurora_forecast",
         "description": (
-            "Return Aurora's forecast for the run's target column. Pass "
-            "return_peak=true for just the peak value within the "
-            "horizon."
+            "Model-based forecast for the run's target column, fitted and "
+            "validated on the actual data with the method disclosed. Returns "
+            "point predictions with an honest horizon, or just the peak within "
+            "horizon_hours (return_peak=true). Use for any 'what will X be / when "
+            "does it peak' question instead of extrapolating by eye."
         ),
         "input_schema": {
             "type": "object",
@@ -555,8 +572,11 @@ TOOL_SCHEMAS = {
     "aurora_explain": {
         "name": "aurora_explain",
         "description": (
-            "Return the full evidence + method spec for a specific "
-            "claim_id. Use this when an agent needs to cite a finding."
+            "Full evidence for ONE finding by claim_id: the computed values "
+            "behind the claim plus the method's registry spec — assumptions, "
+            "parameters, and references. Use whenever you are about to cite, "
+            "verify, or defend a specific statistical claim; this is the receipt, "
+            "not a summary."
         ),
         "input_schema": {
             "type": "object",
@@ -570,9 +590,11 @@ TOOL_SCHEMAS = {
     "aurora_intervene": {
         "name": "aurora_intervene",
         "description": (
-            "Perturb a node in the system model by Δ and propagate "
-            "through the discovered relationships. Returns per-node "
-            "deltas with confidence intervals."
+            "What-if intervention: perturb one variable in the data's discovered "
+            "system model and propagate the shock through validated relationships "
+            "(up to max_depth hops). Returns per-node deltas WITH confidence "
+            "intervals. Use for 'what happens to Y if X changes by Δ' questions — "
+            "answers come from the data's own causal graph, not from priors."
         ),
         "input_schema": {
             "type": "object",
@@ -588,9 +610,11 @@ TOOL_SCHEMAS = {
     "aurora_simulate": {
         "name": "aurora_simulate",
         "description": (
-            "Forward-step Aurora's validated dynamics. Pauses honestly "
-            "when the CI grows too wide. Pass target_entity_id to "
-            "simulate a specific node (must have a fitted law)."
+            "Simulate the system forward n_steps using dynamics fitted and "
+            "validated on the data — and it PAUSES honestly when confidence "
+            "intervals grow too wide to keep going, rather than extrapolating "
+            "noise. Use for trajectory questions ('where is this heading') on a "
+            "completed run; pass target_entity_id to simulate a specific node."
         ),
         "input_schema": {
             "type": "object",

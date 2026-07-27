@@ -3,16 +3,71 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "aurora-qie"
+name = "aurora-mcp"
 version = "0.9.5"
-description = "Aurora — local-first quantitative intelligence console"
+description = "Aurora MCP server — glass-box statistical analysis for AI agents: 19 research-grade methods, cited findings, integrity-hashed bundles, zero invented numbers. Local-first."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Proprietary" }
-authors = [{ name = "bgrut" }]
+license = { text = "Apache-2.0" }
+authors = [{ name = "FantasyLab" }]
+keywords = [
+    "mcp", "model-context-protocol", "mcp-server", "llm-agents",
+    "statistics", "data-analysis", "anomaly-detection", "forecasting",
+    "change-point-detection", "causal-inference", "verification",
+    "glass-box", "explainable", "local-first",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
 
-# Runtime deps live in requirements.txt (kept simple for the local-first install).
-# This block is only used by tools that need pyproject metadata (pytest config, etc).
+# The MCP server pulls in the full Aurora engine — these mirror
+# requirements.txt minus the Studio web server (flask lives in the
+# optional [http] extra for the remote-transport shim).
+dependencies = [
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scipy>=1.10",
+    "scikit-learn>=1.3",
+    "statsmodels>=0.14",
+    "ruptures>=1.1",
+    "sympy>=1.12",
+    "matplotlib>=3.7",
+    "pyarrow>=14.0",
+    "openpyxl>=3.1",
+    "requests>=2.31",
+    "mcp>=1.0",
+]
+
+[project.optional-dependencies]
+http = ["flask>=3.0", "flask-cors>=4.0"]
+
+[project.scripts]
+aurora-mcp = "aurora_mcp.server:main"
+
+[project.urls]
+Homepage = "https://github.com/FantasyLab-ai/aurora"
+Repository = "https://github.com/FantasyLab-ai/aurora"
+Documentation = "https://github.com/FantasyLab-ai/aurora/blob/main/docs/mcp.md"
+Changelog = "https://github.com/FantasyLab-ai/aurora/blob/main/CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+include = ["aurora_mcp*", "aurora_sdk*", "fantasyai*"]
+
+# Runtime data the engine reads at import/analysis time — domain context
+# libraries, equation translations, knowledge-bank pack manifest.
+[tool.setuptools.package-data]
+"*" = ["*.json"]
+"fantasyai.aurora.synthesis" = ["domain_libraries/*.json", "equation_translations/*.json"]
+"fantasyai.aurora.knowledge_bank" = ["packs/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
