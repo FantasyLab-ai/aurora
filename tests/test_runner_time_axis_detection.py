@@ -28,7 +28,10 @@ import pytest
 def _load_runner_module():
     """Load the runner script as a module — its dataclasses need a
     real module context to work, so we use runpy.run_path."""
-    script = Path(__file__).resolve().parents[1] / "scripts" / "run_aurora_dataset_runner.py"
+    # the canonical runner lives inside the package now (the old scripts/
+    # path is a thin alias) — source-level assertions must read the real file
+    script = (Path(__file__).resolve().parents[1]
+              / "fantasyai" / "aurora" / "scripts" / "run_aurora_dataset_runner.py")
     return runpy.run_path(str(script), run_name="runner_mod_test")
 
 
@@ -143,7 +146,8 @@ class TestStructureContractEndToEnd:
         """
         from pathlib import Path
         src = (Path(__file__).resolve().parents[1]
-               / "scripts" / "run_aurora_dataset_runner.py").read_text(encoding="utf-8")
+               / "fantasyai" / "aurora" / "scripts"
+               / "run_aurora_dataset_runner.py").read_text(encoding="utf-8")
         # The fix: build_structure_contract receives a time-aware frame.
         assert "df_for_structure" in src, (
             "_main should compute a separate df_for_structure that "
