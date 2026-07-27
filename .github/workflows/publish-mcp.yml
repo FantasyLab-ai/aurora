@@ -1,0 +1,28 @@
+# Publish Aurora to the official MCP Registry via GitHub Actions OIDC.
+# Running inside FantasyLab-ai/aurora IS the ownership proof for the
+# io.github.fantasylab-ai namespace — no user tokens, no OAuth app grants.
+# Trigger: manually (Actions tab -> run workflow) or push an mcp-v* tag
+# after bumping the version in server.json + pyproject.toml.
+name: Publish to MCP Registry
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["mcp-v*"]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install mcp-publisher
+        run: |
+          curl -sL "https://github.com/modelcontextprotocol/registry/releases/download/v1.8.0/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+      - name: Login via Actions OIDC
+        run: ./mcp-publisher login github-oidc
+      - name: Publish server.json
+        run: ./mcp-publisher publish
