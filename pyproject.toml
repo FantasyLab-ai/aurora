@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aurora-mcp"
-version = "0.9.5"
+version = "0.9.6"
 description = "Aurora MCP server — glass-box statistical analysis for AI agents: 19 research-grade methods, cited findings, integrity-hashed bundles, zero invented numbers. Local-first."
 readme = "README.md"
 requires-python = ">=3.10"

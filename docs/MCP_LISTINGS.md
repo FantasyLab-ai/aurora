@@ -8,7 +8,7 @@ install command changes.
 
 | Field | Value |
 |---|---|
-| Registry name | `io.github.fantasylab-ai/aurora` |
+| Registry name | `io.github.FantasyLab-ai/aurora` |
 | PyPI package | [`aurora-mcp`](https://pypi.org/project/aurora-mcp/) |
 | Run command | `uvx aurora-mcp --allow-root /path/to/data` |
 | Repo | https://github.com/FantasyLab-ai/aurora |

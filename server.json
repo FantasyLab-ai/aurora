@@ -1,17 +1,17 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
-  "name": "io.github.fantasylab-ai/aurora",
+  "name": "io.github.FantasyLab-ai/aurora",
   "description": "Glass-box statistical analysis for agents: 19 methods, cited findings, zero invented numbers.",
   "repository": {
     "url": "https://github.com/FantasyLab-ai/aurora",
     "source": "github"
   },
-  "version": "0.9.5",
+  "version": "0.9.6",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "aurora-mcp",
-      "version": "0.9.5",
+      "version": "0.9.6",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

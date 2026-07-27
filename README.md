@@ -1,4 +1,4 @@
-<!-- mcp-name: io.github.fantasylab-ai/aurora -->
+<!-- mcp-name: io.github.FantasyLab-ai/aurora -->
 <div align="center">
   <img src="docs/screenshots/aurora-mascot-wizard.png" alt="Aurora" width="200"/>
 
