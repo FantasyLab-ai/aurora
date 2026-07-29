@@ -804,6 +804,19 @@ def api_state():
         except Exception:
             pass  # never block the response on a domain-rewrite failure
 
+    # The shell's METHODS tile reads state.methods_used; the state builder
+    # doesn't emit it, so derive it from the findings' method tags. Cheap,
+    # truthful, and fixes the tile reading 0 on runs with 20 findings.
+    if isinstance(state, dict) and not state.get("methods_used"):
+        try:
+            _fnds = state.get("findings") or []
+            state["methods_used"] = sorted({
+                str(f.get("method")) for f in _fnds
+                if isinstance(f, dict) and f.get("method")
+            })
+        except Exception:
+            pass
+
     return jsonify({"ok": True, "run_dir": str(rd), "state": state, "reason": None})
 
 
@@ -6082,6 +6095,39 @@ def main() -> None:
                 _kb_threading.Thread(target=_bootstrap_kb, daemon=True).start()
         except Exception as e:
             print(f"[aurora] KB bootstrap check skipped ({type(e).__name__})")
+
+    # Pre-warm the scientific stack in the background. Two wins: the first
+    # /api/state assembles fast, and the OS file cache is hot when the runner
+    # subprocess imports the same libraries — on a cold install (first launch,
+    # while the AV is still inspecting the new binaries) this shaves the
+    # slowest part of the first run. Quality untouched: same methods, same
+    # budgets. Opt out with AURORA_NO_PREWARM=1.
+    if not int(os.environ.get("AURORA_NO_PREWARM", "0") or 0):
+        import threading as _pw_threading
+
+        def _prewarm():
+            import time as _t
+            _t0 = _t.time()
+            try:
+                import numpy  # noqa: F401
+                import pandas  # noqa: F401
+                import scipy.stats  # noqa: F401
+                import scipy.optimize  # noqa: F401
+                import scipy.signal  # noqa: F401
+                import sklearn.cluster  # noqa: F401
+                import sklearn.ensemble  # noqa: F401
+                import sklearn.decomposition  # noqa: F401
+                import statsmodels.api  # noqa: F401
+                for _opt in ("ruptures", "sympy"):
+                    try:
+                        __import__(_opt)
+                    except Exception:
+                        pass
+                print(f"[aurora] prewarm: scientific stack hot in {_t.time() - _t0:.1f}s")
+            except Exception as e:
+                print(f"[aurora] prewarm skipped ({type(e).__name__}: {e})")
+
+        _pw_threading.Thread(target=_prewarm, daemon=True).start()
 
     # Auto-open the Studio in the user's default browser ~1.2s after
     # the server binds. We skip when:

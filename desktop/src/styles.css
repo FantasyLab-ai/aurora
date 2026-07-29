@@ -278,6 +278,7 @@ code { font-family: var(--font-mono); font-size: 0.92em; color: var(--cyan); }
 .status-dot--on  { background: var(--mint);
                     box-shadow: 0 0 8px rgba(136, 255, 209, 0.6); }
 .status-dot--off { background: var(--crit); opacity: 0.7; }
+.status-dot--warm { background: #f0b35c; opacity: 0.85; }  /* starting: amber, not alarm */
 
 
 /* ---------------------------------------------------------------------

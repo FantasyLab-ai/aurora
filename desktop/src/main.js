@@ -291,18 +291,35 @@ async function pingAurora() {
 // 4. Health badge in sidebar — polled
 // ---------------------------------------------------------------------
 let auroraOnline = false;
+let _everOnline = false;               // has the backend answered even once?
+const _shellStartMs = Date.now();
 
 function setAuroraStatus(online) {
   const wasOnline = auroraOnline;
   auroraOnline = online;
+  if (online) _everOnline = true;
   const dot = document.getElementById("auroraDot");
   const lbl = document.getElementById("auroraStatusLabel");
   const runBtn = document.getElementById("runBtn");
+  // Three honest states, not two: before the backend's FIRST answer we are
+  // STARTING (amber), not offline — on a fresh install the engine can take
+  // minutes to unpack while Windows inspects the new binaries, and a red
+  // "offline" during that window reads as broken when nothing is wrong.
+  const starting = !online && !_everOnline;
   if (dot) {
     dot.classList.toggle("status-dot--on", online);
-    dot.classList.toggle("status-dot--off", !online);
+    dot.classList.toggle("status-dot--warm", starting);
+    dot.classList.toggle("status-dot--off", !online && !starting);
   }
-  if (lbl) lbl.textContent = online ? "aurora: online" : "aurora: offline";
+  if (lbl) {
+    if (online) lbl.textContent = "aurora: online";
+    else if (starting) {
+      const waitedS = (Date.now() - _shellStartMs) / 1000;
+      lbl.textContent = waitedS > 75
+        ? "aurora: first launch — a few minutes, once"
+        : "aurora: starting…";
+    } else lbl.textContent = "aurora: offline";
+  }
   if (runBtn) runBtn.disabled = !online;
 
   // On the offline->online transition, refresh the current view immediately
@@ -1689,7 +1706,22 @@ async function pollUntilRunComplete() {
     return;
   }
 
-  // Still pending/running -- keep polling.
+  // Still pending/running -- show the engine's OWN words while we wait.
+  // /api/run/status has always carried message + progress_pct + tier;
+  // until now the shell read .state and discarded the rest.
+  const pct = typeof status.progress_pct === "number"
+    ? Math.max(0, Math.min(100, Math.round(status.progress_pct))) : null;
+  const msg = String(status.message || status.state || "running").slice(0, 80);
+  const hint = document.getElementById("runHint");
+  if (hint && _activeRun) {
+    hint.innerHTML = `running · <code>${esc(_activeRun.runId || "…")}</code>`
+      + ` · ${esc(msg)}${pct != null ? ` · <b>${pct}%</b>` : ""}`;
+  }
+  const tileSub = pct != null ? `${msg} · ${pct}%` : `${msg}…`;
+  setStat("statFindings",  "—", tileSub);
+  setStat("statMethods",   "—", tileSub);
+  setStat("statAnomalies", "—", tileSub);
+  setStat("statRegimes",   "—", tileSub);
   setTimeout(pollUntilRunComplete, RUN_POLL_MS);
 }
 
