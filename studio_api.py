@@ -382,6 +382,12 @@ _AURORA_COMMUNITY_API = (
                    "https://aurora-community.fantasy-labai.workers.dev")
 ).rstrip("/")
 
+# Outbound identity for community/webhook calls. Cloudflare's edge bot
+# filter returns 403 to Python's default "Python-urllib/3.x" UA, which
+# silently ate every desktop share (and the hosted-feed reads). Announce
+# the app honestly instead.
+_OUTBOUND_UA = "Aurora-Desktop/0.4.3 (+https://github.com/FantasyLab-ai/aurora)"
+
 # In a frozen app, pin the outputs dir to ~/.aurora and export it on the
 # environment BEFORE _detect_outputs_dir runs, so the whole subprocess
 # chain (steps runner -> dataset runner) inherits the same writable path.
@@ -5299,6 +5305,14 @@ def api_system_model_simulate():
     return jsonify({"ok": True, "result": res.to_dict()})
 
 
+@app.route("/api/ping")
+def api_ping():
+    """Featherweight liveness probe — no file reads, no state assembly.
+    The shell's health dot uses this so a machine saturated by an active
+    run doesn't read as 'offline' just because serving index.html got slow."""
+    return jsonify({"ok": True})
+
+
 @app.route("/api/community/share", methods=["POST"])
 def api_community_share():
     """Share a single finding to the Aurora community.
@@ -5380,7 +5394,8 @@ def api_community_share():
             import urllib.request
             req = urllib.request.Request(
                 hook, data=payload,
-                headers={"Content-Type": "application/json"})
+                headers={"Content-Type": "application/json",
+                         "User-Agent": _OUTBOUND_UA})
             urllib.request.urlopen(req, timeout=6)  # nosec - operator-configured URL
             delivered = True
         except Exception as e:
@@ -5401,7 +5416,8 @@ def api_community_share():
             }).encode("utf-8")
             hreq = urllib.request.Request(
                 _AURORA_COMMUNITY_API + "/share", data=hpayload,
-                headers={"Content-Type": "application/json"})
+                headers={"Content-Type": "application/json",
+                         "User-Agent": _OUTBOUND_UA})
             with urllib.request.urlopen(hreq, timeout=6) as resp:  # nosec
                 hosted_shared = (200 <= getattr(resp, "status", 200) < 300)
         except Exception as e:
@@ -5440,7 +5456,8 @@ def api_community_feed():
         try:
             import urllib.request
             url = f"{_AURORA_COMMUNITY_API}/feed?limit={limit}"
-            with urllib.request.urlopen(url, timeout=6) as resp:  # nosec
+            _freq = urllib.request.Request(url, headers={"User-Agent": _OUTBOUND_UA})
+            with urllib.request.urlopen(_freq, timeout=6) as resp:  # nosec
                 data = json.loads(resp.read().decode("utf-8"))
             if data.get("ok") and isinstance(data.get("items"), list):
                 return jsonify({

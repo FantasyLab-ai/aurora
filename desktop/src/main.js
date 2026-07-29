@@ -272,8 +272,8 @@ async function pingAurora() {
   // AbortSignal is the simplest possible probe.
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 2000);
-    await fetch(`${AURORA_BASE}/`, {
+    const timer = setTimeout(() => controller.abort(), 4000);
+    await fetch(`${AURORA_BASE}/api/ping`, {
       method: "GET",
       cache: "no-store",
       signal: controller.signal,
@@ -2196,11 +2196,19 @@ async function doCommunityShare() {
     if (status) { status.textContent = `✕ ${(j && j.error) || "share failed"}`; status.className = "share-status share-status--err"; }
     return;
   }
-  let msg;
-  if (j.delivered) msg = `✓ shared to the community · #${j.feed_count} in your feed`;
-  else if (j.configured) msg = `saved to your feed — webhook delivery failed (${j.deliver_error || "network"})`;
-  else msg = `✓ saved to your local feed (#${j.feed_count}). Set AURORA_COMMUNITY_WEBHOOK to also post to Discord/Slack.`;
-  if (status) { status.textContent = msg; status.className = "share-status share-status--ok"; }
+  // The hosted community feed is the headline result — report it honestly,
+  // including the exact error when the post didn't make it.
+  const bits = [];
+  if (j.hosted_shared) bits.push("✓ live on the community feed");
+  else if (j.community_api) bits.push(`✕ community feed unreachable (${j.hosted_error || "network"})`);
+  if (j.delivered) bits.push("webhook delivered");
+  else if (j.configured) bits.push(`webhook failed (${j.deliver_error || "network"})`);
+  bits.push(`#${j.feed_count} in your local feed`);
+  const good = j.hosted_shared || j.delivered;
+  if (status) {
+    status.textContent = (good ? "" : "") + bits.join(" · ");
+    status.className = good ? "share-status share-status--ok" : "share-status share-status--err";
+  }
 }
 
 function wireShareModal() {
