@@ -149,3 +149,6 @@ TODO_PRIVATE.md
 # PyInstaller build logs (worktree root)
 pyinstaller-build-*.log
 desktop-build*.log
+
+# wrangler local cache never belongs in history
+cloud/**/.wrangler/
