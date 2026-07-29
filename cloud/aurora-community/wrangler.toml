@@ -9,7 +9,7 @@ compatibility_date = "2024-11-01"
 #
 # (wrangler prints something like: id = "abc123..." — paste it here.)
 kv_namespaces = [
-  { binding = "FINDINGS", id = "REPLACE_WITH_KV_NAMESPACE_ID" }
+  { binding = "FINDINGS", id = "2f905ff44b1f4778ae320610397081a7" }
 ]
 
 # Optional admin token for takedowns (DELETE /finding/:id). Set as a secret:

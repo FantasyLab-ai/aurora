@@ -10,6 +10,14 @@
 //   GET    /             -> service info / health
 //   GET    /feed?limit=N -> newest shared findings (default 30, max 100)
 //   POST   /share        -> submit {title, detail?, method?, dataset?, severity?, run_id?, confidence?}
+//   POST   /ping         -> OPT-IN count only: {kind: "diagnostics"|"update-check", v?, os?}
+//                           No IP, no id, no payload beyond those three fields. The
+//                           desktop only calls this when the user flips the
+//                           default-OFF toggle (or clicks "Check for updates").
+//   GET    /stats        -> the same aggregates we see, public. Radical transparency:
+//                           if we count it, anyone can read it.
+//   GET    /latest       -> newest GitHub release (cached 10 min) — the update
+//                           check's data source, counted as an update-check ping.
 //   DELETE /finding/:id  -> admin takedown (Authorization: Bearer <ADMIN_TOKEN>)
 //
 // Storage: one KV entry per finding under key  f:<invertedTs>:<rand>  so a
@@ -102,6 +110,65 @@ export default {
       await env.FINDINGS.put("f:" + id, JSON.stringify(rec), { expirationTtl: TTL_SECONDS });
       await env.FINDINGS.put(rlKey, String(count + 1), { expirationTtl: 60 });
       return json({ ok: true, id, shared_at: rec.ts });
+    }
+
+    // ---- OPT-IN COUNT: POST /ping ----
+    if (path === "/ping" && request.method === "POST") {
+      let body;
+      try { body = await request.json(); } catch { body = {}; }
+      const kind = body.kind === "update-check" ? "update-check" : "diagnostics";
+      const v = clamp(clean(body.v), 40) || "unknown";
+      const os = clamp(clean(body.os), 30) || "unknown";
+      const day = new Date().toISOString().slice(0, 10);
+      const key = "p:" + day;
+      const cur = (await env.FINDINGS.get(key, "json")) || { n: 0, kinds: {}, versions: {}, os: {} };
+      cur.n += 1;
+      cur.kinds[kind] = (cur.kinds[kind] || 0) + 1;
+      cur.versions[v] = (cur.versions[v] || 0) + 1;
+      cur.os[os] = (cur.os[os] || 0) + 1;
+      await env.FINDINGS.put(key, JSON.stringify(cur), { expirationTtl: 400 * 24 * 3600 });
+      return json({ ok: true });
+    }
+
+    // ---- PUBLIC AGGREGATES: GET /stats ----
+    if (path === "/stats" && request.method === "GET") {
+      const days = [];
+      const now = Date.now();
+      for (let i = 0; i < 30; i++) {
+        const day = new Date(now - i * 86400000).toISOString().slice(0, 10);
+        const rec = await env.FINDINGS.get("p:" + day, "json");
+        if (rec) days.push({ day, ...rec });
+      }
+      const shares = await env.FINDINGS.list({ prefix: "f:", limit: 1000 });
+      return json({
+        ok: true,
+        note: "everything Aurora counts, public — opt-in pings and feed shares only; no IPs, no ids, no payloads",
+        shares_on_feed: shares.keys.length,
+        pings_by_day: days,
+      }, 200, { "Cache-Control": "public, max-age=300" });
+    }
+
+    // ---- UPDATE CHECK: GET /latest ----
+    if (path === "/latest" && request.method === "GET") {
+      let rel = await env.FINDINGS.get("gh:latest", "json");
+      if (!rel) {
+        const r = await fetch("https://api.github.com/repos/FantasyLab-ai/aurora/releases/latest", {
+          headers: { "User-Agent": "aurora-community-worker", "Accept": "application/vnd.github+json" },
+        });
+        if (r.ok) {
+          const j = await r.json();
+          rel = { tag: j.tag_name, url: j.html_url, published_at: j.published_at };
+          await env.FINDINGS.put("gh:latest", JSON.stringify(rel), { expirationTtl: 600 });
+        }
+      }
+      // an explicit user click — counted as an update-check ping, same public bucket
+      const day = new Date().toISOString().slice(0, 10);
+      const key = "p:" + day;
+      const cur = (await env.FINDINGS.get(key, "json")) || { n: 0, kinds: {}, versions: {}, os: {} };
+      cur.n += 1;
+      cur.kinds["update-check"] = (cur.kinds["update-check"] || 0) + 1;
+      await env.FINDINGS.put(key, JSON.stringify(cur), { expirationTtl: 400 * 24 * 3600 });
+      return json(rel ? { ok: true, ...rel } : { ok: false, error: "release info unavailable" }, rel ? 200 : 502);
     }
 
     // ---- ADMIN: DELETE /finding/:id (takedown) ----
