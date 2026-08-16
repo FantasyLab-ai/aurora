@@ -1,0 +1,2327 @@
+{
+ "base_seed": 20260815,
+ "build_seconds": 2360.7,
+ "corpus_version": "v1",
+ "entries": [
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "IIDNormal",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 90,
+   "nominal_alpha": null,
+   "params": {},
+   "regime_measured": {
+    "excess_kurtosis": -0.0064,
+    "missingness": 0.0,
+    "n": 90,
+    "phi_hat": 0.0014,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0066
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.000389,
+    0.002569
+   ],
+   "eligible": 4000,
+   "fdr": 0.001,
+   "fired": 4,
+   "generator": "IIDNormal",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 90,
+   "nominal_alpha": null,
+   "params": {},
+   "regime_measured": {
+    "excess_kurtosis": -0.0064,
+    "missingness": 0.0,
+    "n": 90,
+    "phi_hat": 0.0014,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0066
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "IIDNormal",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 120,
+   "nominal_alpha": null,
+   "params": {},
+   "regime_measured": {
+    "excess_kurtosis": -0.0087,
+    "missingness": 0.0,
+    "n": 120,
+    "phi_hat": -0.0006,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0034
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.001717,
+    0.005237
+   ],
+   "eligible": 4000,
+   "fdr": 0.003,
+   "fired": 12,
+   "generator": "IIDNormal",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 120,
+   "nominal_alpha": null,
+   "params": {},
+   "regime_measured": {
+    "excess_kurtosis": -0.0087,
+    "missingness": 0.0,
+    "n": 120,
+    "phi_hat": -0.0006,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0034
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.011453,
+    0.018979
+   ],
+   "eligible": 4000,
+   "fdr": 0.01475,
+   "fired": 59,
+   "generator": "IIDNormal",
+   "generator_version": "1.0.0",
+   "method": "pelt",
+   "method_version": "1.0.0",
+   "n": 120,
+   "nominal_alpha": null,
+   "params": {},
+   "regime_measured": {
+    "excess_kurtosis": -0.0087,
+    "missingness": 0.0,
+    "n": 120,
+    "phi_hat": -0.0006,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0034
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "IIDNormal",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {},
+   "regime_measured": {
+    "excess_kurtosis": -0.0066,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.0007,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0006
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.005465,
+    0.010979
+   ],
+   "eligible": 4000,
+   "fdr": 0.00775,
+   "fired": 31,
+   "generator": "IIDNormal",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {},
+   "regime_measured": {
+    "excess_kurtosis": -0.0066,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.0007,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0006
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.020598,
+    0.030313
+   ],
+   "eligible": 4000,
+   "fdr": 0.025,
+   "fired": 100,
+   "generator": "IIDNormal",
+   "generator_version": "1.0.0",
+   "method": "pelt",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {},
+   "regime_measured": {
+    "excess_kurtosis": -0.0066,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.0007,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0006
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "IIDNormal",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 365,
+   "nominal_alpha": null,
+   "params": {},
+   "regime_measured": {
+    "excess_kurtosis": 0.0033,
+    "missingness": 0.0,
+    "n": 365,
+    "phi_hat": 0.0001,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0029
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.020372,
+    0.03004
+   ],
+   "eligible": 4000,
+   "fdr": 0.02475,
+   "fired": 99,
+   "generator": "IIDNormal",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 365,
+   "nominal_alpha": null,
+   "params": {},
+   "regime_measured": {
+    "excess_kurtosis": 0.0033,
+    "missingness": 0.0,
+    "n": 365,
+    "phi_hat": 0.0001,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0029
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.032042,
+    0.043845
+   ],
+   "eligible": 4000,
+   "fdr": 0.0375,
+   "fired": 150,
+   "generator": "IIDNormal",
+   "generator_version": "1.0.0",
+   "method": "pelt",
+   "method_version": "1.0.0",
+   "n": 365,
+   "nominal_alpha": null,
+   "params": {},
+   "regime_measured": {
+    "excess_kurtosis": 0.0033,
+    "missingness": 0.0,
+    "n": 365,
+    "phi_hat": 0.0001,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0029
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 90,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.2
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.004,
+    "missingness": 0.0,
+    "n": 90,
+    "phi_hat": 0.1965,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0057
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.011453,
+    0.018979
+   ],
+   "eligible": 4000,
+   "fdr": 0.01475,
+   "fired": 59,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 90,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.2
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.004,
+    "missingness": 0.0,
+    "n": 90,
+    "phi_hat": 0.1965,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0057
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 120,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.2
+   },
+   "regime_measured": {
+    "excess_kurtosis": 0.0044,
+    "missingness": 0.0,
+    "n": 120,
+    "phi_hat": 0.1986,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0041
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.029966,
+    0.041425
+   ],
+   "eligible": 4000,
+   "fdr": 0.03525,
+   "fired": 141,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 120,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.2
+   },
+   "regime_measured": {
+    "excess_kurtosis": 0.0044,
+    "missingness": 0.0,
+    "n": 120,
+    "phi_hat": 0.1986,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0041
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.050231,
+    0.064619
+   ],
+   "eligible": 4000,
+   "fdr": 0.057,
+   "fired": 228,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "pelt",
+   "method_version": "1.0.0",
+   "n": 120,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.2
+   },
+   "regime_measured": {
+    "excess_kurtosis": 0.0044,
+    "missingness": 0.0,
+    "n": 120,
+    "phi_hat": 0.1986,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0041
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.2
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0036,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.1972,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0009
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.071514,
+    0.088292
+   ],
+   "eligible": 4000,
+   "fdr": 0.0795,
+   "fired": 318,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.2
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0036,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.1972,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0009
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.067714,
+    0.084101
+   ],
+   "eligible": 4000,
+   "fdr": 0.0755,
+   "fired": 302,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "pelt",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.2
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0036,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.1972,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0009
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 365,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.2
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0026,
+    "missingness": 0.0,
+    "n": 365,
+    "phi_hat": 0.2005,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0017
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.213305,
+    0.23922
+   ],
+   "eligible": 4000,
+   "fdr": 0.226,
+   "fired": 904,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 365,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.2
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0026,
+    "missingness": 0.0,
+    "n": 365,
+    "phi_hat": 0.2005,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0017
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.106683,
+    0.126553
+   ],
+   "eligible": 4000,
+   "fdr": 0.11625,
+   "fired": 465,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "pelt",
+   "method_version": "1.0.0",
+   "n": 365,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.2
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0026,
+    "missingness": 0.0,
+    "n": 365,
+    "phi_hat": 0.2005,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0017
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 90,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.4
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.021,
+    "missingness": 0.0,
+    "n": 90,
+    "phi_hat": 0.3933,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0037
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.125967,
+    0.147231
+   ],
+   "eligible": 4000,
+   "fdr": 0.13625,
+   "fired": 545,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 90,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.4
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.021,
+    "missingness": 0.0,
+    "n": 90,
+    "phi_hat": 0.3933,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0037
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 120,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.4
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0208,
+    "missingness": 0.0,
+    "n": 120,
+    "phi_hat": 0.3972,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0039
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.203279,
+    0.228767
+   ],
+   "eligible": 4000,
+   "fdr": 0.21575,
+   "fired": 863,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 120,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.4
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0208,
+    "missingness": 0.0,
+    "n": 120,
+    "phi_hat": 0.3972,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0039
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.18448,
+    0.209103
+   ],
+   "eligible": 4000,
+   "fdr": 0.1965,
+   "fired": 786,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "pelt",
+   "method_version": "1.0.0",
+   "n": 120,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.4
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0208,
+    "missingness": 0.0,
+    "n": 120,
+    "phi_hat": 0.3972,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0039
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.4
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0223,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.399,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0035
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.380951,
+    0.411249
+   ],
+   "eligible": 4000,
+   "fdr": 0.396,
+   "fired": 1584,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.4
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0223,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.399,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0035
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.245414,
+    0.272549
+   ],
+   "eligible": 4000,
+   "fdr": 0.25875,
+   "fired": 1035,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "pelt",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.4
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0223,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.399,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0035
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 365,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.4
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0026,
+    "missingness": 0.0,
+    "n": 365,
+    "phi_hat": 0.4,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0006
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.695995,
+    0.724101
+   ],
+   "eligible": 4000,
+   "fdr": 0.71025,
+   "fired": 2841,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 365,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.4
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0026,
+    "missingness": 0.0,
+    "n": 365,
+    "phi_hat": 0.4,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0006
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.383184,
+    0.413511
+   ],
+   "eligible": 4000,
+   "fdr": 0.39825,
+   "fired": 1593,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "pelt",
+   "method_version": "1.0.0",
+   "n": 365,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.4
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0026,
+    "missingness": 0.0,
+    "n": 365,
+    "phi_hat": 0.4,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0006
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 90,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.6
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0641,
+    "missingness": 0.0,
+    "n": 90,
+    "phi_hat": 0.5927,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0044
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.467538,
+    0.498495
+   ],
+   "eligible": 4000,
+   "fdr": 0.483,
+   "fired": 1932,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 90,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.6
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0641,
+    "missingness": 0.0,
+    "n": 90,
+    "phi_hat": 0.5927,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0044
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 120,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.6
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0508,
+    "missingness": 0.0,
+    "n": 120,
+    "phi_hat": 0.597,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.002
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.648706,
+    0.67798
+   ],
+   "eligible": 4000,
+   "fdr": 0.6635,
+   "fired": 2654,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 120,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.6
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0508,
+    "missingness": 0.0,
+    "n": 120,
+    "phi_hat": 0.597,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.002
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.560368,
+    0.590986
+   ],
+   "eligible": 4000,
+   "fdr": 0.57575,
+   "fired": 2303,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "pelt",
+   "method_version": "1.0.0",
+   "n": 120,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.6
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0508,
+    "missingness": 0.0,
+    "n": 120,
+    "phi_hat": 0.597,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.002
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.6
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0291,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.5968,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0005
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.84349,
+    0.865329
+   ],
+   "eligible": 4000,
+   "fdr": 0.85475,
+   "fired": 3419,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.6
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0291,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.5968,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0005
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.663608,
+    0.69255
+   ],
+   "eligible": 4000,
+   "fdr": 0.67825,
+   "fired": 2713,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "pelt",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.6
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0291,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.5968,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0005
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 365,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.6
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0186,
+    "missingness": 0.0,
+    "n": 365,
+    "phi_hat": 0.5996,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0008
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.989314,
+    0.994741
+   ],
+   "eligible": 4000,
+   "fdr": 0.9925,
+   "fired": 3970,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 365,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.6
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0186,
+    "missingness": 0.0,
+    "n": 365,
+    "phi_hat": 0.5996,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0008
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.874742,
+    0.894519
+   ],
+   "eligible": 4000,
+   "fdr": 0.885,
+   "fired": 3540,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "pelt",
+   "method_version": "1.0.0",
+   "n": 365,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.6
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0186,
+    "missingness": 0.0,
+    "n": 365,
+    "phi_hat": 0.5996,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0008
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 90,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.8
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.1745,
+    "missingness": 0.0,
+    "n": 90,
+    "phi_hat": 0.7889,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0007
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.885118,
+    0.904124
+   ],
+   "eligible": 4000,
+   "fdr": 0.895,
+   "fired": 3580,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 90,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.8
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.1745,
+    "missingness": 0.0,
+    "n": 90,
+    "phi_hat": 0.7889,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0007
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 120,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.8
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.1321,
+    "missingness": 0.0,
+    "n": 120,
+    "phi_hat": 0.7896,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0009
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.961271,
+    0.972333
+   ],
+   "eligible": 4000,
+   "fdr": 0.96725,
+   "fired": 3869,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 120,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.8
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.1321,
+    "missingness": 0.0,
+    "n": 120,
+    "phi_hat": 0.7896,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0009
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.938028,
+    0.952117
+   ],
+   "eligible": 4000,
+   "fdr": 0.9455,
+   "fired": 3782,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "pelt",
+   "method_version": "1.0.0",
+   "n": 120,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.8
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.1321,
+    "missingness": 0.0,
+    "n": 120,
+    "phi_hat": 0.7896,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0009
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.8
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.1021,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.7942,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0044
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.996392,
+    0.999152
+   ],
+   "eligible": 4000,
+   "fdr": 0.99825,
+   "fired": 3993,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.8
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.1021,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.7942,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0044
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.984127,
+    0.990937
+   ],
+   "eligible": 4000,
+   "fdr": 0.988,
+   "fired": 3952,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "pelt",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.8
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.1021,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.7942,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0044
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 365,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.8
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0585,
+    "missingness": 0.0,
+    "n": 365,
+    "phi_hat": 0.7981,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.003
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.999041,
+    1.0
+   ],
+   "eligible": 4000,
+   "fdr": 1.0,
+   "fired": 4000,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 365,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.8
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0585,
+    "missingness": 0.0,
+    "n": 365,
+    "phi_hat": 0.7981,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.003
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.999041,
+    1.0
+   ],
+   "eligible": 4000,
+   "fdr": 1.0,
+   "fired": 4000,
+   "generator": "AR1",
+   "generator_version": "1.0.0",
+   "method": "pelt",
+   "method_version": "1.0.0",
+   "n": 365,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.8
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0585,
+    "missingness": 0.0,
+    "n": 365,
+    "phi_hat": 0.7981,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.003
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "ARMA",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 90,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.5,
+    "theta": 0.3
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0576,
+    "missingness": 0.0,
+    "n": 90,
+    "phi_hat": 0.6623,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0008
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.436879,
+    0.467713
+   ],
+   "eligible": 4000,
+   "fdr": 0.45225,
+   "fired": 1809,
+   "generator": "ARMA",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 90,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.5,
+    "theta": 0.3
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0576,
+    "missingness": 0.0,
+    "n": 90,
+    "phi_hat": 0.6623,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0008
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "ARMA",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.5,
+    "theta": 0.3
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0427,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.6618,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0024
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.817274,
+    0.840594
+   ],
+   "eligible": 4000,
+   "fdr": 0.82925,
+   "fired": 3317,
+   "generator": "ARMA",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.5,
+    "theta": 0.3
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0427,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.6618,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0024
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.655019,
+    0.684156
+   ],
+   "eligible": 4000,
+   "fdr": 0.66975,
+   "fired": 2679,
+   "generator": "ARMA",
+   "generator_version": "1.0.0",
+   "method": "pelt",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "phi": 0.5,
+    "theta": 0.3
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.0427,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.6618,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0024
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "SeasonalStationary",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 90,
+   "nominal_alpha": null,
+   "params": {
+    "period": 7
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.1644,
+    "missingness": 0.0,
+    "n": 90,
+    "phi_hat": 0.2147,
+    "sampling_regular": true,
+    "seasonal_period": 7,
+    "skewness": -0.0053
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "SeasonalStationary",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 90,
+   "nominal_alpha": null,
+   "params": {
+    "period": 7
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.1644,
+    "missingness": 0.0,
+    "n": 90,
+    "phi_hat": 0.2147,
+    "sampling_regular": true,
+    "seasonal_period": 7,
+    "skewness": -0.0053
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "SeasonalStationary",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "period": 7
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.1613,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.211,
+    "sampling_regular": true,
+    "seasonal_period": 7,
+    "skewness": -0.0039
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    4.4e-05,
+    0.001415
+   ],
+   "eligible": 4000,
+   "fdr": 0.00025,
+   "fired": 1,
+   "generator": "SeasonalStationary",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "period": 7
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.1613,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.211,
+    "sampling_regular": true,
+    "seasonal_period": 7,
+    "skewness": -0.0039
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.004643,
+    0.009803
+   ],
+   "eligible": 4000,
+   "fdr": 0.00675,
+   "fired": 27,
+   "generator": "SeasonalStationary",
+   "generator_version": "1.0.0",
+   "method": "pelt",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "period": 7
+   },
+   "regime_measured": {
+    "excess_kurtosis": -0.1613,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": 0.211,
+    "sampling_regular": true,
+    "seasonal_period": 7,
+    "skewness": -0.0039
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "HeavyTailed",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 90,
+   "nominal_alpha": null,
+   "params": {
+    "df": 5.0
+   },
+   "regime_measured": {
+    "excess_kurtosis": 2.5629,
+    "missingness": 0.0,
+    "n": 90,
+    "phi_hat": -0.0009,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0016
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.002655,
+    0.006796
+   ],
+   "eligible": 4000,
+   "fdr": 0.00425,
+   "fired": 17,
+   "generator": "HeavyTailed",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 90,
+   "nominal_alpha": null,
+   "params": {
+    "df": 5.0
+   },
+   "regime_measured": {
+    "excess_kurtosis": 2.5629,
+    "missingness": 0.0,
+    "n": 90,
+    "phi_hat": -0.0009,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": 0.0016
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "HeavyTailed",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "df": 5.0
+   },
+   "regime_measured": {
+    "excess_kurtosis": 3.0348,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": -0.0014,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0089
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.026292,
+    0.037108
+   ],
+   "eligible": 4000,
+   "fdr": 0.03125,
+   "fired": 125,
+   "generator": "HeavyTailed",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "df": 5.0
+   },
+   "regime_measured": {
+    "excess_kurtosis": 3.0348,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": -0.0014,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0089
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.014097,
+    0.022329
+   ],
+   "eligible": 4000,
+   "fdr": 0.01775,
+   "fired": 71,
+   "generator": "HeavyTailed",
+   "generator_version": "1.0.0",
+   "method": "pelt",
+   "method_version": "1.0.0",
+   "n": 180,
+   "nominal_alpha": null,
+   "params": {
+    "df": 5.0
+   },
+   "regime_measured": {
+    "excess_kurtosis": 3.0348,
+    "missingness": 0.0,
+    "n": 180,
+    "phi_hat": -0.0014,
+    "sampling_regular": true,
+    "seasonal_period": null,
+    "skewness": -0.0089
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.0,
+    0.000959
+   ],
+   "eligible": 4000,
+   "fdr": 0.0,
+   "fired": 0,
+   "generator": "IrregularSampled",
+   "generator_version": "1.0.0",
+   "method": "bocpd",
+   "method_version": "1.0.0",
+   "n": 90,
+   "nominal_alpha": null,
+   "params": {},
+   "regime_measured": {
+    "excess_kurtosis": 0.0028,
+    "missingness": 0.0,
+    "n": 90,
+    "phi_hat": -0.0008,
+    "sampling_regular": false,
+    "seasonal_period": null,
+    "skewness": 0.0015
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  },
+  {
+   "ci95": [
+    0.000688,
+    0.003269
+   ],
+   "eligible": 4000,
+   "fdr": 0.0015,
+   "fired": 6,
+   "generator": "IrregularSampled",
+   "generator_version": "1.0.0",
+   "method": "cusum",
+   "method_version": "1.0.0",
+   "n": 90,
+   "nominal_alpha": null,
+   "params": {},
+   "regime_measured": {
+    "excess_kurtosis": 0.0028,
+    "missingness": 0.0,
+    "n": 90,
+    "phi_hat": -0.0008,
+    "sampling_regular": false,
+    "seasonal_period": null,
+    "skewness": 0.0015
+   },
+   "seed": {
+    "base": 20260815,
+    "scheme": "sha256(cell)+trial"
+   },
+   "trials": 4000
+  }
+ ],
+ "format": "aurora.calibration.corpus",
+ "generator_versions": {
+  "AR1": "1.0.0",
+  "ARMA": "1.0.0",
+  "HeavyTailed": "1.0.0",
+  "IIDNormal": "1.0.0",
+  "IrregularSampled": "1.0.0",
+  "SeasonalStationary": "1.0.0"
+ },
+ "method_defaults": {
+  "bocpd": {
+   "hazard": 0.004,
+   "threshold": 0.5
+  },
+  "cusum": {
+   "min_n": 80,
+   "threshold": 8.0
+  },
+  "pelt": {
+   "min_n": 120,
+   "model": "rbf",
+   "pen": 3.0
+  }
+ },
+ "method_versions": {
+  "bocpd": "1.0.0",
+  "cusum": "1.0.0",
+  "pelt": "1.0.0"
+ },
+ "methods": [
+  "bocpd",
+  "cusum",
+  "pelt"
+ ],
+ "n_cells": 27,
+ "n_entries": 72,
+ "trials_per_cell": 4000
+}

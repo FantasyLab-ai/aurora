@@ -1,0 +1,7 @@
+# The calibration corpus is integrity-hashed byte-for-byte: its sha256
+# sidecar records the hash of the LF-normalized file, and load_corpus
+# refuses a table whose bytes do not match. CRLF normalization on
+# checkout would make every Windows clone fail verification, so these
+# artifacts are pinned to LF on every platform.
+fantasyai/aurora/calibration/corpus_*.json text eol=lf
+fantasyai/aurora/calibration/corpus_*.sha256 text eol=lf

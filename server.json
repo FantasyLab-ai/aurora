@@ -6,12 +6,12 @@
     "url": "https://github.com/FantasyLab-ai/aurora",
     "source": "github"
   },
-  "version": "0.9.6",
+  "version": "0.10.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "aurora-mcp",
-      "version": "0.9.6",
+      "version": "0.10.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

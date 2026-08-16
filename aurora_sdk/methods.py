@@ -34,6 +34,11 @@ Plus the trading-specific helper:
 
     r.methods.backtest(prices, signal_fn)   Strategy P&L + Sharpe + DD
 
+And the calibration escape hatch (v0.10.0):
+
+    r.methods.calibration("bocpd")   measured false-fire rate block
+                                     attached by the calibration engine
+
 Design choices:
     * Every accessor returns ``None`` when the method didn't fire —
       no exceptions, no half-fits. Callers do ``if not (var := r.methods.var()): return``.
@@ -399,6 +404,7 @@ class MethodsView:
                     "description": tile.get("description"),
                     "severity": tile.get("severity"),
                     "evidence": tile.get("evidence") or {},
+                    "calibration": tile.get("calibration"),
                 })
         # Also walk top-level findings so methods that don't appear in
         # extended_methods.per_method (granger, hmm, wavelet, etc.) are
@@ -431,6 +437,28 @@ class MethodsView:
         the typed accessors don't expose yet."""
         f = self._find(method_name)
         return (f or {}).get("evidence")
+
+    def calibration(self, method_name: str) -> Optional[Dict[str, Any]]:
+        """The calibration block attached to a method's finding, or None.
+
+        Keys (when status is 'calibrated' or 'interpolated'):
+        ``status``, ``empirical_fdr``, ``ci95``, ``matched_regime``,
+        ``observed_regime``, ``regime_distance``, ``fdr_ceiling``,
+        ``corpus_version``, ``corpus_sha256``, and optionally
+        ``remediation`` + ``verdict_downgraded``. Statuses
+        'unavailable' and 'not_yet_calibrated' carry a ``note``
+        explaining why no rate is reported — the absence of a number
+        is itself the calibrated answer in those states.
+        """
+        # Prefer whichever candidate actually carries the block — the
+        # tile projection and the raw finding both may match the name.
+        m = str(method_name).lower()
+        for f in self._findings():
+            if m in str(f.get("method") or "").lower():
+                cal = f.get("calibration")
+                if isinstance(cal, dict):
+                    return cal
+        return None
 
     def fit_status(self, method_name: str) -> Optional[str]:
         """Return 'fit' / 'skipped' / 'failed' / None."""

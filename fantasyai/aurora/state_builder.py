@@ -1259,6 +1259,10 @@ def _build_extended_methods(ext_doc: Optional[Dict]) -> Dict[str, Any]:
             # can render method-specific headline numbers without
             # re-parsing prose. Truncated to a safe subset for size.
             "evidence":     _trim_evidence(ev),
+            # v0.10.0: measured false-fire rate block (changepoint family)
+            # or the explicit not_yet_calibrated marker. Small; passed
+            # through whole so tiles + SDK see what the finding carries.
+            "calibration":  f.get("calibration"),
         }
     # `available` reflects "the doc was loaded for this run" — the
     # frontend uses it to decide whether to show the "pending — re-run

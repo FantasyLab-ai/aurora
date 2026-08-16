@@ -8,6 +8,27 @@ The post-launch sprint that turns Aurora from "the substrate is shipped" into "t
 
 ### Added
 
+#### Calibration engine + Phantom Signal demo (v0.10.0)
+
+Aurora now reports not just *what it found* but *how often that kind of
+finding is wrong* — measured on seeded synthetic nulls against the
+production detector code paths, never assumed.
+
+- **`fantasyai/aurora/calibration/`** new package:
+  - `generators.py` — six seeded, versioned null generators (IID normal, AR(1), ARMA(1,1), seasonal-stationary, heavy-tailed, irregularly sampled); SHA-256-derived SeedSequence keys so the same cell + trial reproduces bit-for-bit on any machine
+  - `fingerprint.py` — measurable regime descriptor (n, Kendall bias-corrected lag-1 autocorrelation, missingness, sampling regularity, kurtosis, skewness, conservative seasonal-period detection that red noise cannot fake)
+  - `harness.py` — runs the **production** changepoint family (BOCPD, CUSUM, ruptures-PELT) over the null grid; production entry points are identity-checked by test; Wilson 95% intervals; production data gates recorded as ineligible, never as "didn't fire"
+  - `corpus_v1.json` + `corpus_v1.sha256` + `MANIFEST.md` — the shipped, integrity-hashed calibration table: 27 regime cells × 4,000 trials; the corpus file hash travels into findings and bundles
+  - `lookup.py` — runtime matching with exactly four statuses (`calibrated` / `interpolated` / `unavailable` / `not_yet_calibrated`); never silently interpolates (interpolation reports its max error), never extrapolates outside the envelope (the offending dimension is named), always reports the observed-vs-matched distance
+  - `attach.py` — attaches the calibration block to findings; a fired changepoint whose measured false-fire rate exceeds the configurable ceiling (default 0.25, always disclosed in the block) is downgraded to `verdict: not_identifiable` with the raw statistic preserved; calibration failures degrade to an explicit status and **never block a finding**
+  - Derived remediation only where the math supports it: consecutive-confirmation counts, pre-whitening with the estimated φ, minimum-length advice only when a measured longer-n cell exists
+- **`run_extended_methods`** now annotates every finding: changepoint family gets the full lookup; other fit methods carry an explicit `not_yet_calibrated` marker rather than silence
+- **SDK**: `RunResult.methods.calibration("bocpd")` accessor
+- **`scripts/build_calibration_corpus.py`** — the batch corpus builder
+- **`demos/phantom_signal/`** — runnable three-beat demo: a constraint-legal reallocation triggered by a phantom changepoint on a provably stationary series, then the calibrated verdict flip, ending in a signed, hashed, verifiable bundle. Fully seeded; runs in seconds; zero fabricated business figures
+- **`docs/CALIBRATION.md`** — the feature reference, including what the corpus does *not* claim (no power measurement, no real-data ground truth, no nominal-α comparisons for methods that never made α-level promises)
+- Headline measured result: production CUSUM at n=90 fires on 0.1% of independent stationary series but **48.3% at φ=0.6 and 89.5% at φ=0.8** (and the φ=0.4 rate nearly triples from n=90 to n=180 — more data makes it worse). Seasonality and heavy tails alone barely register. The phantom-signal failure class, now visible at the moment a finding is produced
+
 #### Analytical methods (7 new — catalogue 17+ → 24+)
 
 - **VAR** (`fantasyai/aurora/math/methods/var.py`) — vector autoregression on multivariate numeric data; reports chosen lag, strongest cross-coupling, and forecast horizon
@@ -231,7 +252,7 @@ New `demos/` workspace that powers the five "I gave my local AI X" demo videos. 
 
 ### Tests
 
-- **699 tests passing locally** (~725 in CI, which adds scipy + flask-dependent tests). Baseline at v1.1 launch was 320.
+- **1,500+ tests passing locally** (1,523 measured on 2026-08-15, plus ~50 new calibration/demo tests; the count was 699 when this section was first written and 320 at v1.1 launch).
 - New test files since launch:
   - `tests/test_preflight.py` (34)
   - `tests/test_kb_packs.py` (25)

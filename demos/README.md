@@ -1,5 +1,10 @@
 # 🎬 Aurora Sentinel — demo recording runbook
 
+> Looking for the standalone calibration demo? That's
+> [`phantom_signal/`](phantom_signal/README.md) — run
+> `python -m demos.phantom_signal.run_demo` from the repo root. It has
+> its own README and needs none of the rig below.
+
 This folder is the **production rig** for five short Aurora demo videos.
 Everything is reusable — the relay + overlay + replay harness service
 all five demos. Per-demo: just a new contract + a new replay command.

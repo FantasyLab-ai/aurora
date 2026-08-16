@@ -13,7 +13,7 @@
   [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
   [![Python](https://img.shields.io/badge/python-3.10+-blue.svg)](https://python.org)
   [![Status](https://img.shields.io/badge/status-v2.0%20active-purple.svg)](#)
-  [![Tests](https://img.shields.io/badge/tests-699%20passing-brightgreen.svg)](#)
+  [![Tests](https://img.shields.io/badge/tests-1500%2B%20passing-brightgreen.svg)](#)
   [![Patreon](https://img.shields.io/badge/support-Patreon-f96854.svg)](https://www.patreon.com/c/FantasyLab3DStudio)
 
   **[⬇️ Download the desktop app](#%EF%B8%8F-download-the-desktop-app)** · [Run from source](#-quickstart-60-seconds) · [Aurora Sentinel demos](#-aurora-sentinel--decision-contracts-in-the-room) · [See it in action](#see-aurora-in-action) · [Aurora Copilot](#-aurora-copilot--for-humans) · [Aurora Cortex (MCP + SDK)](#%EF%B8%8F-aurora-cortex--for-ai-systems) · [Roadmap](ROADMAP.md) · [FantasyLab.ai](https://fantasylab.ai)
@@ -390,6 +390,30 @@ Aurora is the rarest kind of fix — **structurally different**. It computes and
 - 💻 **Local-first, always.** Your data stays on your machine. No telemetry. No phone-home. The MCP server enforces a per-call path allowlist; Decision Contracts block private-IP webhook targets by default.
 - 🎯 **Honesty rule.** Uncertain relationships render as uncertain. When methods sample or time out, the user is told. Aurora's `fabricated_count` chip is a contractual `0` — and it's audited live.
 - 📖 **Open source.** Apache 2.0. Inspectable. Forkable. Yours to audit, vendor, embed, redistribute.
+
+---
+
+## Calibrated, not just cited
+
+A referee that can't quantify its own error rate isn't a referee. As of v0.10.0, Aurora ships a **calibration engine**: for the changepoint family (BOCPD, CUSUM, PELT), every finding carries the empirically measured rate at which that detector fires on data containing *nothing to find* — data shaped like yours.
+
+The measured headline, from Aurora's own production CUSUM detector (n=90, 4,000 seeded null trials per cell): it fires on **0.1% of independent stationary series, 48.3% at lag-1 autocorrelation φ=0.6, and 89.5% at φ=0.8**. Autocorrelation that ordinary for daily demand or sensor data turns a "detection" into a coin flip — and without calibration, nothing downstream can tell. It compounds with length, too: at φ=0.4 the rate climbs from 13.6% (n=90) to 39.6% (n=180) — collecting *more* data makes this failure mode worse, not better. Meanwhile the same corpus shows what does *not* fool the detectors: a strong 7-day seasonal cycle (0 fires in 4,000 trials) and heavy-tailed noise (0.4%) barely register. Autocorrelation is the killer, and now it's measured.
+
+So Aurora tells you, at the moment the finding is produced:
+
+- the **measured false-fire rate** with a Wilson 95% interval, matched to your data's fingerprint (length, bias-corrected autocorrelation, tails, seasonality, missingness)
+- an honest status — `calibrated`, `interpolated` (with disclosed max error), `unavailable` (outside the measured envelope, offending dimension named), or `not_yet_calibrated` — never a silent default
+- a **verdict downgrade**: findings the data cannot support flip to `not_identifiable`, with the raw statistic still reported and the configured ceiling disclosed
+- **derived remediation** — required consecutive confirmations, pre-whitening with the estimated φ — only where the math supports it
+- the corpus version + SHA-256 in the finding and the bundle, so a skeptic can verify which table produced the claim
+
+Watch it catch a constraint-legal action taken for a phantom reason:
+
+```bash
+python -m demos.phantom_signal.run_demo
+```
+
+Details, schema, and the full honesty ruleset: [docs/CALIBRATION.md](docs/CALIBRATION.md). What it does **not** claim: no power/sensitivity numbers, no real-data ground truth, and corpus v1 covers the changepoint family — the other methods say `not_yet_calibrated` out loud instead of pretending.
 
 ---
 

@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aurora-mcp"
-version = "0.9.6"
-description = "Aurora MCP server — glass-box statistical analysis for AI agents: 19 research-grade methods, cited findings, integrity-hashed bundles, zero invented numbers. Local-first."
+version = "0.10.0"
+description = "Aurora MCP server — glass-box statistical analysis for AI agents: 19 research-grade methods, cited findings, integrity-hashed bundles, zero invented numbers. Now with a calibration engine: measured false-fire rates attached to changepoint findings, verdicts downgraded when the data can't support the claim. Local-first."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
@@ -68,6 +68,9 @@ include = ["aurora_mcp*", "aurora_sdk*", "fantasyai*"]
 "*" = ["*.json"]
 "fantasyai.aurora.synthesis" = ["domain_libraries/*.json", "equation_translations/*.json"]
 "fantasyai.aurora.knowledge_bank" = ["packs/*.json"]
+# The calibration corpus ships with its integrity sidecar + manifest —
+# load_corpus refuses a table it cannot hash-verify.
+"fantasyai.aurora.calibration" = ["*.json", "*.sha256", "MANIFEST.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

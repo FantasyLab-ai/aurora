@@ -135,6 +135,17 @@ def run_extended_methods(
             })
             claim_seq += 1
 
+    # v0.10.0 calibration layer: attach measured false-fire rates to
+    # changepoint findings, downgrading verdicts the data can't support.
+    # Other methods carry an explicit not_yet_calibrated marker rather
+    # than silence. Calibration NEVER blocks a finding — any failure
+    # here degrades to an honest status on the finding itself.
+    try:
+        from fantasyai.aurora.calibration import annotate_findings
+        annotate_findings(findings, df, target_col=target_col)
+    except Exception:
+        LOG.exception("calibration annotation failed; findings ship uncalibrated")
+
     # Q3 Stream C: also run any installed Plugin SDK methods. Third-party
     # plugins register via the ``aurora_plugins`` entry-point group;
     # their findings flow alongside the 7 built-in v1.2 methods.

@@ -152,3 +152,10 @@ desktop-build*.log
 
 # wrangler local cache never belongs in history
 cloud/**/.wrangler/
+
+# Calibration corpus build logs (worktree root) + demo artifacts
+corpus-build.log
+corpus-build.err.log
+demos/phantom_signal/out/
+suite-pre.log
+suite-pre.err.log
