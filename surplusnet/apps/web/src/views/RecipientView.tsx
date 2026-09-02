@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, categoryEmoji, dollars, type Balances, type Delivery, type FeedItem, type FundState } from '../api';
-import { Incentive, Page, Ring, TabBar, Toast, Tracker } from '../components';
+import { Incentive, Page, Ring, RouteMap, TabBar, Toast, Tracker } from '../components';
 
 const DEMO_USER = 'demo-recipient';
 type Tab = 'explore' | 'claimed' | 'wallet' | 'profile';
@@ -14,8 +14,19 @@ export function RecipientView() {
   const [balances, setBalances] = useState<Balances | null>(null);
   const [claims, setClaims] = useState<Array<FeedItem & { delivery: Delivery | null }>>([]);
   const [selected, setSelected] = useState<FeedItem | null>(null);
+  const [useKarma, setUseKarma] = useState(false);
   const [diet, setDiet] = useState('All');
   const [toast, setToast] = useState<string | null>(null);
+
+  // 1 Karma Credit spends as 10¢ at checkout (sponsor-backed).
+  const KARMA_CENTS = 10;
+  const paymentSplit = (item: FeedItem) => {
+    const credits = Math.min(balances?.communityCreditBalance ?? 0, item.priceCents);
+    let remainder = item.priceCents - credits;
+    const karmaCredits = useKarma ? Math.min(balances?.karmaCreditBalance ?? 0, Math.floor(remainder / KARMA_CENTS)) : 0;
+    remainder -= karmaCredits * KARMA_CENTS;
+    return { credits, karmaCredits, cash: remainder };
+  };
 
   const notify = (message: string) => {
     setToast(message);
@@ -41,14 +52,14 @@ export function RecipientView() {
   }, [refresh]);
 
   const buy = async (item: FeedItem) => {
-    const credits = Math.min(balances?.communityCreditBalance ?? 0, item.priceCents);
-    const cash = item.priceCents - credits;
+    const split = paymentSplit(item);
     try {
       const result = await api.purchase({
         itemId: item.id,
         recipientId: DEMO_USER,
-        cashCents: cash,
-        communityCredits: credits,
+        cashCents: split.cash,
+        communityCredits: split.credits,
+        ...(split.karmaCredits > 0 ? { karmaCredits: split.karmaCredits } : {}),
       });
       setBalances(result.wallet);
       notify(
@@ -137,18 +148,33 @@ export function RecipientView() {
         </div>
         <div className="divider" />
         {selected.state === 'SALES_PHASE' ? (
-          <>
-            <div className="row" style={{ marginBottom: 10 }}>
-              <strong style={{ fontSize: 20 }}>{dollars(selected.priceCents)}</strong>
-              <span className="badge timer">rolls to the free pool in {selected.minutesLeftInSale} min</span>
-            </div>
-            <button className="btn" onClick={() => void buy(selected)}>
-              Claim now — credits & cash spend the same
-            </button>
-            <p className="muted" style={{ textAlign: 'center', marginTop: 8 }}>
-              Your community credits are applied first, automatically.
-            </p>
-          </>
+          (() => {
+            const split = paymentSplit(selected);
+            return (
+              <>
+                <div className="row" style={{ marginBottom: 6 }}>
+                  <strong style={{ fontSize: 20 }}>{dollars(selected.priceCents)}</strong>
+                  <span className="badge timer">rolls to the free pool in {selected.minutesLeftInSale} min</span>
+                </div>
+                {split.credits > 0 && (
+                  <div className="payrow"><span>Community credits (applied first)</span><strong>−{dollars(split.credits)}</strong></div>
+                )}
+                {(balances?.karmaCreditBalance ?? 0) > 0 && selected.priceCents - split.credits > 0 && (
+                  <label className="switch" style={{ padding: '4px 0' }}>
+                    <input type="checkbox" checked={useKarma} onChange={(e) => setUseKarma(e.target.checked)} />
+                    Spend karma too — couriers eat what they rescue
+                  </label>
+                )}
+                {split.karmaCredits > 0 && (
+                  <div className="payrow"><span>Karma ({split.karmaCredits} KC, sponsor-backed)</span><strong>−{dollars(split.karmaCredits * KARMA_CENTS)}</strong></div>
+                )}
+                <div className="payrow total"><span>Cash due</span><span>{dollars(split.cash)}</span></div>
+                <button className="btn" style={{ marginTop: 10 }} onClick={() => void buy(selected)}>
+                  Claim now · every currency spends the same
+                </button>
+              </>
+            );
+          })()
         ) : (
           <button className="btn" onClick={() => void claimFree(selected)}>Claim free — no stigma, ever</button>
         )}
@@ -166,11 +192,19 @@ export function RecipientView() {
         const done = claim.state === 'DELIVERED' ? 4 : claim.delivery?.state === 'PICKED_UP' ? 2 : claim.delivery ? 2 : 1;
         return (
           <div key={claim.id} className="card">
-            <div className="map">
-              <span className="pin" style={{ left: '24%', top: '34%' }}>🏪</span>
-              <span className="pin" style={{ left: '72%', top: '72%' }}>🧊</span>
-              <div className="route" />
-            </div>
+            <RouteMap
+              points={
+                claim.delivery
+                  ? [
+                      { latitude: claim.latitude, longitude: claim.longitude },
+                      { latitude: claim.latitude, longitude: claim.delivery.dropoff.longitude },
+                      claim.delivery.dropoff,
+                    ]
+                  : null
+              }
+              fromEmoji={categoryEmoji[claim.category] ?? '🏪'}
+              toEmoji="🧊"
+            />
             <div className="row">
               <h4 style={{ margin: 0 }}>{claim.title}</h4>
               <span className="badge tag">{claim.delivery?.dropoffName?.split('·')[0] ?? 'Direct pickup'}</span>

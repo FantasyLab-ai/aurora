@@ -283,6 +283,30 @@ body {
 }
 .filterchips button.active { background: var(--green-800); border-color: var(--green-800); color: #fff; }
 
+/* ── Forms ── */
+.formgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 10px 0; }
+.field label {
+  font-size: 10.5px; font-weight: 800; color: var(--ink-soft);
+  display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.field input, .field select {
+  width: 100%; padding: 9px 11px; border: 1px solid #e2dccc; border-radius: 10px;
+  font: inherit; font-size: 13px; background: #fff; color: var(--ink);
+}
+.field input:focus, .field select:focus { outline: 2px solid var(--green-700); border-color: var(--green-700); }
+
+/* ── Certificate timeline ── */
+.timeline { margin: 10px 0; }
+.timeline .event { display: flex; gap: 10px; align-items: baseline; padding: 5px 0; font-size: 12.5px; }
+.timeline .event .tdot { width: 9px; height: 9px; border-radius: 50%; background: var(--green-700); flex-shrink: 0; position: relative; top: 0; }
+.timeline .event .when { color: var(--ink-soft); font-size: 11px; min-width: 58px; font-variant-numeric: tabular-nums; }
+
+/* ── Payment breakdown ── */
+.payrow { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; }
+.payrow.total { font-weight: 800; border-top: 1px solid #eee8db; margin-top: 4px; padding-top: 8px; }
+.switch { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: var(--ink-soft); cursor: pointer; }
+.switch input { accent-color: var(--green-800); width: 16px; height: 16px; }
+
 button:focus-visible, .itemcard:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 
 @media (prefers-reduced-motion: reduce) {

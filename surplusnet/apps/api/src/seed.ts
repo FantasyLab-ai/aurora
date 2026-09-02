@@ -108,6 +108,9 @@ export async function seed(net: SurplusNet): Promise<void> {
     profile: { excludeCategories: [], avoidTags: [] },
   });
   await net.wallets.credit(DEMO.recipient, 'CASH', 20_00, 'demo top-up', 'seed-cash');
+  // Role fluidity on display: the demo recipient also rescues sometimes,
+  // so they hold spendable karma at checkout.
+  await net.wallets.credit(DEMO.recipient, 'KARMA_CREDIT', 30, 'past rescues', 'seed-karma');
   for (const recipientId of ['neighbor-1', 'neighbor-2', 'neighbor-3']) {
     await net.onboarding.onboardRecipient({ userId: recipientId, zoneId: ZONE });
   }

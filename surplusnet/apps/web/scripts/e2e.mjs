@@ -33,8 +33,9 @@ check('recipient: feed renders item cards', (await page.locator('.itemcard').cou
 const paidCard = page.locator('.itemcard', { has: page.locator('.badge.price') }).first();
 await paidCard.click();
 await page.getByRole('button', { name: /Claim now/ }).click();
-await page.waitForSelector('.toast', { timeout: 5_000 });
-check('recipient: purchase shows fund-contribution toast', (await page.locator('.toast').innerText()).includes('funded'));
+const fundToast = page.locator('.toast', { hasText: 'funded' });
+await fundToast.waitFor({ timeout: 6_000 }).catch(() => undefined);
+check('recipient: purchase shows fund-contribution toast', (await fundToast.count()) > 0);
 
 // ── Courier: accept → pickup → temp → dropoff mints karma ──
 await page.getByRole('button', { name: '🚲 Courier' }).click();
@@ -46,8 +47,9 @@ await acceptBtn.click();
 await page.getByRole('button', { name: /Confirm pickup/ }).click({ timeout: 10_000 });
 await page.getByRole('button', { name: /Log bin temperature/ }).click({ timeout: 10_000 });
 await page.getByRole('button', { name: /Drop off/ }).click({ timeout: 10_000 });
-await page.waitForSelector('.toast', { timeout: 5_000 });
-check('courier: dropoff mints karma', (await page.locator('.toast').innerText()).includes('KC minted'));
+const mintToast = page.locator('.toast', { hasText: 'KC minted' });
+await mintToast.waitFor({ timeout: 6_000 }).catch(() => undefined);
+check('courier: dropoff mints karma', (await mintToast.count()) > 0);
 
 // ── Supplier: dashboard shows the CFO three numbers ──
 await page.getByRole('button', { name: '🏪 Supplier' }).click();

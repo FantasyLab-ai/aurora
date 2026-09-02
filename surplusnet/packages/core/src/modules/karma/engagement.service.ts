@@ -73,6 +73,10 @@ export class EngagementService {
     this.employerLinks.set(courierId, employerId);
   }
 
+  employerOf(courierId: string): string | undefined {
+    return this.employerLinks.get(courierId);
+  }
+
   /** Called on every verified `delivery.completed`. Returns newly earned badges. */
   recordDelivery(courierId: string, deliveryId: string, at: Date = this.clock.now()): string[] {
     const day = dayOf(at);

@@ -18,6 +18,20 @@ export interface FeedItem {
   minutesLeftInSale: number;
   minutesUntilUnsafe: number;
   impact: ItemImpact;
+  latitude: number;
+  longitude: number;
+}
+
+export interface RoutePoint {
+  latitude: number;
+  longitude: number;
+}
+
+export interface RouteInfo {
+  source: 'osrm' | 'estimate';
+  distanceMeters: number;
+  durationSeconds: number;
+  points: RoutePoint[];
 }
 
 export interface Balances {
@@ -53,6 +67,7 @@ export interface Delivery {
   courierId: string;
   state: 'ACCEPTED' | 'PICKED_UP' | 'DROPPED_OFF' | 'CANCELLED';
   dropoffName: string;
+  dropoff: RoutePoint;
   karmaOnCompletion: number;
   tempReadings: Array<{ at: string; celsius: number }>;
   coldChainCompliant: boolean;
@@ -71,6 +86,8 @@ export interface CourierProfile {
   teamLeaderboard: Array<{ rank: number; name: string; rescues: number; activeMembers: number }>;
   perks: Array<{ perkId: string; title: string; costKarma: number; inventory: number }>;
   certified: boolean;
+  employer: string | null;
+  volunteerMinutesThisMonth: number;
 }
 
 export interface SupplierDashboard {
@@ -86,6 +103,18 @@ export interface SupplierDashboard {
   schedules: Array<{ scheduleId: string; title: string; listAtHourUtc: number; paused: boolean }>;
   items: FeedItem[];
   impact: { itemCount: number; mealsRescued: number; poundsDiverted: number; co2eKg: number };
+}
+
+export interface Certificate {
+  itemId: string;
+  supplierId: string;
+  itemSummary: { title: string; category: string; quantity: number };
+  custodyChain: Array<{ event: string; at: string; actor: string }>;
+  tempLog: Array<{ at: string; celsius: number }>;
+  coldChainCompliant: boolean;
+  safeUntilRespected: boolean;
+  overallCompliant: boolean;
+  goodFaithStatement: string;
 }
 
 export interface ZoneMetrics {
@@ -151,6 +180,28 @@ const fetchApi = {
       method: 'POST',
       body: JSON.stringify({ courierId, perkId }),
     }),
+  route: (from: RoutePoint, to: RoutePoint) =>
+    request<{ route: RouteInfo }>(
+      `/api/route?fromLat=${from.latitude}&fromLng=${from.longitude}&toLat=${to.latitude}&toLng=${to.longitude}`,
+    ),
+  certify: (courierId: string, courseId: string) =>
+    request<{ badge: string; karmaBonus: number; balances: Balances }>('/api/courier/certify', {
+      method: 'POST',
+      body: JSON.stringify({ courierId, courseId }),
+    }),
+  addSchedule: (input: {
+    supplierId: string;
+    title: string;
+    category: string;
+    fmvCents: number;
+    cogsCents: number;
+    salePriceCents?: number;
+    listAtHourUtc: number;
+    safeForHours: number;
+    dietaryTags?: string[];
+  }) => request<{ schedule: { scheduleId: string } }>('/api/supplier/schedule', { method: 'POST', body: JSON.stringify(input) }),
+  certificate: (itemId: string) =>
+    request<{ certificate: Certificate }>(`/api/supplier/certificate/${itemId}`),
   supplierDashboard: (supplierId: string) => request<SupplierDashboard>(`/api/supplier/${supplierId}/dashboard`),
   skipToday: (scheduleId: string) => request<{ ok: true }>(`/api/supplier/schedule/${scheduleId}/skip`, { method: 'POST', body: '{}' }),
   zones: () => request<ZonesResponse>('/api/zones'),

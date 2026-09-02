@@ -49,6 +49,8 @@ function serializeItem(item: SurplusItem): FeedItem {
     minutesLeftInSale: item.currentState === 'SALES_PHASE' ? minutesLeft(salesEndsAt, now) : 0,
     minutesUntilUnsafe: minutesLeft(item.safeUntil, now),
     impact: net.impact.computeForItem(item),
+    latitude: item.latitude,
+    longitude: item.longitude,
   };
 }
 
@@ -59,6 +61,7 @@ function serializeDelivery(delivery: NonNullable<ReturnType<typeof net.deliverie
     courierId: delivery.courierId,
     state: delivery.state,
     dropoffName: delivery.dropoffName,
+    dropoff: { latitude: delivery.dropoff.latitude, longitude: delivery.dropoff.longitude },
     karmaOnCompletion: delivery.karmaOnCompletion,
     tempReadings: delivery.tempReadings.map((r) => ({ at: r.at.toISOString(), celsius: r.celsius })),
     coldChainCompliant: delivery.coldChainCompliant,
@@ -185,7 +188,14 @@ export const engineApi: ApiClient = {
 
   async courierProfile(courierId) {
     await ready;
-    const month = new Date().toISOString().slice(0, 7);
+    const now = new Date();
+    const month = now.toISOString().slice(0, 7);
+    const employer = net.engagement.employerOf(courierId) ?? null;
+    const volunteerRow = employer
+      ? net.engagement
+          .monthlyVolunteerReport(employer, now.getUTCFullYear(), now.getUTCMonth() + 1)
+          .find((r) => r.courierId === courierId)
+      : undefined;
     return {
       balances: await balances(courierId),
       engagement: net.engagement.engagement(courierId) ?? null,
@@ -194,6 +204,62 @@ export const engineApi: ApiClient = {
       teamLeaderboard: net.teams.monthlyLeaderboard(month, ZONE, 5),
       perks: net.partners.listPerks(),
       certified: net.certifications.isCertified(courierId, 'food-handler-101'),
+      employer,
+      volunteerMinutesThisMonth: volunteerRow?.minutes ?? 0,
+    };
+  },
+
+  async route(from, to) {
+    await ready;
+    // No network in the self-contained demo: an honest two-leg street
+    // estimate, same shape the server's OSRM fallback produces.
+    const distanceMeters = Math.round(haversineMeters(from, to) * 1.3);
+    return {
+      route: {
+        source: 'estimate' as const,
+        distanceMeters,
+        durationSeconds: Math.round(distanceMeters / 4.5),
+        points: [from, { latitude: from.latitude, longitude: to.longitude }, to],
+      },
+    };
+  },
+
+  async certify(courierId, courseId) {
+    await ready;
+    const result = await net.certifications.complete(courierId, courseId);
+    return { ...result, balances: await balances(courierId) };
+  },
+
+  async addSchedule(input) {
+    await ready;
+    const schedule = net.recurring.addSchedule({
+      scheduleId: `${input.supplierId}-${Date.now()}`,
+      supplierId: input.supplierId,
+      title: input.title,
+      category: input.category,
+      quantity: 1,
+      fmvCents: input.fmvCents,
+      cogsCents: input.cogsCents,
+      ...(input.salePriceCents !== undefined ? { salePriceCents: input.salePriceCents } : {}),
+      latitude: 40.7251,
+      longitude: -73.9512,
+      zoneId: ZONE,
+      ...(input.dietaryTags !== undefined ? { dietaryTags: input.dietaryTags } : {}),
+      listAtHourUtc: input.listAtHourUtc,
+      safeForHours: input.safeForHours,
+    });
+    return { schedule: { scheduleId: schedule.scheduleId } };
+  },
+
+  async certificate(itemId) {
+    await ready;
+    const cert = await net.compliance.certificate(itemId);
+    return {
+      certificate: {
+        ...cert,
+        custodyChain: cert.custodyChain.map((c) => ({ ...c, at: c.at.toISOString() })),
+        tempLog: cert.tempLog.map((t) => ({ ...t, at: t.at.toISOString() })),
+      },
     };
   },
 

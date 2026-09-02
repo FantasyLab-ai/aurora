@@ -61,6 +61,60 @@ function serializeItem(item: SurplusItem) {
   };
 }
 
+/**
+ * Route geometry between two points: OSRM when reachable (self-hosted via
+ * OSRM_URL, or the public demo server), a two-leg fallback otherwise so the
+ * UI always has something honest to draw. Cycling profile — this is an
+ * e-bike network.
+ */
+async function computeRoute(from: { latitude: number; longitude: number }, to: { latitude: number; longitude: number }) {
+  const osrmBase = process.env['OSRM_URL'] ?? 'https://router.project-osrm.org';
+  try {
+    const url = `${osrmBase}/route/v1/cycling/${from.longitude},${from.latitude};${to.longitude},${to.latitude}?overview=full&geometries=geojson`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    if (res.ok) {
+      const body = (await res.json()) as {
+        routes?: Array<{ distance: number; duration: number; geometry: { coordinates: [number, number][] } }>;
+      };
+      const route = body.routes?.[0];
+      if (route) {
+        return {
+          source: 'osrm' as const,
+          distanceMeters: Math.round(route.distance),
+          durationSeconds: Math.round(route.duration),
+          points: route.geometry.coordinates.map(([lng, lat]) => ({ latitude: lat, longitude: lng })),
+        };
+      }
+    }
+  } catch {
+    // fall through to the estimate
+  }
+  const distanceMeters = Math.round(haversineMeters(from, to) * 1.3); // street factor
+  return {
+    source: 'estimate' as const,
+    distanceMeters,
+    durationSeconds: Math.round(distanceMeters / 4.5),
+    points: [
+      from,
+      { latitude: from.latitude, longitude: to.longitude },
+      to,
+    ],
+  };
+}
+
+app.get('/api/route', async (req) => {
+  const q = req.query as { fromLat: string; fromLng: string; toLat: string; toLng: string };
+  return {
+    route: await computeRoute(
+      { latitude: Number(q.fromLat), longitude: Number(q.fromLng) },
+      { latitude: Number(q.toLat), longitude: Number(q.toLng) },
+    ),
+  };
+});
+
 async function openRescueCount(): Promise<number> {
   return (await net.itemRepository.findInState('DONATION_PHASE')).length;
 }
@@ -208,7 +262,14 @@ app.post('/api/delivery/:deliveryId/dropoff', async (req) => {
 
 app.get('/api/courier/:courierId/profile', async (req) => {
   const { courierId } = req.params as { courierId: string };
-  const month = new Date().toISOString().slice(0, 7);
+  const now = new Date();
+  const month = now.toISOString().slice(0, 7);
+  const employerId = net.engagement.employerOf(courierId);
+  const volunteerRow = employerId
+    ? net.engagement
+        .monthlyVolunteerReport(employerId, now.getUTCFullYear(), now.getUTCMonth() + 1)
+        .find((r) => r.courierId === courierId)
+    : undefined;
   return {
     balances: await net.wallets.balances(courierId),
     engagement: net.engagement.engagement(courierId) ?? null,
@@ -217,7 +278,15 @@ app.get('/api/courier/:courierId/profile', async (req) => {
     teamLeaderboard: net.teams.monthlyLeaderboard(month, ZONE, 5),
     perks: net.partners.listPerks(),
     certified: net.certifications.isCertified(courierId, 'food-handler-101'),
+    employer: employerId ?? null,
+    volunteerMinutesThisMonth: volunteerRow?.minutes ?? 0,
   };
+});
+
+app.post('/api/courier/certify', async (req) => {
+  const { courierId, courseId } = req.body as { courierId: string; courseId: string };
+  const result = await net.certifications.complete(courierId, courseId);
+  return { ...result, balances: await net.wallets.balances(courierId) };
 });
 
 app.post('/api/perks/redeem', async (req) => {
@@ -242,6 +311,37 @@ app.get('/api/supplier/:supplierId/dashboard', async (req) => {
       .map(serializeItem),
     impact: net.impact.totals({ supplierId }),
   };
+});
+
+app.post('/api/supplier/schedule', async (req) => {
+  const body = req.body as {
+    supplierId: string;
+    title: string;
+    category: string;
+    fmvCents: number;
+    cogsCents: number;
+    salePriceCents?: number;
+    listAtHourUtc: number;
+    safeForHours: number;
+    dietaryTags?: string[];
+  };
+  const schedule = net.recurring.addSchedule({
+    scheduleId: `${body.supplierId}-${Date.now()}`,
+    supplierId: body.supplierId,
+    title: body.title,
+    category: body.category,
+    quantity: 1,
+    fmvCents: body.fmvCents,
+    cogsCents: body.cogsCents,
+    ...(body.salePriceCents !== undefined ? { salePriceCents: body.salePriceCents } : {}),
+    latitude: 40.7251,
+    longitude: -73.9512,
+    zoneId: ZONE,
+    ...(body.dietaryTags !== undefined ? { dietaryTags: body.dietaryTags } : {}),
+    listAtHourUtc: body.listAtHourUtc,
+    safeForHours: body.safeForHours,
+  });
+  return { schedule };
 });
 
 app.post('/api/supplier/schedule/:scheduleId/skip', async (req) => {

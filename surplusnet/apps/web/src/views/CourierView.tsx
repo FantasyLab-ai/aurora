@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, categoryEmoji, type CourierProfile, type Delivery, type FeedItem, type Offer } from '../api';
-import { Incentive, Page, Stat, TabBar, Toast, Tracker } from '../components';
+import { api, categoryEmoji, type CourierProfile, type Delivery, type FeedItem, type Offer, type RouteInfo } from '../api';
+import { Incentive, Page, RouteMap, Stat, TabBar, Toast, Tracker } from '../components';
 
 const DEMO_COURIER = 'demo-courier';
 type Tab = 'offers' | 'rescue' | 'karma';
@@ -18,6 +18,7 @@ export function CourierView() {
   const [tab, setTab] = useState<Tab>('offers');
   const [offers, setOffers] = useState<Offer[]>([]);
   const [active, setActive] = useState<{ delivery: Delivery; item: FeedItem } | null>(null);
+  const [route, setRoute] = useState<RouteInfo | null>(null);
   const [profile, setProfile] = useState<CourierProfile | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -45,6 +46,24 @@ export function CourierView() {
     const timer = setInterval(() => void refresh(), 8000);
     return () => clearInterval(timer);
   }, [refresh]);
+
+  // Fetch the road route (OSRM when reachable, honest estimate otherwise)
+  // whenever a rescue becomes active.
+  const activeDeliveryId = active?.delivery.id;
+  useEffect(() => {
+    if (!active) {
+      setRoute(null);
+      return;
+    }
+    void api
+      .route(
+        { latitude: active.item.latitude, longitude: active.item.longitude },
+        active.delivery.dropoff,
+      )
+      .then((r) => setRoute(r.route))
+      .catch(() => setRoute(null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeDeliveryId]);
 
   const accept = async (offer: Offer) => {
     try {
@@ -110,11 +129,13 @@ export function CourierView() {
   const rescueTab = active ? (
     <>
       <div className="card">
-        <div className="map">
-          <span className="pin" style={{ left: '24%', top: '34%' }}>🥐</span>
-          <span className="pin" style={{ left: '72%', top: '72%' }}>🧊</span>
-          <div className="route" />
-        </div>
+        <RouteMap points={route?.points ?? null} fromEmoji={categoryEmoji[active.item.category] ?? '🏪'} toEmoji="🧊" />
+        {route && (
+          <div className="row muted" style={{ marginBottom: 8 }}>
+            <span>🚲 {(route.distanceMeters / 1609.344).toFixed(1)} mi · ~{Math.max(1, Math.round(route.durationSeconds / 60))} min</span>
+            <span className="badge tag">{route.source === 'osrm' ? 'live road route' : 'street estimate'}</span>
+          </div>
+        )}
         <div className="row">
           <h4 style={{ margin: 0 }}>{active.item.title}</h4>
           <span className="badge surge">+{active.delivery.karmaOnCompletion} KC on drop</span>
@@ -166,13 +187,55 @@ export function CourierView() {
         <Stat value={profile.engagement?.longestStreakDays ?? 0} label="best streak" />
         <Stat value={profile.team?.name.split(' ')[0] ?? '—'} label="team" />
       </div>
-      <div className="section-title">Badges</div>
+      {profile.employer && (
+        <div className="card row">
+          <span style={{ fontSize: 26 }}>🏢</span>
+          <div style={{ flex: 1 }}>
+            <strong style={{ fontSize: 13.5 }}>Verified volunteer time · {profile.employer}</strong>
+            <div className="muted">
+              {profile.volunteerMinutesThisMonth} minutes logged this month — exported to HR as paid
+              volunteer hours, automatically.
+            </div>
+          </div>
+          <span className="badge tag">{profile.volunteerMinutesThisMonth} min</span>
+        </div>
+      )}
+      <div className="section-title">Badges & certifications</div>
       <div className="card">
-        {(profile.engagement?.badges ?? []).map((b) => (
-          <span key={b} className="badge gold" style={{ marginRight: 6, marginBottom: 4, display: 'inline-block' }}>
-            {badgeLabel[b] ?? b}
-          </span>
-        ))}
+        <div style={{ marginBottom: 10 }}>
+          {(profile.engagement?.badges ?? []).map((b) => (
+            <span key={b} className="badge gold" style={{ marginRight: 6, marginBottom: 4, display: 'inline-block' }}>
+              {badgeLabel[b] ?? b}
+            </span>
+          ))}
+        </div>
+        {[
+          { courseId: 'cold-chain', title: 'Cold-Chain Custody', bonus: 15 },
+          { courseId: 'hub-etiquette', title: 'Community Fridge & Hub Etiquette', bonus: 10 },
+        ]
+          .filter((c) => !(profile.engagement?.badges ?? []).includes(`cert:${c.courseId}`))
+          .map((course) => (
+            <div key={course.courseId} className="row" style={{ padding: '6px 0' }}>
+              <div>
+                <strong style={{ fontSize: 13 }}>🎓 {course.title}</strong>
+                <div className="muted">10-minute course · one-time bonus + permanent badge</div>
+              </div>
+              <button
+                className="btn small secondary"
+                onClick={async () => {
+                  try {
+                    const result = await api.certify(DEMO_COURIER, course.courseId);
+                    notify(`Certified! +${result.karmaBonus} KC and the ${course.title} badge are yours.`);
+                    void refresh();
+                  } catch (err) {
+                    notify(err instanceof Error ? err.message : 'certification failed');
+                  }
+                }}
+              >
+                +{course.bonus} KC
+              </button>
+            </div>
+          ))}
       </div>
       <div className="section-title">Redeem karma</div>
       {profile.perks.map((perk) => (
@@ -207,6 +270,17 @@ export function CourierView() {
             <div className="muted">{team.activeMembers} active members</div>
           </div>
           <span className="badge tag">{team.rescues} rescues</span>
+        </div>
+      ))}
+      <div className="section-title">Top rescuers · all time</div>
+      {profile.leaderboard.map((row) => (
+        <div key={row.rank} className="card row" style={{ padding: '10px 14px' }}>
+          <strong style={{ width: 22 }}>{row.rank === 1 ? '🥇' : row.rank === 2 ? '🥈' : row.rank === 3 ? '🥉' : row.rank}</strong>
+          <div style={{ flex: 1 }}>
+            <strong style={{ fontSize: 13 }}>{row.courierId === DEMO_COURIER ? 'You' : row.courierId}</strong>
+            <div className="muted">🔥 {row.currentStreakDays}-day streak</div>
+          </div>
+          <span className="badge tag">{row.totalDeliveries} rescues</span>
         </div>
       ))}
     </>
