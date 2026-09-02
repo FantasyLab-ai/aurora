@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, categoryEmoji, type CourierProfile, type Delivery, type FeedItem, type Offer } from '../api';
-import { BottomNav, Incentive, Phone, Stat, Toast, Tracker } from '../components';
+import { Incentive, Page, Stat, TabBar, Toast, Tracker } from '../components';
 
 const DEMO_COURIER = 'demo-courier';
 type Tab = 'offers' | 'rescue' | 'karma';
@@ -27,6 +27,9 @@ export function CourierView() {
   };
 
   const refresh = useCallback(async () => {
+    // Heartbeat: the courier app reports position continuously; browser
+    // geolocation slots in here on device, the demo reports a fixed spot.
+    await api.courierLocation(DEMO_COURIER, 40.7245, -73.9508).catch(() => undefined);
     const [offersRes, activeRes, profileRes] = await Promise.all([
       api.offers(DEMO_COURIER),
       api.active(DEMO_COURIER),
@@ -210,10 +213,10 @@ export function CourierView() {
   );
 
   return (
-    <Phone
-      title={<>Surplus<span>Net</span> Courier</>}
-      subtitle={tab === 'offers' ? 'Open rescues nearby' : tab === 'rescue' ? 'Active rescue' : 'Karma & status'}
-      nav={<BottomNav
+    <Page
+      title={tab === 'offers' ? 'Open rescues nearby' : tab === 'rescue' ? 'Active rescue' : 'Karma & status'}
+      aside={profile?.engagement ? `🔥 ${profile.engagement.currentStreakDays}-day streak` : undefined}
+      tabs={<TabBar
         tabs={[
           { id: 'offers', label: 'Offers', icon: '📍' },
           { id: 'rescue', label: 'Rescue', icon: '🚲' },
@@ -227,6 +230,6 @@ export function CourierView() {
       {tab === 'rescue' && rescueTab}
       {tab === 'karma' && karmaTab}
       <Toast message={toast} />
-    </Phone>
+    </Page>
   );
 }

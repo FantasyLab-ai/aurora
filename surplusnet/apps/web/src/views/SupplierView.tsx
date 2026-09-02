@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, categoryEmoji, dollars, type SupplierDashboard } from '../api';
-import { BottomNav, Incentive, Phone, Stat, Toast } from '../components';
+import { Incentive, Page, Stat, TabBar, Toast } from '../components';
 
 const DEMO_SUPPLIER = 'daily-knead';
 type Tab = 'today' | 'reports';
@@ -25,7 +25,7 @@ export function SupplierView() {
     return () => clearInterval(timer);
   }, [refresh]);
 
-  if (!dash) return <Phone title={<>Surplus<span>Net</span> Business</>}><p className="muted">Loading…</p></Phone>;
+  if (!dash) return <Page title="Business"><p className="muted">Loading…</p></Page>;
 
   const today = (
     <>
@@ -113,10 +113,10 @@ export function SupplierView() {
   );
 
   return (
-    <Phone
-      title={<>Surplus<span>Net</span> Business</>}
-      subtitle="The Daily Knead · Greenpoint"
-      nav={<BottomNav
+    <Page
+      title="The Daily Knead"
+      aside="Business account · Greenpoint"
+      tabs={<TabBar
         tabs={[
           { id: 'today', label: 'Today', icon: '🏪' },
           { id: 'reports', label: 'Reports', icon: '📊' },
@@ -128,6 +128,6 @@ export function SupplierView() {
       {tab === 'today' && today}
       {tab === 'reports' && reports}
       <Toast message={toast} />
-    </Phone>
+    </Page>
   );
 }

@@ -1,39 +1,34 @@
 import type { ReactNode } from 'react';
 
-export function Phone({ title, subtitle, children, nav }: {
-  title: ReactNode;
-  subtitle?: string;
+/** Standalone page shell: heading + optional tab row. Replaces the old phone frame. */
+export function Page({ title, aside, tabs, children }: {
+  title: string;
+  aside?: ReactNode;
+  tabs?: ReactNode;
   children: ReactNode;
-  nav?: ReactNode;
 }) {
   return (
-    <div className="phone">
-      <div className="screen">
-        <div className="statusbar">
-          <span>9:41</span>
-          <span>⦿ ᯤ ▮</span>
-        </div>
-        <div className="appbar">
-          <div className="brand">{title}</div>
-          {subtitle && <div className="subtitle">{subtitle}</div>}
-        </div>
-        <div className="content">{children}</div>
-        {nav}
+    <main className="container">
+      <div className="pagehead">
+        <h2>{title}</h2>
+        {aside && <span className="muted">{aside}</span>}
       </div>
-    </div>
+      {tabs}
+      {children}
+    </main>
   );
 }
 
-export function BottomNav<T extends string>({ tabs, active, onChange }: {
+export function TabBar<T extends string>({ tabs, active, onChange }: {
   tabs: Array<{ id: T; label: string; icon: string }>;
   active: T;
   onChange: (tab: T) => void;
 }) {
   return (
-    <div className="bottomnav">
+    <div className="tabs">
       {tabs.map((tab) => (
         <button key={tab.id} className={tab.id === active ? 'active' : ''} onClick={() => onChange(tab.id)}>
-          <span className="icon">{tab.icon}</span>
+          <span>{tab.icon}</span>
           {tab.label}
         </button>
       ))}
@@ -66,7 +61,7 @@ export function Ring({ big, small, pct }: { big: ReactNode; small: string; pct: 
       className="ring"
       style={{ background: `conic-gradient(var(--green-700) ${angle}deg, var(--green-100) ${angle}deg)` }}
     >
-      <div className="ring" style={{ width: 74, height: 74, background: '#fff' }}>
+      <div className="ring" style={{ width: 76, height: 76, background: '#fff' }}>
         <div className="big">{big}</div>
         <div className="small">{small}</div>
       </div>

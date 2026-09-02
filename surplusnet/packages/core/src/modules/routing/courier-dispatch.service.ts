@@ -110,6 +110,11 @@ export class InMemoryCourierLocationSource implements CourierLocationSource {
     this.couriers.set(presence.courierId, presence);
   }
 
+  get(courierId: string): CourierPresence | undefined {
+    const presence = this.couriers.get(courierId);
+    return presence ? { ...presence } : undefined;
+  }
+
   async activeCouriersNear(point: GeoPoint, radiusMeters: number): Promise<CourierPresence[]> {
     return [...this.couriers.values()].filter(
       (c) => haversineMeters(point, c) <= radiusMeters,

@@ -131,6 +131,11 @@ const fetchApi = {
     request<{ item: FeedItem }>('/api/checkout/claim', { method: 'POST', body: JSON.stringify({ itemId, recipientId }) }),
   claims: (userId: string) => request<{ claims: Array<FeedItem & { delivery: Delivery | null }> }>(`/api/recipient/${userId}/claims`),
   wallet: (userId: string) => request<{ balances: Balances }>(`/api/wallet/${userId}`),
+  courierLocation: (courierId: string, latitude: number, longitude: number) =>
+    request<{ ok: true }>(`/api/courier/${courierId}/location`, {
+      method: 'POST',
+      body: JSON.stringify({ latitude, longitude }),
+    }),
   offers: (courierId: string) => request<{ offers: Offer[] }>(`/api/courier/${courierId}/offers`),
   accept: (input: { itemId: string; courierId: string; karma: number; hubId: string }) =>
     request<{ delivery: Delivery }>('/api/courier/accept', { method: 'POST', body: JSON.stringify(input) }),

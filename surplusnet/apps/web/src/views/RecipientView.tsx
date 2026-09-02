@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, categoryEmoji, dollars, type Balances, type Delivery, type FeedItem, type FundState } from '../api';
-import { BottomNav, Incentive, Phone, Ring, Stat, Toast, Tracker } from '../components';
+import { Incentive, Page, Ring, TabBar, Toast, Tracker } from '../components';
 
 const DEMO_USER = 'demo-recipient';
 type Tab = 'explore' | 'claimed' | 'wallet' | 'profile';
@@ -268,10 +268,10 @@ export function RecipientView() {
   );
 
   return (
-    <Phone
-      title={<>Surplus<span>Net</span></>}
-      subtitle={tab === 'explore' ? 'Blind Box · Greenpoint' : tab === 'claimed' ? 'Your Surplus Claims' : tab === 'wallet' ? 'My Impact' : 'Profile'}
-      nav={<BottomNav
+    <Page
+      title={tab === 'explore' ? 'Blind Box' : tab === 'claimed' ? 'Your Surplus Claims' : tab === 'wallet' ? 'My Impact' : 'Profile'}
+      aside={tab === 'explore' ? `${filtered.length} boxes near you` : undefined}
+      tabs={<TabBar
         tabs={[
           { id: 'explore', label: 'Explore', icon: '🧭' },
           { id: 'claimed', label: 'Claimed', icon: '🛍' },
@@ -287,6 +287,6 @@ export function RecipientView() {
       {tab === 'wallet' && wallet}
       {tab === 'profile' && profile}
       <Toast message={toast} />
-    </Phone>
+    </Page>
   );
 }

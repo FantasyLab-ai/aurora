@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, dollars, type ZonesResponse } from '../api';
-import { Incentive, Phone, Stat } from '../components';
+import { Incentive, Page, Stat } from '../components';
 
 export function OpsView() {
   const [data, setData] = useState<ZonesResponse | null>(null);
@@ -15,10 +15,10 @@ export function OpsView() {
     return () => clearInterval(timer);
   }, [refresh]);
 
-  if (!data) return <Phone title={<>Surplus<span>Net</span> Ops</>}><p className="muted">Loading…</p></Phone>;
+  if (!data) return <Page title="Operations"><p className="muted">Loading…</p></Page>;
 
   return (
-    <Phone title={<>Surplus<span>Net</span> Ops</>} subtitle="Zone health · network impact · funding">
+    <Page title="Operations" aside="Zone health · network impact · funding">
       <Incentive headline="Launch on density, not hope">
         A zone goes live only when supply, couriers, and hubs hit the playbook — and stays live
         only while the <strong>fill rate holds</strong>. Unfilled rescues are the death spiral;
@@ -80,6 +80,6 @@ export function OpsView() {
         <div className="divider" />
         <div className="row muted"><span>Karma subsidy (couriers eat what they rescue)</span><strong>{dollars(data.sponsor.karmaSubsidyCents)}</strong></div>
       </div>
-    </Phone>
+    </Page>
   );
 }

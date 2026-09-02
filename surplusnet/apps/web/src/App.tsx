@@ -16,18 +16,24 @@ const ROLES: Array<{ id: Role; label: string }> = [
 export function App() {
   const [role, setRole] = useState<Role>('recipient');
   return (
-    <div className="stage">
-      <div className="role-switch">
-        {ROLES.map((r) => (
-          <button key={r.id} className={r.id === role ? 'active' : ''} onClick={() => setRole(r.id)}>
-            {r.label}
-          </button>
-        ))}
-      </div>
+    <>
+      <header className="topbar">
+        <div className="brand">
+          Surplus<span>Net</span>
+          <span className="zone">Greenpoint</span>
+        </div>
+        <div className="role-switch">
+          {ROLES.map((r) => (
+            <button key={r.id} className={r.id === role ? 'active' : ''} onClick={() => setRole(r.id)}>
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </header>
       {role === 'recipient' && <RecipientView />}
       {role === 'courier' && <CourierView />}
       {role === 'supplier' && <SupplierView />}
       {role === 'ops' && <OpsView />}
-    </div>
+    </>
   );
 }

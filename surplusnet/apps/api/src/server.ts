@@ -116,11 +116,30 @@ app.get('/api/wallet/:userId', async (req) => {
 
 // ── Courier ───────────────────────────────────────────────────────────────
 
+// Courier app heartbeat: live position feeds dispatch, staleness filtering,
+// and per-offer distances. Falls back to the zone center for unknown couriers.
+app.post('/api/courier/:courierId/location', async (req) => {
+  const { courierId } = req.params as { courierId: string };
+  const { latitude, longitude, transport } = req.body as {
+    latitude: number;
+    longitude: number;
+    transport?: 'FOOT' | 'BIKE' | 'EBIKE';
+  };
+  locations.upsert({
+    courierId,
+    latitude,
+    longitude,
+    lastSeenAt: new Date(),
+    transport: transport ?? locations.get(courierId)?.transport ?? 'BIKE',
+  });
+  return { ok: true };
+});
+
 app.get('/api/courier/:courierId/offers', async (req) => {
   const { courierId } = req.params as { courierId: string };
   const open = await net.itemRepository.findInState('DONATION_PHASE');
   const openCount = open.length;
-  const me = { latitude: 40.724, longitude: -73.951 };
+  const me = locations.get(courierId) ?? { latitude: 40.724, longitude: -73.951 };
   const activeCouriers = (await locations.activeCouriersNear(me, 5000)).length;
   const now = new Date();
 

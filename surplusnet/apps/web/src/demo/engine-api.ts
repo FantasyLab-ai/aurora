@@ -108,14 +108,27 @@ export const engineApi: ApiClient = {
     return { balances: await balances(userId) };
   },
 
-  async offers(_courierId) {
+  async courierLocation(courierId, latitude, longitude) {
+    await ready;
+    locations.upsert({
+      courierId,
+      latitude,
+      longitude,
+      lastSeenAt: new Date(),
+      transport: locations.get(courierId)?.transport ?? 'BIKE',
+    });
+    return { ok: true as const };
+  },
+
+  async offers(courierId) {
     await ready;
     const open = await net.itemRepository.findInState('DONATION_PHASE');
-    const activeCouriers = (await locations.activeCouriersNear(ME, 5000)).length;
+    const me = locations.get(courierId) ?? ME;
+    const activeCouriers = (await locations.activeCouriersNear(me, 5000)).length;
     const now = new Date();
     return {
       offers: open.map((item) => {
-        const distanceMeters = Math.round(haversineMeters(ME, item));
+        const distanceMeters = Math.round(haversineMeters(me, item));
         const quote = net.karmaPricing.quote({
           minutesUntilUnsafe: minutesLeft(item.safeUntil, now),
           distanceMeters,
