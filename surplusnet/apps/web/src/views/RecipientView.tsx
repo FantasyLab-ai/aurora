@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, categoryEmoji, dollars, type Balances, type Delivery, type FeedItem, type FundState } from '../api';
+import { api, categoryEmoji, dollars, type Balances, type Delivery, type FeedItem, type FundState, type MatchCampaignInfo } from '../api';
 import { Incentive, Page, Ring, RouteMap, TabBar, Toast, Tracker } from '../components';
 
 const DEMO_USER = 'demo-recipient';
@@ -11,6 +11,7 @@ export function RecipientView() {
   const [tab, setTab] = useState<Tab>('explore');
   const [items, setItems] = useState<FeedItem[]>([]);
   const [fund, setFund] = useState<FundState | null>(null);
+  const [match, setMatch] = useState<MatchCampaignInfo | null>(null);
   const [balances, setBalances] = useState<Balances | null>(null);
   const [claims, setClaims] = useState<Array<FeedItem & { delivery: Delivery | null }>>([]);
   const [selected, setSelected] = useState<FeedItem | null>(null);
@@ -48,6 +49,7 @@ export function RecipientView() {
     ]);
     setItems(feed.items);
     setFund(feed.fund);
+    setMatch(feed.match);
     setBalances(wallet.balances);
     setClaims(claimed.claims);
   }, []);
@@ -131,6 +133,12 @@ export function RecipientView() {
       <Incentive headline="Premium surplus, up to 70% off">
         Every cash purchase sends <strong>20% into the Community Fund</strong> — your dinner
         literally funds a neighbor's. Fund pool: <strong>{fund ? dollars(fund.poolCents) : '…'}</strong>
+        {match && (
+          <>
+            <br />🎁 <strong>{match.sponsorName}</strong> is {match.ratio === 1 ? 'doubling' : 'matching'} every
+            purchase this month ({dollars(match.remainingCents)} of matching left).
+          </>
+        )}
       </Incentive>
       <div className="filterchips">
         {DIETS.map((d) => (
@@ -271,6 +279,7 @@ export function RecipientView() {
           <div>
             <div style={{ fontSize: 12, opacity: 0.8 }}>Community Credits</div>
             <div style={{ fontSize: 26, fontWeight: 800 }}>{dollars(balances.communityCreditBalance)}</div>
+            <div style={{ fontSize: 10, opacity: 0.7 }}>monthly allocation · fully backed</div>
           </div>
           <div>
             <div style={{ fontSize: 12, opacity: 0.8 }}>Cash</div>

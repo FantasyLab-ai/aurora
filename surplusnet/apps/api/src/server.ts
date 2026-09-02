@@ -128,6 +128,7 @@ app.get('/api/feed', async (req) => {
   const visible = userId ? net.preferences.filterFeed(userId, [...sales, ...donations]) : [...sales, ...donations];
   return {
     fund: net.fund.state(),
+    match: net.sponsorship.activeMatch(new Date().toISOString().slice(0, 7)) ?? null,
     items: visible
       .sort((a, b) => a.safeUntil.getTime() - b.safeUntil.getTime())
       .map(serializeItem),
@@ -302,8 +303,10 @@ app.get('/api/supplier/:supplierId/dashboard', async (req) => {
   const now = new Date();
   const items = await net.itemRepository.findBySupplier(supplierId);
   const report = await net.compliance.recoveryReport(supplierId, now.getUTCFullYear(), now.getUTCMonth() + 1);
+  const audit = await net.auditExport.buildMonthlyReport(now.getUTCFullYear(), now.getUTCMonth() + 1);
   return {
     report,
+    ledgerVerified: audit.brokenSequences.length === 0,
     schedules: net.recurring.schedulesOf(supplierId),
     items: items
       .sort((a, b) => b.listedAt.getTime() - a.listedAt.getTime())

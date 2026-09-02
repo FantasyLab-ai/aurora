@@ -80,6 +80,7 @@ export const engineApi: ApiClient = {
     const visible = net.preferences.filterFeed(userId, [...sales, ...donations]);
     return {
       fund: net.fund.state(),
+      match: net.sponsorship.activeMatch(new Date().toISOString().slice(0, 7)) ?? null,
       items: visible.sort((a, b) => a.safeUntil.getTime() - b.safeUntil.getTime()).map(serializeItem),
     };
   },
@@ -273,7 +274,9 @@ export const engineApi: ApiClient = {
     await ready;
     const now = new Date();
     const items = await net.itemRepository.findBySupplier(supplierId);
+    const audit = await net.auditExport.buildMonthlyReport(now.getUTCFullYear(), now.getUTCMonth() + 1);
     return {
+      ledgerVerified: audit.brokenSequences.length === 0,
       report: await net.compliance.recoveryReport(supplierId, now.getUTCFullYear(), now.getUTCMonth() + 1),
       schedules: net.recurring.schedulesOf(supplierId),
       items: items

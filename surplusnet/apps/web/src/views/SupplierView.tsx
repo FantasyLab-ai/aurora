@@ -220,7 +220,12 @@ export function SupplierView() {
         by-product of doing the right thing.
       </Incentive>
       <div className="card">
-        <div className="section-title" style={{ margin: '0 0 10px' }}>This month's recovery record</div>
+        <div className="row" style={{ marginBottom: 10 }}>
+          <div className="section-title" style={{ margin: 0 }}>This month's recovery record</div>
+          <span className={`badge ${dash.ledgerVerified ? 'tag' : 'timer'}`}>
+            {dash.ledgerVerified ? '⛓ ledger verified · tamper-evident' : '⚠ ledger chain broken'}
+          </span>
+        </div>
         <div className="row muted"><span>Donations completed</span><strong>{dash.report.itemCount}</strong></div>
         <div className="divider" />
         <div className="row muted"><span>Pounds recovered</span><strong>{dash.report.poundsRecovered} lb</strong></div>

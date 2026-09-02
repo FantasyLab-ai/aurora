@@ -90,7 +90,14 @@ export interface CourierProfile {
   volunteerMinutesThisMonth: number;
 }
 
+export interface MatchCampaignInfo {
+  sponsorName: string;
+  ratio: number;
+  remainingCents: number;
+}
+
 export interface SupplierDashboard {
+  ledgerVerified: boolean;
   report: {
     itemCount: number;
     poundsRecovered: number;
@@ -150,7 +157,8 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 const fetchApi = {
-  feed: (userId: string) => request<{ fund: FundState; items: FeedItem[] }>(`/api/feed?userId=${userId}`),
+  feed: (userId: string) =>
+    request<{ fund: FundState; match: MatchCampaignInfo | null; items: FeedItem[] }>(`/api/feed?userId=${userId}`),
   purchase: (input: { itemId: string; recipientId: string; cashCents: number; communityCredits: number; karmaCredits?: number }) =>
     request<{ receipt: { supplierProceedsCents: number; fundContributionCents: number }; wallet: Balances }>(
       '/api/checkout/purchase',

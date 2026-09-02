@@ -20,6 +20,7 @@ export function CourierView() {
   const [active, setActive] = useState<{ delivery: Delivery; item: FeedItem } | null>(null);
   const [route, setRoute] = useState<RouteInfo | null>(null);
   const [profile, setProfile] = useState<CourierProfile | null>(null);
+  const [voucher, setVoucher] = useState<{ code: string; title: string } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const notify = (message: string) => {
@@ -238,6 +239,18 @@ export function CourierView() {
           ))}
       </div>
       <div className="section-title">Redeem karma</div>
+      {voucher && (
+        <div className="card" style={{ border: '2px solid var(--gold)', background: '#fffbef' }}>
+          <div className="row">
+            <strong style={{ fontSize: 13.5 }}>🎟 {voucher.title}</strong>
+            <button className="btn small secondary" onClick={() => setVoucher(null)}>Done</button>
+          </div>
+          <code style={{ display: 'block', fontSize: 18, letterSpacing: 2, textAlign: 'center', padding: '10px 0', fontVariantNumeric: 'tabular-nums' }}>
+            {voucher.code.slice(0, 8).toUpperCase()}
+          </code>
+          <p className="muted" style={{ margin: 0, textAlign: 'center' }}>Show this at the counter · single use</p>
+        </div>
+      )}
       {profile.perks.map((perk) => (
         <div key={perk.perkId} className="card row" style={{ padding: '10px 14px' }}>
           <div style={{ flex: 1 }}>
@@ -249,8 +262,8 @@ export function CourierView() {
             disabled={profile.balances.karmaCreditBalance < perk.costKarma}
             onClick={async () => {
               try {
-                await api.redeemPerk(DEMO_COURIER, perk.perkId);
-                notify(`Voucher issued for “${perk.title}” — show it at the counter.`);
+                const result = await api.redeemPerk(DEMO_COURIER, perk.perkId);
+                setVoucher({ code: result.voucher.voucherCode, title: perk.title });
                 void refresh();
               } catch (err) {
                 notify(err instanceof Error ? err.message : 'redeem failed');

@@ -36,6 +36,27 @@ describe('SponsorshipService', () => {
     expect(sponsorship.impactMeter('acme-bank').matchedCents).toBe(500);
   });
 
+  it('activeMatch exposes the running campaign until its cap is spent', () => {
+    const { fund, sponsorship } = makeFixture();
+    expect(sponsorship.activeMatch('2026-09')).toBeUndefined();
+
+    sponsorship.createMatchCampaign({
+      campaignId: 'sept-match',
+      sponsorId: 'acme-bank',
+      month: '2026-09',
+      ratio: 1,
+      capCents: 500,
+    });
+    expect(sponsorship.activeMatch('2026-09')).toEqual({
+      sponsorName: 'Acme Community Bank',
+      ratio: 1,
+      remainingCents: 500,
+    });
+
+    fund.contribute('sale:o1', 500, new Date('2026-09-10T12:00:00Z'));
+    expect(sponsorship.activeMatch('2026-09')).toBeUndefined(); // cap exhausted
+  });
+
   it('campaigns only match inside their month', () => {
     const { fund, sponsorship } = makeFixture();
     sponsorship.createMatchCampaign({

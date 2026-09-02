@@ -111,6 +111,24 @@ export class SponsorshipService {
     return { ...campaign };
   }
 
+  /**
+   * The campaign still matching this month, for point-of-purchase display —
+   * "Acme is doubling every purchase" converts browsers into buyers, so the
+   * matching money must be visible where the buying happens.
+   */
+  activeMatch(month: string): { sponsorName: string; ratio: number; remainingCents: number } | undefined {
+    for (const campaign of this.campaigns.values()) {
+      if (campaign.month !== month || campaign.matchedCents >= campaign.capCents) continue;
+      const sponsor = this.sponsors.get(campaign.sponsorId);
+      return {
+        sponsorName: sponsor?.name ?? campaign.sponsorId,
+        ratio: campaign.ratio,
+        remainingCents: campaign.capCents - campaign.matchedCents,
+      };
+    }
+    return undefined;
+  }
+
   /** Sponsor stakes cash that backs karma spent at checkout. */
   fundKarmaSubsidy(sponsorId: string, amountCents: number): void {
     this.requireSponsor(sponsorId);
