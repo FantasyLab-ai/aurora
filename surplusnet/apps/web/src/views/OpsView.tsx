@@ -2,11 +2,21 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, dollars, type ZonesResponse } from '../api';
 import { Incentive, Page, Stat } from '../components';
 
+const EVENT_STYLE: Record<string, { icon: string; cls: string }> = {
+  DONATION: { icon: '🥬', cls: 'tag' },
+  ESCALATED: { icon: '📣', cls: 'timer' },
+  ALERT: { icon: '🚨', cls: 'timer' },
+  EXPIRED: { icon: '🗑', cls: 'timer' },
+};
+
 export function OpsView() {
   const [data, setData] = useState<ZonesResponse | null>(null);
+  const [events, setEvents] = useState<Array<{ at: string; kind: string; detail: string }>>([]);
 
   const refresh = useCallback(async () => {
-    setData(await api.zones());
+    const [zonesRes, eventsRes] = await Promise.all([api.zones(), api.opsEvents()]);
+    setData(zonesRes);
+    setEvents(eventsRes.events);
   }, []);
 
   useEffect(() => {
@@ -54,6 +64,24 @@ export function OpsView() {
           )}
         </div>
       ))}
+
+      <div className="section-title">Reliability feed · live</div>
+      <div className="card">
+        {events.length === 0 && (
+          <p className="muted" style={{ margin: 0 }}>
+            Quiet right now — donations, escalations, and expiries appear here the moment they happen.
+          </p>
+        )}
+        {events.slice(0, 6).map((event, i) => (
+          <div key={`${event.at}-${i}`} className="row" style={{ padding: '6px 0' }}>
+            <span style={{ fontSize: 16 }}>{EVENT_STYLE[event.kind]?.icon ?? '•'}</span>
+            <span style={{ flex: 1, fontSize: 12.5 }}>{event.detail}</span>
+            <span className="muted" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {new Date(event.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          </div>
+        ))}
+      </div>
 
       <div className="section-title">Network impact (the Impact Ledger)</div>
       <div className="statrow">

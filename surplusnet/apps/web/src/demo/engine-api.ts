@@ -300,4 +300,40 @@ export const engineApi: ApiClient = {
       openRescues: (await net.itemRepository.findInState('DONATION_PHASE')).length,
     };
   },
+
+  async opsEvents() {
+    await ready;
+    return { events: opsEvents };
+  },
+
+  async referralPreview(referrerId, referrerRole) {
+    await ready;
+    const newUserId = `friend-${Date.now()}`;
+    await net.onboarding.onboardRecipient({ userId: newUserId, referredBy: { referrerId, referrerRole } });
+    const reward = await net.referrals.qualify(newUserId);
+    return { newUserId, reward: reward ?? null, balances: await net.wallets.balances(referrerId) };
+  },
 };
+
+const opsEvents: Array<{ at: string; kind: 'DONATION' | 'ESCALATED' | 'ALERT' | 'EXPIRED'; detail: string }> = [];
+function pushOpsEvent(kind: (typeof opsEvents)[number]['kind'], detail: string): void {
+  opsEvents.unshift({ at: new Date().toISOString(), kind, detail });
+  if (opsEvents.length > 20) opsEvents.length = 20;
+}
+net.bus.on('donation.available', async ({ itemId }) => {
+  const item = await net.itemRepository.findById(itemId);
+  pushOpsEvent('DONATION', `${item?.title ?? itemId} entered the free pool`);
+});
+net.bus.on('donation.escalated', async ({ itemId, level, finalAlert }) => {
+  const item = await net.itemRepository.findById(itemId);
+  pushOpsEvent(
+    finalAlert ? 'ALERT' : 'ESCALATED',
+    finalAlert
+      ? `${item?.title ?? itemId}: final alert — hub staff pinged`
+      : `${item?.title ?? itemId}: unclaimed, re-dispatched wider (level ${level})`,
+  );
+});
+net.bus.on('item.expired', async ({ itemId }) => {
+  const item = await net.itemRepository.findById(itemId);
+  pushOpsEvent('EXPIRED', `${item?.title ?? itemId} passed its safety window — counted against fill rate`);
+});

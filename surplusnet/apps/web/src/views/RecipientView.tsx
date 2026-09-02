@@ -14,6 +14,13 @@ export function RecipientView() {
   const [balances, setBalances] = useState<Balances | null>(null);
   const [claims, setClaims] = useState<Array<FeedItem & { delivery: Delivery | null }>>([]);
   const [selected, setSelected] = useState<FeedItem | null>(null);
+  const [receipt, setReceipt] = useState<{
+    title: string;
+    meals: number;
+    co2Kg: number;
+    fundCents: number;
+    savedCents: number;
+  } | null>(null);
   const [useKarma, setUseKarma] = useState(false);
   const [diet, setDiet] = useState('All');
   const [toast, setToast] = useState<string | null>(null);
@@ -62,6 +69,13 @@ export function RecipientView() {
         ...(split.karmaCredits > 0 ? { karmaCredits: split.karmaCredits } : {}),
       });
       setBalances(result.wallet);
+      setReceipt({
+        title: item.title,
+        meals: item.impact.mealsRescued,
+        co2Kg: item.impact.co2eGrams / 1000,
+        fundCents: result.receipt.fundContributionCents,
+        savedCents: item.fmvCents - item.priceCents,
+      });
       notify(
         `Claimed! ${dollars(result.receipt.fundContributionCents)} of your purchase just funded free meals for neighbors.`,
       );
@@ -87,6 +101,33 @@ export function RecipientView() {
 
   const explore = (
     <>
+      {receipt && (
+        <div className="card" style={{ border: '2px solid var(--green-700)' }}>
+          <div className="row">
+            <strong style={{ fontSize: 14 }}>🧾 Your impact receipt · {receipt.title}</strong>
+            <button className="btn small secondary" onClick={() => setReceipt(null)}>Close</button>
+          </div>
+          <div className="statrow" style={{ marginTop: 10, marginBottom: 4 }}>
+            <div className="stat"><div className="value">{dollars(receipt.savedCents)}</div><div className="label">saved vs retail</div></div>
+            <div className="stat"><div className="value">{receipt.meals.toFixed(1)}</div><div className="label">meals rescued</div></div>
+            <div className="stat"><div className="value">{receipt.co2Kg.toFixed(1)} kg</div><div className="label">CO₂ prevented</div></div>
+            <div className="stat"><div className="value">{dollars(receipt.fundCents)}</div><div className="label">to the Community Fund</div></div>
+          </div>
+          <button
+            className="btn secondary small"
+            onClick={() => {
+              void navigator.clipboard
+                ?.writeText(
+                  `I just rescued ${receipt.meals.toFixed(1)} meals and funded ${dollars(receipt.fundCents)} of free food for neighbors on SurplusNet 🥬`,
+                )
+                .then(() => notify('Copied — paste it anywhere.'))
+                .catch(() => notify('Copy blocked by the browser — select and share manually.'));
+            }}
+          >
+            Share your impact
+          </button>
+        </div>
+      )}
       <Incentive headline="Premium surplus, up to 70% off">
         Every cash purchase sends <strong>20% into the Community Fund</strong> — your dinner
         literally funds a neighbor's. Fund pool: <strong>{fund ? dollars(fund.poolCents) : '…'}</strong>
@@ -283,6 +324,47 @@ export function RecipientView() {
         Invite a friend — when they claim their first box, <strong>you earn $3 in community
         credits</strong> (funded by the pool, never printed from thin air).
       </Incentive>
+      <div className="card">
+        <div className="section-title" style={{ margin: '0 0 8px' }}>Your invite link</div>
+        <div className="row" style={{ gap: 8 }}>
+          <code style={{ flex: 1, fontSize: 12, background: 'var(--green-50)', padding: '9px 11px', borderRadius: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            surplus.net/join?ref=jamie-neighbor
+          </code>
+          <button
+            className="btn small"
+            onClick={() => {
+              void navigator.clipboard
+                ?.writeText('https://surplus.net/join?ref=jamie-neighbor')
+                .then(() => notify('Invite link copied.'))
+                .catch(() => notify('Copy blocked — long-press the link instead.'));
+            }}
+          >
+            Copy
+          </button>
+        </div>
+        <div className="divider" />
+        <div className="row">
+          <span className="muted">See exactly what happens when a friend joins and claims:</span>
+          <button
+            className="btn small secondary"
+            onClick={async () => {
+              try {
+                const result = await api.referralPreview(DEMO_USER, 'RECIPIENT');
+                notify(
+                  result.reward
+                    ? `Friend joined & claimed → you earned ${result.reward}. Real engine, real payout.`
+                    : 'Preview ran — no reward this time (pool headroom or already qualified).',
+                );
+                void refresh();
+              } catch (err) {
+                notify(err instanceof Error ? err.message : 'preview failed');
+              }
+            }}
+          >
+            Preview payout
+          </button>
+        </div>
+      </div>
       <div className="card">
         <div className="section-title" style={{ margin: '0 0 8px' }}>Dietary profile</div>
         <span className="badge tag">no exclusions</span>

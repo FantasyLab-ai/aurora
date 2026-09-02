@@ -205,6 +205,15 @@ const fetchApi = {
   supplierDashboard: (supplierId: string) => request<SupplierDashboard>(`/api/supplier/${supplierId}/dashboard`),
   skipToday: (scheduleId: string) => request<{ ok: true }>(`/api/supplier/schedule/${scheduleId}/skip`, { method: 'POST', body: '{}' }),
   zones: () => request<ZonesResponse>('/api/zones'),
+  opsEvents: () =>
+    request<{ events: Array<{ at: string; kind: 'DONATION' | 'ESCALATED' | 'ALERT' | 'EXPIRED'; detail: string }> }>(
+      '/api/ops/events',
+    ),
+  referralPreview: (referrerId: string, referrerRole: 'SUPPLIER' | 'COURIER' | 'RECIPIENT') =>
+    request<{ newUserId: string; reward: string | null; balances: Balances }>('/api/referral/preview', {
+      method: 'POST',
+      body: JSON.stringify({ referrerId, referrerRole }),
+    }),
 };
 
 export type ApiClient = typeof fetchApi;

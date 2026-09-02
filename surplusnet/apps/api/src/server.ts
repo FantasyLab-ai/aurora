@@ -357,6 +357,44 @@ app.get('/api/supplier/certificate/:itemId', async (req) => {
 
 // ── Ops / zones ───────────────────────────────────────────────────────────
 
+// Live reliability feed: the escalation ladder and expiries made visible —
+// unfilled rescues are the death spiral, so ops watches them in real time.
+const opsEvents: Array<{ at: string; kind: 'DONATION' | 'ESCALATED' | 'ALERT' | 'EXPIRED'; detail: string }> = [];
+function pushOpsEvent(kind: (typeof opsEvents)[number]['kind'], detail: string): void {
+  opsEvents.unshift({ at: new Date().toISOString(), kind, detail });
+  if (opsEvents.length > 20) opsEvents.length = 20;
+}
+net.bus.on('donation.available', async ({ itemId }) => {
+  const item = await net.itemRepository.findById(itemId);
+  pushOpsEvent('DONATION', `${item?.title ?? itemId} entered the free pool`);
+});
+net.bus.on('donation.escalated', async ({ itemId, level, finalAlert }) => {
+  const item = await net.itemRepository.findById(itemId);
+  pushOpsEvent(
+    finalAlert ? 'ALERT' : 'ESCALATED',
+    finalAlert
+      ? `${item?.title ?? itemId}: final alert — hub staff pinged`
+      : `${item?.title ?? itemId}: unclaimed, re-dispatched wider (level ${level})`,
+  );
+});
+net.bus.on('item.expired', async ({ itemId }) => {
+  const item = await net.itemRepository.findById(itemId);
+  pushOpsEvent('EXPIRED', `${item?.title ?? itemId} passed its safety window — counted against fill rate`);
+});
+
+app.get('/api/ops/events', async () => ({ events: opsEvents }));
+
+// Referral preview: runs the real engine flow (register → first-action
+// qualification) for a generated friend so the payout mechanics are
+// demonstrable end to end.
+app.post('/api/referral/preview', async (req) => {
+  const { referrerId, referrerRole } = req.body as { referrerId: string; referrerRole: 'SUPPLIER' | 'COURIER' | 'RECIPIENT' };
+  const newUserId = `friend-${Date.now()}`;
+  await net.onboarding.onboardRecipient({ userId: newUserId, referredBy: { referrerId, referrerRole } });
+  const reward = await net.referrals.qualify(newUserId);
+  return { newUserId, reward: reward ?? null, balances: await net.wallets.balances(referrerId) };
+});
+
 app.get('/api/zones', async () => ({
   zones: net.zoneHealth.allZones(),
   networkImpact: net.impact.totals(),
