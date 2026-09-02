@@ -1,0 +1,181 @@
+// SurplusNet core schema.
+//
+// Geospatial note: latitude/longitude are stored as plain doubles so the schema
+// works out of the box. For production radius queries, enable PostGIS
+// (docker-compose ships postgis/postgis) and add a generated geography column +
+// GiST index via a raw SQL migration:
+//   ALTER TABLE "SurplusItem" ADD COLUMN geog geography(Point, 4326)
+//     GENERATED ALWAYS AS (ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography) STORED;
+//   CREATE INDEX surplus_item_geog_idx ON "SurplusItem" USING GIST (geog);
+//
+// All monetary amounts are integer cents to avoid floating-point drift.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPPLIER
+  COURIER
+  RECIPIENT
+}
+
+enum SurplusItemState {
+  SALES_PHASE
+  DONATION_PHASE
+  CLAIMED
+  DELIVERED
+  EXPIRED
+}
+
+enum DeliveryState {
+  DISPATCHED
+  ACCEPTED
+  PICKED_UP
+  IN_TRANSIT
+  DROPPED_OFF
+  VERIFIED
+  CANCELLED
+}
+
+enum TokenKind {
+  CASH
+  KARMA_CREDIT
+  COMMUNITY_CREDIT
+}
+
+enum LedgerEntryKind {
+  DONATION_RECORDED
+  TAX_DEDUCTION_CALCULATED
+  DELIVERY_VERIFIED
+}
+
+model User {
+  id           String    @id @default(uuid())
+  role         UserRole
+  email        String    @unique
+  displayName  String
+  latitude     Float?
+  longitude    Float?
+  createdAt    DateTime  @default(now())
+
+  wallet         Wallet?
+  surplusItems   SurplusItem[] @relation("SupplierItems")
+  claimedItems   SurplusItem[] @relation("RecipientItems")
+  deliveries     Delivery[]    @relation("CourierDeliveries")
+}
+
+model SurplusItem {
+  id          String           @id @default(uuid())
+  supplierId  String
+  supplier    User             @relation("SupplierItems", fields: [supplierId], references: [id])
+  recipientId String?
+  recipient   User?            @relation("RecipientItems", fields: [recipientId], references: [id])
+
+  title       String
+  category    String
+  quantity    Int              @default(1)
+  photoUrl    String?
+
+  // Monetary fields in integer cents
+  fmvCents                    Int
+  cogsCents                   Int
+  calculatedTaxDeductionCents Int
+  salePriceCents              Int?
+
+  currentState  SurplusItemState @default(SALES_PHASE)
+  listedAt      DateTime         @default(now())
+  salesWindowMinutes Int         @default(45)
+  rolledOverAt  DateTime?
+  claimedAt     DateTime?
+  deliveredAt   DateTime?
+
+  // Cold-chain safety
+  safeUntil        DateTime
+  lastTempCelsius  Float?
+  tempCompliant    Boolean  @default(true)
+
+  latitude   Float
+  longitude  Float
+
+  deliveries    Delivery[]
+  ledgerEntries DonationLedgerEntry[]
+
+  @@index([currentState, listedAt])
+  @@index([supplierId])
+}
+
+model Wallet {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id])
+
+  cashBalanceCents       Int @default(0)
+  karmaCreditBalance     Int @default(0)
+  communityCreditBalance Int @default(0)
+
+  transactions WalletTransaction[]
+}
+
+model WalletTransaction {
+  id             String    @id @default(uuid())
+  walletId       String
+  wallet         Wallet    @relation(fields: [walletId], references: [id])
+  kind           TokenKind
+  // Positive = credit, negative = debit
+  amount         Int
+  reason         String
+  // Guards against double-minting Karma Credits for the same delivery
+  idempotencyKey String    @unique
+  createdAt      DateTime  @default(now())
+
+  @@index([walletId, createdAt])
+}
+
+model Delivery {
+  id            String        @id @default(uuid())
+  surplusItemId String
+  surplusItem   SurplusItem   @relation(fields: [surplusItemId], references: [id])
+  courierId     String
+  courier       User          @relation("CourierDeliveries", fields: [courierId], references: [id])
+
+  state          DeliveryState @default(DISPATCHED)
+  dispatchedAt   DateTime      @default(now())
+  pickedUpAt     DateTime?
+  droppedOffAt   DateTime?
+
+  dropoffName      String
+  dropoffLatitude  Float
+  dropoffLongitude Float
+  routeDistanceMeters Int?
+  etaSeconds          Int?
+
+  // Cold-chain readings captured en route, [{at, celsius}]
+  tempReadings Json @default("[]")
+
+  @@index([courierId, state])
+  @@index([surplusItemId])
+}
+
+// Append-only, hash-chained audit ledger backing the end-of-month,
+// audit-ready export for accountants. Rows are never updated or deleted;
+// each entryHash commits to the previous row's hash plus this row's payload.
+model DonationLedgerEntry {
+  id            String          @id @default(uuid())
+  sequence      Int             @unique @default(autoincrement())
+  surplusItemId String
+  surplusItem   SurplusItem     @relation(fields: [surplusItemId], references: [id])
+  kind          LedgerEntryKind
+  payload       Json
+  prevHash      String
+  entryHash     String
+  recordedAt    DateTime        @default(now())
+
+  @@index([surplusItemId])
+  @@index([recordedAt])
+}
