@@ -1,8 +1,0 @@
-node_modules/
-dist/
-dist-demo/
-dist-artifact/
-coverage/
-*.tsbuildinfo
-.env
-.env.local
