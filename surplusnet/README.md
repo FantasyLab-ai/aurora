@@ -30,7 +30,10 @@ surplusnet/
 │           └── modules/
 │               ├── tax/        # Epic 1 — Automated Supplier Tax-Shield
 │               ├── inventory/  # Epic 2 — Two-Tiered Recipient Engine
+│               ├── checkout/   # Epic 2 — dignity-parity purchase + $0 claim
+│               ├── funding/    # Epic 2 — self-sustaining Community Fund
 │               ├── routing/    # Epic 3 — Courier dispatch + geo
+│               ├── karma/      # Epic 3 — perk redemption, streaks, volunteer hours
 │               └── wallet/     # Epics 2+3 — Cash / Community / Karma tokens
 ```
 
@@ -65,6 +68,43 @@ writes automatically — zero added labor for restaurant staff.
   KARMA_CREDIT balances; checkout treats them identically (the dignity-first
   requirement). Idempotency keys + non-negative balance invariants mirror the
   unique constraint and SERIALIZABLE transaction the Prisma adapter uses.
+
+### The incentive loop (`modules/checkout`, `modules/funding`, `modules/karma`)
+
+The closed-loop economics that make every party win without "charity" as the
+driver:
+
+- **`checkout.service.ts`** — Phase-1 purchase with **dignity parity**: payment
+  is any mix of cash and Community Credits (1 credit = 1 cent) through the same
+  endpoint with the same receipt — nothing downstream can tell which mix was
+  used. Per sale, a configurable share of the cash portion (default 20%) is
+  contributed to the Community Fund and the rest is supplier COGS recovery;
+  spent credits are paid out to the supplier by the fund at face value. Failed
+  or raced payments are compensated with idempotent refunds. `claimDonation`
+  is the $0 path for `DONATION_PHASE` items.
+- **`community-fund.service.ts`** — the self-sustaining pool. Invariant:
+  **every credit in circulation is backed 1:1 by money in the pool** (from the
+  open-market tier's sales cut plus municipal/non-profit grants). Monthly
+  allocation mints credits only up to the pool's headroom and is idempotent per
+  recipient per month; settlement retires spent credits as the fund pays
+  suppliers. Free food is never unfunded charity — suppliers get real money
+  either way.
+- **`karma/partner-redemption.service.ts`** — the Karma Token Utility System.
+  Local merchants register perks (coffee, transit, groceries) priced in Karma
+  Credits; couriers redeem them for single-use vouchers. Retried requests can't
+  double-charge (wallet idempotency keys), and per-partner settlement tallies
+  support sponsor reimbursement. Karma never converts to cash — it converts to
+  local value, keeping the network a volunteer economy, not a sub-minimum-wage
+  gig market.
+- **`karma/engagement.service.ts`** — retention mechanics: consecutive-day
+  streaks, lifetime milestone badges (`first-rescue` → `city-champion`), a
+  rescue leaderboard, and **verified corporate volunteer hours**: couriers
+  linked to an employer accrue minutes per completed delivery, exported as a
+  monthly per-employer report for HR's paid-volunteer-time programs.
+
+`delivery.completed` drives all courier rewards atomically-once: the idempotent
+karma mint gates streaks, badges, volunteer minutes, and the ledger's
+`DELIVERY_VERIFIED` record, so a replayed event changes nothing.
 
 ### Epic 3 — Karma Ledger & Route Optimization (`modules/routing`, `modules/wallet`)
 
@@ -113,8 +153,11 @@ npm run prisma:migrate -w @surplusnet/core
   documents the raw migration that adds a generated `geography` column + GiST
   index for radius queries at scale.
 - **`createSurplusNet()`** in `src/index.ts` wires the whole pipeline and is
-  exercised end-to-end in `pipeline.integration.test.ts`:
-  list → 45-min rollover → dispatch → delivery → karma mint → monthly audit report.
+  exercised end-to-end in two integration tests:
+  `pipeline.integration.test.ts` (list → 45-min rollover → dispatch → delivery
+  → karma mint → monthly audit report) and `incentive-loop.integration.test.ts`
+  (cash sale funds pool → monthly credit allocation → credit purchase pays
+  supplier → delivery mints karma → karma redeems a real perk).
 
 ## Roadmap (next packages)
 

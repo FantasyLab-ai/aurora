@@ -11,6 +11,10 @@ export * from './modules/inventory/phase-rollover.worker.js';
 export * from './modules/routing/geo.js';
 export * from './modules/routing/courier-dispatch.service.js';
 export * from './modules/wallet/wallet.service.js';
+export * from './modules/funding/community-fund.service.js';
+export * from './modules/checkout/checkout.service.js';
+export * from './modules/karma/partner-redemption.service.js';
+export * from './modules/karma/engagement.service.js';
 
 import { EventBus } from './lib/event-bus.js';
 import type { Clock } from './lib/clock.js';
@@ -31,6 +35,10 @@ import {
 } from './modules/routing/courier-dispatch.service.js';
 import { InMemoryWalletStore, WalletService, type WalletStore } from './modules/wallet/wallet.service.js';
 import type { LedgerStore } from './modules/tax/donation-ledger.js';
+import { CommunityFundService } from './modules/funding/community-fund.service.js';
+import { CheckoutService } from './modules/checkout/checkout.service.js';
+import { PartnerRedemptionService } from './modules/karma/partner-redemption.service.js';
+import { EngagementService } from './modules/karma/engagement.service.js';
 
 export interface SurplusNetOptions {
   clock?: Clock;
@@ -42,6 +50,10 @@ export interface SurplusNetOptions {
   radiusMiles?: number;
   rolloverPollIntervalMs?: number;
   karmaCreditsPerDelivery?: number;
+  /** Share of each cash sale contributed to the Community Fund. */
+  fundShareRate?: number;
+  /** Verified volunteer minutes credited per completed delivery. */
+  volunteerMinutesPerDelivery?: number;
 }
 
 /**
@@ -85,6 +97,22 @@ export function createSurplusNet(options: SurplusNetOptions = {}) {
   const walletStore = options.walletStore ?? new InMemoryWalletStore();
   const wallets = new WalletService(walletStore);
 
+  const fund = new CommunityFundService(wallets);
+  const checkout = new CheckoutService(
+    itemRepository,
+    wallets,
+    fund,
+    { ...(options.fundShareRate !== undefined ? { fundShareRate: options.fundShareRate } : {}) },
+    clock,
+  );
+  const partners = new PartnerRedemptionService(wallets);
+  const engagement = new EngagementService(
+    { ...(options.volunteerMinutesPerDelivery !== undefined
+      ? { minutesPerDelivery: options.volunteerMinutesPerDelivery }
+      : {}) },
+    clock,
+  );
+
   const karmaPerDelivery = options.karmaCreditsPerDelivery ?? 10;
 
   bus.on('donation.available', async ({ itemId, latitude, longitude }) => {
@@ -92,9 +120,29 @@ export function createSurplusNet(options: SurplusNetOptions = {}) {
   });
 
   bus.on('delivery.completed', async ({ deliveryId, itemId, courierId }) => {
-    await wallets.mintKarmaForDelivery(courierId, deliveryId, karmaPerDelivery);
-    await ledger.record(itemId, 'DELIVERY_VERIFIED', { deliveryId, courierId });
+    // Idempotent mint: only the first event for a delivery pays karma,
+    // counts toward streaks/badges, and logs volunteer minutes.
+    const minted = await wallets.mintKarmaForDelivery(courierId, deliveryId, karmaPerDelivery);
+    if (minted) {
+      engagement.recordDelivery(courierId, deliveryId, clock.now());
+      await ledger.record(itemId, 'DELIVERY_VERIFIED', { deliveryId, courierId });
+    }
   });
 
-  return { bus, ledger, auditExport, items, itemRepository, rolloverWorker, dispatch, wallets, walletStore, courierLocations };
+  return {
+    bus,
+    ledger,
+    auditExport,
+    items,
+    itemRepository,
+    rolloverWorker,
+    dispatch,
+    wallets,
+    walletStore,
+    courierLocations,
+    fund,
+    checkout,
+    partners,
+    engagement,
+  };
 }
