@@ -120,7 +120,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-export const api = {
+const fetchApi = {
   feed: (userId: string) => request<{ fund: FundState; items: FeedItem[] }>(`/api/feed?userId=${userId}`),
   purchase: (input: { itemId: string; recipientId: string; cashCents: number; communityCredits: number; karmaCredits?: number }) =>
     request<{ receipt: { supplierProceedsCents: number; fundContributionCents: number }; wallet: Balances }>(
@@ -150,6 +150,20 @@ export const api = {
   skipToday: (scheduleId: string) => request<{ ok: true }>(`/api/supplier/schedule/${scheduleId}/skip`, { method: 'POST', body: '{}' }),
   zones: () => request<ZonesResponse>('/api/zones'),
 };
+
+export type ApiClient = typeof fetchApi;
+
+// The REST client is the default backend; the self-contained demo build swaps
+// in an in-browser engine implementation before rendering.
+let backend: ApiClient = fetchApi;
+
+export function setApiBackend(next: ApiClient): void {
+  backend = next;
+}
+
+export const api: ApiClient = new Proxy({} as ApiClient, {
+  get: (_target, prop) => backend[prop as keyof ApiClient],
+});
 
 export const dollars = (cents: number): string => `$${(cents / 100).toFixed(2)}`;
 export const categoryEmoji: Record<string, string> = {

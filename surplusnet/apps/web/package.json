@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "build:demo": "vite build --config vite.demo.config.ts && node scripts/build-artifact.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@surplusnet/core": "*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
