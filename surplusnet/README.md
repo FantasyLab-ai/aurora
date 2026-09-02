@@ -21,6 +21,9 @@ tokenized utility rewards for micro-couriers.
 ```
 surplusnet/
 ├── docker-compose.yml          # PostgreSQL (PostGIS) + Redis for local dev
+├── apps/
+│   ├── api/                    # Fastify REST layer over the engine + seeded demo world
+│   └── web/                    # React (Vite) app — recipient, courier, supplier, ops
 ├── packages/
 │   └── core/                   # @surplusnet/core — the matching engine
 │       ├── prisma/schema.prisma  # Users, SurplusItems, Wallets, Deliveries, DonationLedger
@@ -175,7 +178,26 @@ jurisdiction.
   Credits exactly once per delivery (replayed events are no-ops) and records
   `DELIVERY_VERIFIED` on the immutable ledger.
 
-## Getting started
+## Running the app
+
+```bash
+cd surplusnet && npm install
+npm run build -w @surplusnet/core -w @surplusnet/web
+npm run start -w @surplusnet/api        # serves API + web app on http://localhost:4000
+```
+
+The server seeds a full demo world (Greenpoint zone: 5 suppliers, 32 couriers,
+2 hub fridges, funded Community Fund, live listings, rescue history) and runs
+the rollover, escalation, and recurring-listing workers on a 15s interval. The
+web app is a mobile-frame SPA with four role surfaces — Recipient (Blind Box
+feed, dignity-parity checkout, claim tracker, impact wallet), Courier (surge
+offers with reason chips, pickup → temp log → drop-off flow, karma/perks/teams),
+Supplier (standing schedule, the CFO three numbers, compliance reports), and
+Ops (zone health, network impact, fund + sponsor meters) — designed so the
+future Expo apps are a re-skin, not a redesign. Incentives are surfaced
+explicitly on every screen.
+
+## Getting started (engine only)
 
 ```bash
 cd surplusnet

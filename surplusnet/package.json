@@ -4,7 +4,8 @@
   "private": true,
   "description": "SurplusNet — a three-sided hyper-local food surplus logistics engine",
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "apps/*"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
