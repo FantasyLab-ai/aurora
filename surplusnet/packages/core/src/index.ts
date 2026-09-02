@@ -23,7 +23,11 @@ export * from './modules/impact/impact-accounting.service.js';
 export * from './modules/delivery/delivery.service.js';
 export * from './modules/compliance/compliance.service.js';
 export * from './modules/growth/referral.service.js';
+export * from './modules/growth/zone-health.service.js';
+export * from './modules/growth/onboarding.service.js';
 export * from './modules/recipient/preferences.service.js';
+export * from './modules/inventory/recurring-listing.service.js';
+export * from './modules/routing/escalation.worker.js';
 
 import { EventBus } from './lib/event-bus.js';
 import type { Clock } from './lib/clock.js';
@@ -56,7 +60,11 @@ import { ImpactAccountingService } from './modules/impact/impact-accounting.serv
 import { DeliveryService } from './modules/delivery/delivery.service.js';
 import { ComplianceService } from './modules/compliance/compliance.service.js';
 import { ReferralService } from './modules/growth/referral.service.js';
+import { ZoneHealthService } from './modules/growth/zone-health.service.js';
+import { OnboardingService } from './modules/growth/onboarding.service.js';
 import { RecipientPreferencesService } from './modules/recipient/preferences.service.js';
+import { RecurringListingService } from './modules/inventory/recurring-listing.service.js';
+import { EscalationWorker } from './modules/routing/escalation.worker.js';
 
 export interface SurplusNetOptions {
   clock?: Clock;
@@ -92,7 +100,7 @@ export function createSurplusNet(options: SurplusNetOptions = {}) {
   const auditExport = new AuditExportService(ledger, () => ledgerStore.all());
 
   const itemRepository = options.itemRepository ?? new InMemorySurplusItemRepository();
-  const items = new SurplusItemService(itemRepository, ledger, clock);
+  const items = new SurplusItemService(itemRepository, ledger, clock, bus);
   const rolloverWorker = new PhaseRolloverWorker(
     itemRepository,
     bus,
@@ -145,14 +153,43 @@ export function createSurplusNet(options: SurplusNetOptions = {}) {
   const deliveries = new DeliveryService(itemRepository, bus, {}, clock);
   const compliance = new ComplianceService(itemRepository, deliveries, impact);
 
+  const zoneHealth = new ZoneHealthService(undefined, clock);
+  const recurring = new RecurringListingService(items, clock);
+  const escalation = new EscalationWorker(
+    itemRepository,
+    dispatch,
+    bus,
+    { ...(options.radiusMiles !== undefined ? { baseRadiusMiles: options.radiusMiles } : {}) },
+    clock,
+  );
+  const onboarding = new OnboardingService(
+    walletStore,
+    zoneHealth,
+    referrals,
+    teams,
+    preferences,
+    recurring,
+  );
+
+  bus.on('item.listed', async ({ supplierId, zoneId }) => {
+    if (zoneId) zoneHealth.recordListing(zoneId);
+    // A supplier's first listing qualifies whoever referred them.
+    await referrals.qualify(supplierId, clock.now());
+  });
+
   bus.on('donation.available', async ({ itemId, latitude, longitude }) => {
     await dispatch.dispatchForItem(itemId, { latitude, longitude });
   });
 
+  bus.on('item.expired', async ({ itemId }) => {
+    const item = await itemRepository.findById(itemId);
+    if (item?.zoneId) zoneHealth.recordExpiry(item.zoneId);
+  });
+
   bus.on('delivery.completed', async ({ deliveryId, itemId, courierId, karmaCredits }) => {
     // Idempotent mint: only the first event for a delivery pays karma,
-    // counts toward streaks/badges/teams, logs volunteer minutes, and books
-    // the rescue's impact on the ledger.
+    // counts toward streaks/badges/teams, logs volunteer minutes, books
+    // the rescue's impact, and feeds zone health.
     const minted = await wallets.mintKarmaForDelivery(
       courierId,
       deliveryId,
@@ -163,8 +200,18 @@ export function createSurplusNet(options: SurplusNetOptions = {}) {
       engagement.recordDelivery(courierId, deliveryId, now);
       teams.recordDelivery(courierId, now);
       await ledger.record(itemId, 'DELIVERY_VERIFIED', { deliveryId, courierId });
+      await referrals.qualify(courierId, now);
       const item = await itemRepository.findById(itemId);
-      if (item) await impact.recordRescue(item, now);
+      if (item) {
+        await impact.recordRescue(item, now);
+        if (item.zoneId) {
+          const enteredAt = item.rolledOverAt ?? item.listedAt;
+          zoneHealth.recordRescue(
+            item.zoneId,
+            Math.max(0, Math.round((now.getTime() - enteredAt.getTime()) / 60_000)),
+          );
+        }
+      }
     }
   });
 
@@ -192,5 +239,9 @@ export function createSurplusNet(options: SurplusNetOptions = {}) {
     karmaPricing,
     deliveries,
     compliance,
+    zoneHealth,
+    recurring,
+    escalation,
+    onboarding,
   };
 }

@@ -9,6 +9,7 @@ export interface SurplusItemRepository {
   create(item: SurplusItem): Promise<SurplusItem>;
   findById(id: string): Promise<SurplusItem | undefined>;
   findBySupplier(supplierId: string): Promise<SurplusItem[]>;
+  findInState(state: SurplusItemState): Promise<SurplusItem[]>;
   /**
    * Items still in SALES_PHASE whose sales window elapsed at or before `now`.
    */
@@ -42,6 +43,12 @@ export class InMemorySurplusItemRepository implements SurplusItemRepository {
   async findBySupplier(supplierId: string): Promise<SurplusItem[]> {
     return [...this.items.values()]
       .filter((item) => item.supplierId === supplierId)
+      .map((item) => ({ ...item }));
+  }
+
+  async findInState(state: SurplusItemState): Promise<SurplusItem[]> {
+    return [...this.items.values()]
+      .filter((item) => item.currentState === state)
       .map((item) => ({ ...item }));
   }
 

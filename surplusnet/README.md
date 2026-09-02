@@ -196,6 +196,17 @@ npm run prisma:generate -w @surplusnet/core
 npm run prisma:migrate -w @surplusnet/core
 ```
 
+## Why competitors stall — and the engines that answer each failure mode
+
+| Failure mode (observed in the market) | SurplusNet answer |
+| --- | --- |
+| Consumer-discount apps (Too Good To Go model) never built donation logistics: no pantry routing, no compliance product, surprise bags that don't fit food-insecure diets, and food-bank supply cannibalization | Two-phase rotator (paid → $0 donation pool), courier dispatch to hubs, dietary profiles, compliance + recovery reports |
+| Paid-driver recovery startups: pickup economics never work at donation prices | Karma-incentivized micro-volunteer network — no cash driver cost; sponsors fund perks, not wages |
+| Volunteer rescue orgs: "volunteer management is the most time-consuming operational burden"; a no-show strands the food and the coordination is manual | Surge karma pricing + the automated escalation ladder (`escalation.worker.ts`): wider radius, bigger fan-out, final human alert — no rescue silently dropped |
+| Suppliers: 54–67% cite liability fear (zero US lawsuits ever recorded); the deeper barrier is that disposal is the path of least resistance — labor costs land today, tax benefits next April | Per-donation liability certificates, and standing surplus schedules (`recurring-listing.service.ts`) that make donating literally zero recurring actions |
+| Marketplace density: launching zones before supply/courier/hub pre-commitment burns every early adopter | Zone health gating (`zone-health.service.ts`): SEED → READY_TO_LAUNCH → LIVE_HEALTHY / AT_RISK on real fill-rate data |
+| Nonprofit rescue tech is grant-dependent — no self-sustaining revenue | The open-market tier + sponsorship engine + B2G compliance reporting fund the free tier structurally |
+
 ## Architecture decisions
 
 - **Cents, not floats** — every monetary column and function uses integer cents;

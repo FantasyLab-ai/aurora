@@ -232,6 +232,44 @@ model RecipientProfile {
   avoidTags         String[] @default([])
 }
 
+// Standing surplus schedule: the supplier describes their rhythm once and
+// the engine lists it every active day — zero recurring labor.
+model RecurringSchedule {
+  scheduleId         String  @id
+  supplierId         String
+  title              String
+  category           String
+  quantity           Int     @default(1)
+  weightGrams        Int?
+  zoneId             String?
+  dietaryTags        String[] @default([])
+  fmvCents           Int
+  cogsCents          Int
+  salePriceCents     Int?
+  latitude           Float
+  longitude          Float
+  listAtHourUtc      Int
+  safeForHours       Int
+  salesWindowMinutes Int?
+  daysOfWeek         Int[]   @default([0, 1, 2, 3, 4, 5, 6])
+  paused             Boolean @default(false)
+
+  @@index([supplierId])
+  @@index([zoneId])
+}
+
+// Zone rollups for density gating and reliability monitoring; counters are
+// derived state rebuilt from events, persisted for dashboard reads.
+model ZoneStats {
+  zoneId        String @id
+  supplierCount Int    @default(0)
+  courierCount  Int    @default(0)
+  hubCount      Int    @default(0)
+  listings      Int    @default(0)
+  rescued       Int    @default(0)
+  expired       Int    @default(0)
+}
+
 // Append-only, hash-chained audit ledger backing the end-of-month,
 // audit-ready export for accountants. Rows are never updated or deleted;
 // each entryHash commits to the previous row's hash plus this row's payload.

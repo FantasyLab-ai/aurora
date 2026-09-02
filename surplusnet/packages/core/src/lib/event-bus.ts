@@ -6,7 +6,15 @@
  */
 
 export interface SurplusEvents {
+  'item.listed': { itemId: string; supplierId: string; zoneId?: string };
   'donation.available': { itemId: string; latitude: number; longitude: number };
+  'donation.escalated': {
+    itemId: string;
+    /** 1..maxLevel; each level widens the dispatch radius. */
+    level: number;
+    /** True on the last escalation — hubs/staff should intervene manually. */
+    finalAlert: boolean;
+  };
   'delivery.completed': {
     deliveryId: string;
     itemId: string;

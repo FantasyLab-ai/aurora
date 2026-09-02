@@ -37,6 +37,8 @@ export interface WalletTransactionRecord {
 
 export interface WalletStore {
   findByUserId(userId: string): Promise<WalletRecord | undefined>;
+  /** Creates the user's wallet (used by onboarding); overwrites nothing when guarded by findByUserId first. */
+  createWallet(userId: string, initial?: Partial<WalletBalances>): WalletRecord | Promise<WalletRecord>;
   /**
    * Atomically persist the balance change and the transaction row.
    * Must reject with DuplicateTransactionError on an idempotency-key replay.

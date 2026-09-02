@@ -3,6 +3,7 @@ import type { SurplusItem } from '../../domain/types.js';
 import type { Clock } from '../../lib/clock.js';
 import { systemClock } from '../../lib/clock.js';
 import { ValidationError } from '../../lib/errors.js';
+import type { EventBus } from '../../lib/event-bus.js';
 import { calculateEnhancedDeduction } from '../tax/tax-valuation.service.js';
 import type { DonationLedger } from '../tax/donation-ledger.js';
 import type { SurplusItemRepository } from './surplus-item.repository.js';
@@ -39,6 +40,7 @@ export class SurplusItemService {
     private readonly repo: SurplusItemRepository,
     private readonly ledger: DonationLedger,
     private readonly clock: Clock = systemClock,
+    private readonly bus?: EventBus,
   ) {}
 
   async listSurplus(input: ListSurplusInput): Promise<SurplusItem> {
@@ -90,6 +92,12 @@ export class SurplusItemService {
       cogsCents: deduction.cogsCents,
       deductionCents: deduction.deductionCents,
       cappedAtTwiceCogs: deduction.cappedAtTwiceCogs,
+    });
+
+    await this.bus?.emit('item.listed', {
+      itemId: created.id,
+      supplierId: created.supplierId,
+      ...(created.zoneId !== undefined ? { zoneId: created.zoneId } : {}),
     });
 
     return created;

@@ -62,9 +62,15 @@ export class CourierDispatchService {
     return Math.round(distanceMeters / TRANSPORT_SPEED_MPS[courier.transport]);
   }
 
-  async dispatchForItem(itemId: string, pickup: GeoPoint): Promise<DispatchResult> {
+  async dispatchForItem(
+    itemId: string,
+    pickup: GeoPoint,
+    overrides: { radiusMeters?: number; fanOut?: number } = {},
+  ): Promise<DispatchResult> {
+    const radiusMeters = overrides.radiusMeters ?? this.radiusMeters;
+    const fanOut = overrides.fanOut ?? this.fanOut;
     const now = this.clock.now().getTime();
-    const candidates = await this.locations.activeCouriersNear(pickup, this.radiusMeters);
+    const candidates = await this.locations.activeCouriersNear(pickup, radiusMeters);
 
     const ranked = candidates
       .filter((c) => now - c.lastSeenAt.getTime() <= this.staleAfterMs)
@@ -72,9 +78,9 @@ export class CourierDispatchService {
         const distanceMeters = haversineMeters(pickup, c);
         return { courier: c, distanceMeters, etaSeconds: this.estimateEtaSeconds(c, distanceMeters) };
       })
-      .filter((r) => r.distanceMeters <= this.radiusMeters)
+      .filter((r) => r.distanceMeters <= radiusMeters)
       .sort((a, b) => a.etaSeconds - b.etaSeconds)
-      .slice(0, this.fanOut);
+      .slice(0, fanOut);
 
     for (const r of ranked) {
       await this.notifier.offerPickup(r.courier.courierId, {
