@@ -8,6 +8,7 @@ import type { SurplusItem, SurplusItemState } from '../../domain/types.js';
 export interface SurplusItemRepository {
   create(item: SurplusItem): Promise<SurplusItem>;
   findById(id: string): Promise<SurplusItem | undefined>;
+  findBySupplier(supplierId: string): Promise<SurplusItem[]>;
   /**
    * Items still in SALES_PHASE whose sales window elapsed at or before `now`.
    */
@@ -36,6 +37,12 @@ export class InMemorySurplusItemRepository implements SurplusItemRepository {
   async findById(id: string): Promise<SurplusItem | undefined> {
     const item = this.items.get(id);
     return item ? { ...item } : undefined;
+  }
+
+  async findBySupplier(supplierId: string): Promise<SurplusItem[]> {
+    return [...this.items.values()]
+      .filter((item) => item.supplierId === supplierId)
+      .map((item) => ({ ...item }));
   }
 
   async findExpiredSalesPhase(now: Date): Promise<SurplusItem[]> {

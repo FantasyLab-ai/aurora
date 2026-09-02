@@ -37,6 +37,12 @@ export interface SurplusItem extends GeoPoint {
   title: string;
   category: string;
   quantity: number;
+  /** Actual weight when known (from the POS or the photo-recognition pipeline); otherwise impact accounting falls back to per-category estimates. */
+  weightGrams?: number;
+  /** Neighborhood zone for scoped leaderboards, impact stats, and dispatch density. */
+  zoneId?: string;
+  /** e.g. 'vegetarian', 'halal', 'contains-nuts' — matched against recipient profiles. */
+  dietaryTags?: string[];
   photoUrl?: string;
   fmvCents: number;
   cogsCents: number;

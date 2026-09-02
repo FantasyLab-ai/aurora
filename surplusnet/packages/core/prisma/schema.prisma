@@ -53,6 +53,7 @@ enum LedgerEntryKind {
   DONATION_RECORDED
   TAX_DEDUCTION_CALCULATED
   DELIVERY_VERIFIED
+  IMPACT_RECORDED
 }
 
 model User {
@@ -80,6 +81,10 @@ model SurplusItem {
   title       String
   category    String
   quantity    Int              @default(1)
+  // Actual weight when known; impact accounting falls back to category estimates
+  weightGrams Int?
+  zoneId      String?
+  dietaryTags String[]         @default([])
   photoUrl    String?
 
   // Monetary fields in integer cents
@@ -160,6 +165,71 @@ model Delivery {
 
   @@index([courierId, state])
   @@index([surplusItemId])
+}
+
+// ── Incentive layer ────────────────────────────────────────────────────────
+
+model Team {
+  teamId    String   @id
+  name      String
+  zoneId    String?
+  members   TeamMembership[]
+  createdAt DateTime @default(now())
+
+  @@index([zoneId])
+}
+
+model TeamMembership {
+  courierId String @id // one team per courier
+  teamId    String
+  team      Team   @relation(fields: [teamId], references: [teamId])
+  joinedAt  DateTime @default(now())
+
+  @@index([teamId])
+}
+
+model Sponsor {
+  sponsorId String @id
+  name      String
+  campaigns MatchCampaign[]
+}
+
+model MatchCampaign {
+  campaignId  String  @id
+  sponsorId   String
+  sponsor     Sponsor @relation(fields: [sponsorId], references: [sponsorId])
+  month       String  // "YYYY-MM"
+  ratio       Float
+  capCents    Int
+  matchedCents Int    @default(0)
+  zoneId      String?
+
+  @@index([sponsorId, month])
+}
+
+model Referral {
+  newUserId    String   @id
+  referrerId   String
+  referrerRole UserRole
+  qualified    Boolean  @default(false)
+  reward       String?
+  createdAt    DateTime @default(now())
+
+  @@index([referrerId])
+}
+
+model CourierCertification {
+  courierId   String
+  courseId    String
+  completedAt DateTime @default(now())
+
+  @@id([courierId, courseId])
+}
+
+model RecipientProfile {
+  userId            String   @id
+  excludeCategories String[] @default([])
+  avoidTags         String[] @default([])
 }
 
 // Append-only, hash-chained audit ledger backing the end-of-month,

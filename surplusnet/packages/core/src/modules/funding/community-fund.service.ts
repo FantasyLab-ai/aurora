@@ -43,12 +43,20 @@ export interface AllocationResult {
   alreadyAllocated: string[];
 }
 
+export type ContributionListener = (record: ContributionRecord) => void;
+
 export class CommunityFundService {
   private poolCents = 0;
   private outstandingCredits = 0;
   private readonly contributions: ContributionRecord[] = [];
+  private readonly listeners: ContributionListener[] = [];
 
   constructor(private readonly wallets: WalletService) {}
+
+  /** Observers (e.g. sponsor matching campaigns) are notified of every contribution. */
+  onContribution(listener: ContributionListener): void {
+    this.listeners.push(listener);
+  }
 
   state(): FundState {
     return {
@@ -64,7 +72,9 @@ export class CommunityFundService {
       throw new ValidationError(`contribution must be a positive integer, got ${amountCents}`);
     }
     this.poolCents += amountCents;
-    this.contributions.push({ source, amountCents, at });
+    const record: ContributionRecord = { source, amountCents, at };
+    this.contributions.push(record);
+    for (const listener of this.listeners) listener(record);
   }
 
   contributionHistory(): ContributionRecord[] {
@@ -118,6 +128,31 @@ export class CommunityFundService {
     }
 
     return { month, requestedPerRecipient: creditsPerRecipient, funded, unfunded, alreadyAllocated };
+  }
+
+  /**
+   * One-off backed mint (e.g. referral rewards): mints only when the pool
+   * has headroom, so unbacked credits are never created. Returns false when
+   * skipped for headroom or when the idempotency key already paid.
+   */
+  async tryMintBacked(
+    recipientId: string,
+    credits: number,
+    reason: string,
+    idempotencyKey: string,
+  ): Promise<boolean> {
+    if (!Number.isSafeInteger(credits) || credits <= 0) {
+      throw new ValidationError('credits must be a positive integer');
+    }
+    if (this.poolCents - this.outstandingCredits < credits) return false;
+    try {
+      await this.wallets.credit(recipientId, 'COMMUNITY_CREDIT', credits, reason, idempotencyKey);
+    } catch (err) {
+      if (err instanceof DuplicateTransactionError) return false;
+      throw err;
+    }
+    this.outstandingCredits += credits;
+    return true;
   }
 
   /**

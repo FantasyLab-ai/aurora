@@ -12,6 +12,9 @@ export interface ListSurplusInput {
   title: string;
   category: string;
   quantity?: number;
+  weightGrams?: number;
+  zoneId?: string;
+  dietaryTags?: string[];
   photoUrl?: string;
   fmvCents: number;
   cogsCents: number;
@@ -57,6 +60,9 @@ export class SurplusItemService {
       title: input.title.trim(),
       category: input.category,
       quantity: input.quantity ?? 1,
+      ...(input.weightGrams !== undefined ? { weightGrams: input.weightGrams } : {}),
+      ...(input.zoneId !== undefined ? { zoneId: input.zoneId } : {}),
+      ...(input.dietaryTags !== undefined ? { dietaryTags: [...input.dietaryTags] } : {}),
       ...(input.photoUrl !== undefined ? { photoUrl: input.photoUrl } : {}),
       fmvCents: input.fmvCents,
       cogsCents: input.cogsCents,

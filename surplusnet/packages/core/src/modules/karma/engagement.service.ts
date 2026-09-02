@@ -116,6 +116,19 @@ export class EngagementService {
     return newBadges;
   }
 
+  /** External badge grants (e.g. certifications); idempotent per badge. */
+  awardBadge(courierId: string, badge: string): void {
+    const existing = this.couriers.get(courierId) ?? {
+      courierId,
+      totalDeliveries: 0,
+      currentStreakDays: 0,
+      longestStreakDays: 0,
+      badges: [],
+    };
+    if (!existing.badges.includes(badge)) existing.badges.push(badge);
+    this.couriers.set(courierId, existing);
+  }
+
   engagement(courierId: string): CourierEngagement | undefined {
     const e = this.couriers.get(courierId);
     return e ? { ...e, badges: [...e.badges] } : undefined;

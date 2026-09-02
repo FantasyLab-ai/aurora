@@ -14,7 +14,8 @@ import { ValidationError } from '../../lib/errors.js';
 export type LedgerEntryKind =
   | 'DONATION_RECORDED'
   | 'TAX_DEDUCTION_CALCULATED'
-  | 'DELIVERY_VERIFIED';
+  | 'DELIVERY_VERIFIED'
+  | 'IMPACT_RECORDED';
 
 export interface LedgerEntry {
   sequence: number;

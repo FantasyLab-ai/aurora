@@ -7,7 +7,13 @@
 
 export interface SurplusEvents {
   'donation.available': { itemId: string; latitude: number; longitude: number };
-  'delivery.completed': { deliveryId: string; itemId: string; courierId: string };
+  'delivery.completed': {
+    deliveryId: string;
+    itemId: string;
+    courierId: string;
+    /** Surge-priced karma locked in at accept time; omitted = network default. */
+    karmaCredits?: number;
+  };
   'item.expired': { itemId: string };
 }
 

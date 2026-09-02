@@ -29,12 +29,17 @@ surplusnet/
 │           ├── lib/            # Clock, typed EventBus, domain errors
 │           └── modules/
 │               ├── tax/        # Epic 1 — Automated Supplier Tax-Shield
+│               ├── compliance/ # Epic 1 — liability shield + SB 1383 recovery reports
+│               ├── impact/     # The Impact Ledger — meals, lbs, CO2e, avoided cost
 │               ├── inventory/  # Epic 2 — Two-Tiered Recipient Engine
-│               ├── checkout/   # Epic 2 — dignity-parity purchase + $0 claim
-│               ├── funding/    # Epic 2 — self-sustaining Community Fund
+│               ├── checkout/   # Epic 2 — dignity-parity purchase (cash/credits/karma)
+│               ├── funding/    # Epic 2 — Community Fund + sponsorship engine
+│               ├── recipient/  # Epic 2 — dietary/preference matching
 │               ├── routing/    # Epic 3 — Courier dispatch + geo
-│               ├── karma/      # Epic 3 — perk redemption, streaks, volunteer hours
-│               └── wallet/     # Epics 2+3 — Cash / Community / Karma tokens
+│               ├── delivery/   # Epic 3 — lifecycle + cold-chain custody
+│               ├── karma/      # Epic 3 — surge pricing, perks, teams, certifications
+│               ├── growth/     # Multi-sided referral engine
+│               └── wallet/     # Cash / Community / Karma tokens
 ```
 
 ## How the epics map to code
@@ -105,6 +110,58 @@ driver:
 `delivery.completed` drives all courier rewards atomically-once: the idempotent
 karma mint gates streaks, badges, volunteer minutes, and the ledger's
 `DELIVERY_VERIFIED` record, so a replayed event changes nothing.
+
+### The Impact Ledger (`modules/impact`)
+
+The environmental twin of the financial ledger, and the primitive nearly every
+other incentive surface consumes (ESG exports, city dashboards, sponsor meters,
+impact receipts, team scoreboards, future carbon credits). Per verified rescue
+it books meals rescued, pounds diverted, CO2e avoided, and hauling cost avoided
+to the immutable ledger (`IMPACT_RECORDED`) — impact is only booked for food
+that reached someone, exactly once per item — and aggregates by supplier, zone,
+and month. Factors are transparent, documented estimates (USDA meal weight,
+EPA WARM-style emission factors, typical hauling rates) and injectable per
+jurisdiction.
+
+### The liability shield & regulatory product (`modules/compliance`, `modules/delivery`)
+
+- **`delivery.service.ts`** — the courier lifecycle (accept → pick up → temp
+  readings → drop off) with compare-and-set acceptance (one courier wins per
+  item), timestamped cold-chain custody, honest excursion flagging, and karma
+  locked in at accept time so surge pricing can't be gamed. Cancelling returns
+  the item to the donation pool for re-dispatch.
+- **`compliance.service.ts`** — per-donation **compliance certificates**
+  (custody chain, temp log, safe-until adherence, Bill Emerson good-faith
+  statement) that answer the #1 donation blocker: lawsuit fear. Plus the
+  **recovery report**: the SB 1383-style monthly filing with the CFO's three
+  numbers stapled on — tax deduction, avoided hauling cost, and CO2e for ESG.
+
+### The reliability & growth layer (`modules/karma`, `modules/funding`, `modules/growth`, `modules/recipient`)
+
+- **`karma-pricing.service.ts`** — surge karma: urgency, distance, weather,
+  off-peak, and zone courier-scarcity multipliers (clamped 0.8–3.0x) so the
+  rainy 9pm rescue with a closing window actually gets picked up.
+- **`team-competition.service.ts`** — zone-scoped monthly team leaderboards
+  (workplaces, congregations, blocks): social identity for the 95% that
+  individual leaderboards don't motivate.
+- **`certification.service.ts`** — 10-minute micro-courses paying a one-time
+  karma bonus + permanent badge; also the training half of the liability story.
+- **`sponsorship.service.ts`** — sponsors buy visible, quantified local impact:
+  direct grants, **matching campaigns** that auto-double organic sale
+  contributions up to a cap (grants and matches are never re-matched, so
+  campaigns can't chain-react), the **karma subsidy pool** that backs karma
+  spent at checkout, and the live per-sponsor impact meter.
+- **Karma at checkout (role fluidity)** — couriers eat what they rescue: karma
+  pays for food at a configured cents rate, the sponsor pool makes the supplier
+  whole in cash, and the purchase is rejected outright if the pool can't back
+  it — unbacked value is never spent.
+- **`growth/referral.service.ts`** — multi-sided referrals paying each referrer
+  in their own currency (courier → karma, recipient → fund-backed credits or a
+  reported skip when the pool is dry, supplier → stacking featured placement),
+  and only on the new user's first real action — never at signup.
+- **`recipient/preferences.service.ts`** — exclusion-based dietary matching
+  (safe-by-default: untagged items are hidden from recipients with
+  restrictions), because a box you can't eat helps nobody.
 
 ### Epic 3 — Karma Ledger & Route Optimization (`modules/routing`, `modules/wallet`)
 

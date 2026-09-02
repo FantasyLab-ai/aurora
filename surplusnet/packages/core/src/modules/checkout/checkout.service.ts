@@ -9,6 +9,7 @@ import {
 import type { SurplusItemRepository } from '../inventory/surplus-item.repository.js';
 import type { WalletService } from '../wallet/wallet.service.js';
 import type { CommunityFundService } from '../funding/community-fund.service.js';
+import type { SponsorshipService } from '../funding/sponsorship.service.js';
 
 /**
  * Phase-1 checkout (Epic 2, Open-Market Tier) with dignity parity:
@@ -35,6 +36,13 @@ export interface PurchaseInput {
   recipientId: string;
   cashCents: number;
   communityCredits: number;
+  /**
+   * Karma Credits spent on food (role fluidity: couriers eat what they
+   * rescue). Valued at `karmaCentsRate` each and backed by the sponsor karma
+   * subsidy pool — the supplier is made whole in cash. Rejected when no
+   * sponsorship service is wired or the pool can't cover it.
+   */
+  karmaCredits?: number;
 }
 
 export interface PurchaseReceipt {
@@ -50,10 +58,13 @@ export interface PurchaseReceipt {
 export interface CheckoutOptions {
   /** Share of the cash portion contributed to the Community Fund. */
   fundShareRate?: number;
+  /** Cash value of one Karma Credit at checkout. */
+  karmaCentsRate?: number;
 }
 
 export class CheckoutService {
   private readonly fundShareRate: number;
+  private readonly karmaCentsRate: number;
 
   constructor(
     private readonly items: SurplusItemRepository,
@@ -61,21 +72,36 @@ export class CheckoutService {
     private readonly fund: CommunityFundService,
     options: CheckoutOptions = {},
     private readonly clock: Clock = systemClock,
+    private readonly sponsorship?: SponsorshipService,
   ) {
     const rate = options.fundShareRate ?? 0.2;
     if (rate < 0 || rate >= 1) {
       throw new ValidationError(`fundShareRate must be in [0, 1), got ${rate}`);
     }
     this.fundShareRate = rate;
+    const karmaRate = options.karmaCentsRate ?? 10;
+    if (!Number.isSafeInteger(karmaRate) || karmaRate <= 0) {
+      throw new ValidationError(`karmaCentsRate must be a positive integer, got ${karmaRate}`);
+    }
+    this.karmaCentsRate = karmaRate;
   }
 
   async purchase(input: PurchaseInput): Promise<PurchaseReceipt> {
     const { orderId, itemId, recipientId, cashCents, communityCredits } = input;
+    const karmaCredits = input.karmaCredits ?? 0;
     if (!orderId) throw new ValidationError('orderId is required');
-    for (const [name, v] of [['cashCents', cashCents], ['communityCredits', communityCredits]] as const) {
+    for (const [name, v] of [
+      ['cashCents', cashCents],
+      ['communityCredits', communityCredits],
+      ['karmaCredits', karmaCredits],
+    ] as const) {
       if (!Number.isSafeInteger(v) || v < 0) {
         throw new ValidationError(`${name} must be a non-negative integer, got ${v}`);
       }
+    }
+    const karmaValueCents = karmaCredits * this.karmaCentsRate;
+    if (karmaCredits > 0 && !this.sponsorship) {
+      throw new ValidationError('karma payments are not enabled — no sponsorship pool is wired');
     }
 
     const item = await this.requireItem(itemId);
@@ -85,15 +111,28 @@ export class CheckoutService {
       );
     }
     const price = item.salePriceCents ?? 0;
-    if (cashCents + communityCredits !== price) {
-      throw new ValidationError(
-        `payment ${cashCents + communityCredits} does not match price ${price}`,
-      );
+    const paid = cashCents + communityCredits + karmaValueCents;
+    if (paid !== price) {
+      throw new ValidationError(`payment ${paid} does not match price ${price}`);
     }
 
-    // Debit both portions (each idempotent on the order id), then claim.
-    if (cashCents > 0) {
-      await this.wallets.debit(recipientId, 'CASH', cashCents, `order:${orderId}`, `order-${orderId}-cash`);
+    // Reserve the sponsor backing for the karma portion up front — if the
+    // pool can't cover it, the purchase fails before any wallet is touched.
+    if (karmaCredits > 0) {
+      this.sponsorship!.drawKarmaSubsidy(karmaValueCents);
+    }
+    const releaseSubsidy = () => {
+      if (karmaCredits > 0) this.sponsorship!.returnKarmaSubsidy(karmaValueCents);
+    };
+
+    // Debit each portion (idempotent on the order id), then claim.
+    try {
+      if (cashCents > 0) {
+        await this.wallets.debit(recipientId, 'CASH', cashCents, `order:${orderId}`, `order-${orderId}-cash`);
+      }
+    } catch (err) {
+      releaseSubsidy();
+      throw err;
     }
     if (communityCredits > 0) {
       try {
@@ -105,7 +144,23 @@ export class CheckoutService {
           `order-${orderId}-credits`,
         );
       } catch (err) {
-        if (cashCents > 0) await this.refund(recipientId, orderId, cashCents, 0);
+        releaseSubsidy();
+        if (cashCents > 0) await this.refund(recipientId, orderId, cashCents, 0, 0);
+        throw err;
+      }
+    }
+    if (karmaCredits > 0) {
+      try {
+        await this.wallets.debit(
+          recipientId,
+          'KARMA_CREDIT',
+          karmaCredits,
+          `order:${orderId}`,
+          `order-${orderId}-karma`,
+        );
+      } catch (err) {
+        releaseSubsidy();
+        await this.refund(recipientId, orderId, cashCents, communityCredits, 0);
         throw err;
       }
     }
@@ -116,7 +171,8 @@ export class CheckoutService {
       salePriceCents: price,
     });
     if (!claimed) {
-      await this.refund(recipientId, orderId, cashCents, communityCredits);
+      releaseSubsidy();
+      await this.refund(recipientId, orderId, cashCents, communityCredits, karmaCredits);
       throw new InvalidStateTransitionError(`item ${itemId} was claimed or rolled over first`);
     }
 
@@ -133,8 +189,9 @@ export class CheckoutService {
       itemId,
       recipientId,
       totalCents: price,
-      // Credits are paid out to the supplier by the fund at face value.
-      supplierProceedsCents: cashCents - fundContributionCents + communityCredits,
+      // Credits are paid out by the fund, karma by the sponsor pool — the
+      // supplier is made whole in cash either way.
+      supplierProceedsCents: cashCents - fundContributionCents + communityCredits + karmaValueCents,
       fundContributionCents,
       claimedAt,
     };
@@ -168,6 +225,7 @@ export class CheckoutService {
     orderId: string,
     cashCents: number,
     communityCredits: number,
+    karmaCredits: number,
   ): Promise<void> {
     if (cashCents > 0) {
       await this.wallets.credit(recipientId, 'CASH', cashCents, `refund:${orderId}`, `refund-${orderId}-cash`);
@@ -179,6 +237,15 @@ export class CheckoutService {
         communityCredits,
         `refund:${orderId}`,
         `refund-${orderId}-credits`,
+      );
+    }
+    if (karmaCredits > 0) {
+      await this.wallets.credit(
+        recipientId,
+        'KARMA_CREDIT',
+        karmaCredits,
+        `refund:${orderId}`,
+        `refund-${orderId}-karma`,
       );
     }
   }

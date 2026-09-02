@@ -12,9 +12,18 @@ export * from './modules/routing/geo.js';
 export * from './modules/routing/courier-dispatch.service.js';
 export * from './modules/wallet/wallet.service.js';
 export * from './modules/funding/community-fund.service.js';
+export * from './modules/funding/sponsorship.service.js';
 export * from './modules/checkout/checkout.service.js';
 export * from './modules/karma/partner-redemption.service.js';
 export * from './modules/karma/engagement.service.js';
+export * from './modules/karma/karma-pricing.service.js';
+export * from './modules/karma/team-competition.service.js';
+export * from './modules/karma/certification.service.js';
+export * from './modules/impact/impact-accounting.service.js';
+export * from './modules/delivery/delivery.service.js';
+export * from './modules/compliance/compliance.service.js';
+export * from './modules/growth/referral.service.js';
+export * from './modules/recipient/preferences.service.js';
 
 import { EventBus } from './lib/event-bus.js';
 import type { Clock } from './lib/clock.js';
@@ -36,9 +45,18 @@ import {
 import { InMemoryWalletStore, WalletService, type WalletStore } from './modules/wallet/wallet.service.js';
 import type { LedgerStore } from './modules/tax/donation-ledger.js';
 import { CommunityFundService } from './modules/funding/community-fund.service.js';
+import { SponsorshipService } from './modules/funding/sponsorship.service.js';
 import { CheckoutService } from './modules/checkout/checkout.service.js';
 import { PartnerRedemptionService } from './modules/karma/partner-redemption.service.js';
 import { EngagementService } from './modules/karma/engagement.service.js';
+import { KarmaPricingService } from './modules/karma/karma-pricing.service.js';
+import { TeamCompetitionService } from './modules/karma/team-competition.service.js';
+import { CertificationService } from './modules/karma/certification.service.js';
+import { ImpactAccountingService } from './modules/impact/impact-accounting.service.js';
+import { DeliveryService } from './modules/delivery/delivery.service.js';
+import { ComplianceService } from './modules/compliance/compliance.service.js';
+import { ReferralService } from './modules/growth/referral.service.js';
+import { RecipientPreferencesService } from './modules/recipient/preferences.service.js';
 
 export interface SurplusNetOptions {
   clock?: Clock;
@@ -97,13 +115,16 @@ export function createSurplusNet(options: SurplusNetOptions = {}) {
   const walletStore = options.walletStore ?? new InMemoryWalletStore();
   const wallets = new WalletService(walletStore);
 
+  const impact = new ImpactAccountingService(ledger);
   const fund = new CommunityFundService(wallets);
+  const sponsorship = new SponsorshipService(fund, impact);
   const checkout = new CheckoutService(
     itemRepository,
     wallets,
     fund,
     { ...(options.fundShareRate !== undefined ? { fundShareRate: options.fundShareRate } : {}) },
     clock,
+    sponsorship,
   );
   const partners = new PartnerRedemptionService(wallets);
   const engagement = new EngagementService(
@@ -112,20 +133,38 @@ export function createSurplusNet(options: SurplusNetOptions = {}) {
       : {}) },
     clock,
   );
+  const teams = new TeamCompetitionService();
+  const certifications = new CertificationService(wallets, engagement);
+  const referrals = new ReferralService(wallets, {
+    tryMint: (recipientId, credits, reason, key) => fund.tryMintBacked(recipientId, credits, reason, key),
+  });
+  const preferences = new RecipientPreferencesService();
 
   const karmaPerDelivery = options.karmaCreditsPerDelivery ?? 10;
+  const karmaPricing = new KarmaPricingService(karmaPerDelivery);
+  const deliveries = new DeliveryService(itemRepository, bus, {}, clock);
+  const compliance = new ComplianceService(itemRepository, deliveries, impact);
 
   bus.on('donation.available', async ({ itemId, latitude, longitude }) => {
     await dispatch.dispatchForItem(itemId, { latitude, longitude });
   });
 
-  bus.on('delivery.completed', async ({ deliveryId, itemId, courierId }) => {
+  bus.on('delivery.completed', async ({ deliveryId, itemId, courierId, karmaCredits }) => {
     // Idempotent mint: only the first event for a delivery pays karma,
-    // counts toward streaks/badges, and logs volunteer minutes.
-    const minted = await wallets.mintKarmaForDelivery(courierId, deliveryId, karmaPerDelivery);
+    // counts toward streaks/badges/teams, logs volunteer minutes, and books
+    // the rescue's impact on the ledger.
+    const minted = await wallets.mintKarmaForDelivery(
+      courierId,
+      deliveryId,
+      karmaCredits ?? karmaPerDelivery,
+    );
     if (minted) {
-      engagement.recordDelivery(courierId, deliveryId, clock.now());
+      const now = clock.now();
+      engagement.recordDelivery(courierId, deliveryId, now);
+      teams.recordDelivery(courierId, now);
       await ledger.record(itemId, 'DELIVERY_VERIFIED', { deliveryId, courierId });
+      const item = await itemRepository.findById(itemId);
+      if (item) await impact.recordRescue(item, now);
     }
   });
 
@@ -144,5 +183,14 @@ export function createSurplusNet(options: SurplusNetOptions = {}) {
     checkout,
     partners,
     engagement,
+    impact,
+    sponsorship,
+    teams,
+    certifications,
+    referrals,
+    preferences,
+    karmaPricing,
+    deliveries,
+    compliance,
   };
 }
