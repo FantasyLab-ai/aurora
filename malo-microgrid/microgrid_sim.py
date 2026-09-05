@@ -560,6 +560,12 @@ class Telemetry:
                       "exact": bound.get("exact", False)})
 
     def _append(self, record: dict) -> None:
+        # Create the parent directory on first write. `--trace runs/t.jsonl` on a
+        # fresh clone has no runs/ yet, and losing a whole model run to that is
+        # an absurd way to fail.
+        parent = os.path.dirname(os.path.abspath(self.trace_path))
+        if parent and not os.path.isdir(parent):
+            os.makedirs(parent, exist_ok=True)
         with open(self.trace_path, "a") as fh:
             fh.write(json.dumps(record) + "\n")
 
