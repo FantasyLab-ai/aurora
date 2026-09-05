@@ -21,6 +21,7 @@ Run:  python test_microgrid.py      (no pytest required; pytest also works)
 from __future__ import annotations
 
 import io
+import os
 import re
 import sys
 from contextlib import redirect_stdout
@@ -207,7 +208,7 @@ def test_full_run_with_mock_model():
     """End-to-end: every parse branch fires and the physics still balances."""
     console = sim.Console(color=False)
     tel = sim.Telemetry()
-    grid, states, profiles = sim.build_scenario(blocks=3, battery_soc=6.0)
+    grid, states, profiles, _meta = sim.build_scenario(blocks=3, battery_soc=6.0)
     llm = MockModel()
     agents = {nid: sim.GridAgent(st, llm, tel, console) for nid, st in states.items()}
 
@@ -347,7 +348,7 @@ def test_simulation_never_beats_the_oracle():
     console = sim.Console(color=False, quiet=True)
     for scenario in ("brief", "contended"):
         for seed in (1, 2, 3, 4, 5):
-            results, _agents, _tel = sim.run_simulation(
+            results, _agents, _tel, _meta = sim.run_simulation(
                 scenario=scenario, offline=True, blocks=3, seed=seed,
                 jitter=0.4, console=console)
             for r in results:
@@ -370,7 +371,7 @@ def test_contended_scenario_discriminates():
     console = sim.Console(color=False, quiet=True)
     gaps = []
     for seed in range(1, 9):
-        results, _a, _t = sim.run_simulation(scenario="contended", offline=True,
+        results, _a, _t, _m = sim.run_simulation(scenario="contended", offline=True,
                                              blocks=3, seed=seed, jitter=0.4,
                                              console=console)
         eff = [r["allocation_efficiency_pct"] for r in results
@@ -381,6 +382,243 @@ def test_contended_scenario_discriminates():
     assert max(gaps) > 2.0, (
         "greedy allocation is already near-optimal on every instance; the "
         "benchmark cannot distinguish methods and needs harder scenarios")
+
+
+# =============================================================================
+# 5. Profiles and data provenance
+# =============================================================================
+
+import profiles as pf
+
+
+def test_solar_model_is_physically_sane():
+    """Real solar geometry: noon peak, dark at night, summer well above winter."""
+    summer = pf.synthetic_solar(5.0, day_of_year=172, latitude_deg=40.0)
+    winter = pf.synthetic_solar(5.0, day_of_year=355, latitude_deg=40.0)
+
+    peak_hour = summer.values.index(max(summer.values))
+    assert 11 <= peak_hour <= 13, f"solar peaks at hour {peak_hour}, not around noon"
+    assert summer.values[0] == 0.0 and summer.values[23] == 0.0, "sun is up at midnight"
+    assert sum(summer.values) > 2 * sum(winter.values), "no seasonal variation"
+    # A 5 kW array cannot exceed its own rating in an hour.
+    assert max(summer.values) <= 5.0
+
+
+def test_household_and_ev_profiles():
+    house = pf.synthetic_household(12.0)
+    assert abs(sum(house.values) - 12.0) < 0.01, "daily total must match the argument"
+    assert house.values.index(max(house.values)) >= 17, "evening peak expected"
+
+    ev = pf.synthetic_ev(battery_kwh=60.0, charge_kw=7.4, start_soc=0.3, target_soc=0.8)
+    assert abs(sum(ev.values) - 30.0) < 0.01, "should deliver (0.8-0.3)*60 kWh"
+    assert max(ev.values) <= 7.4 + 1e-9, "cannot exceed the charger rating"
+
+
+def test_provenance_blocks_false_claims():
+    """Synthetic data must never be reported as citable, alone or in a mix."""
+    synthetic = pf.synthetic_solar(4.0)
+    assert synthetic.provenance.citable is False
+    assert "NOT CITABLE" in str(synthetic.provenance)
+
+    measured = pf.Profile([1.0] * 24, pf.Provenance(pf.MEASURED, "test.csv", True))
+    assert pf.summarise_provenance([measured])["citable"] is True
+    # One synthetic input contaminates the whole run.
+    mixed = pf.summarise_provenance([measured, synthetic])
+    assert mixed["citable"] is False
+    assert "ILLUSTRATIVE ONLY" in mixed["verdict"]
+
+
+def test_csv_loader_reads_measured_data():
+    """The path to a citable result: load a real series and mark it measured."""
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False) as fh:
+        fh.write("hour,ac_kw\n")
+        for h in range(24):
+            fh.write(f"{h},{max(0.0, 3.0 - abs(h - 12) * 0.4):.3f}\n")
+        path = fh.name
+    try:
+        loaded = pf.load_csv(path, column="ac_kw", hour_column="hour")
+        assert len(loaded.values) == 24
+        assert loaded.provenance.citable is True
+        assert loaded.values[12] > loaded.values[0], "midday should exceed midnight"
+    finally:
+        os.unlink(path)
+
+
+# =============================================================================
+# 6. Scenario generation and scale
+# =============================================================================
+
+import scenarios as scen
+
+
+def test_every_topology_builds_a_connected_grid():
+    """
+    An islanded house can trade with nobody. Every topology must produce one
+    connected grid, or results silently include nodes that never had a chance.
+    """
+    import networkx as nx
+    for topology in scen.TOPOLOGIES:
+        spec = scen.preset_spec("street", topology=topology, nodes=12)
+        graph, nodes, blocks, meta = scen.generated_scenario(spec, blocks=2)
+        assert nx.is_connected(graph), f"{topology} produced a disconnected grid"
+        assert len(nodes) == 12
+        assert meta["roles"][scen.STORAGE] >= 1, "a grid with no storage cannot balance"
+        for _u, _v, data in graph.edges(data=True):
+            assert data["capacity_kwh"] > 0 and 0 < data["loss"] < 0.5
+
+
+def test_generated_scenarios_scale():
+    """Node count is a free parameter; 32 nodes must build and run."""
+    console = sim.Console(color=False, quiet=True)
+    results, agents, tel, meta = sim.run_simulation(
+        scenario="district", offline=True, blocks=2, seed=3, console=console)
+    assert meta["nodes"] == 32
+    assert len(agents) == 32
+    assert all(r["allocation_efficiency_pct"] is None
+               or r["allocation_efficiency_pct"] <= 100.0 + 1e-6 for r in results)
+
+
+def test_run_reports_data_provenance():
+    """No result may be produced without stating what it was computed on."""
+    console = sim.Console(color=False, quiet=True)
+    _r, _a, _t, meta = sim.run_simulation(scenario="street", offline=True,
+                                          blocks=1, seed=1, console=console)
+    assert meta["provenance"]["citable"] is False
+    assert "ILLUSTRATIVE" in meta["provenance"]["verdict"]
+
+
+# =============================================================================
+# 7. Adversarial behaviour
+# =============================================================================
+
+def _mean_efficiency(**kwargs) -> float:
+    console = sim.Console(color=False, quiet=True)
+    scores = []
+    for seed in range(1, 7):
+        results, _a, _t, _m = sim.run_simulation(
+            scenario="street", topology="geometric", offline=True, blocks=3,
+            seed=seed, console=console, **kwargs)
+        got = [r["allocation_efficiency_pct"] for r in results
+               if r["allocation_efficiency_pct"] is not None]
+        if got:
+            scores.append(sum(got) / len(got))
+    return sum(scores) / len(scores) if scores else 0.0
+
+
+def test_freeriding_damages_the_neighbourhood():
+    """
+    Withholding supply is the threat that actually matters. If the benchmark
+    cannot detect it, it cannot support any claim about resilience.
+    """
+    honest = _mean_efficiency()
+    freeriders = _mean_efficiency(adversary="freerider", adversary_fraction=0.5)
+    assert honest - freeriders > 10.0, (
+        f"free-riding cost only {honest - freeriders:.1f} points; the benchmark is "
+        "not sensitive to supply withdrawal")
+
+
+def test_dropout_degrades_gracefully_rather_than_collapsing():
+    """
+    Nodes go silent in the field — flaky radios, rebooting inverters. A protocol
+    claiming disaster resilience must lose some efficiency, not all of it.
+    """
+    honest = _mean_efficiency()
+    flaky = _mean_efficiency(adversary="dropout", adversary_fraction=0.5)
+    assert honest - flaky > 2.0, "dropout had no measurable effect — is it wired up?"
+    assert flaky > 50.0, f"half the nodes going quiet collapsed the market to {flaky:.1f}%"
+
+
+def test_adversaries_cannot_break_physics():
+    """A lying node must still not be able to deliver energy it does not have."""
+    console = sim.Console(color=False, quiet=True)
+    for seed in (1, 2, 3):
+        results, agents, _t, _m = sim.run_simulation(
+            scenario="street", offline=True, blocks=3, seed=seed,
+            adversary="misreport", adversary_fraction=0.5, console=console)
+        for r in results:
+            for t in r["trades"]:
+                assert t["delivered_kwh"] <= t["sent_kwh"] + sim.EPS
+            assert r["allocation_efficiency_pct"] is None \
+                or r["allocation_efficiency_pct"] <= 100.0 + 1e-6
+        for a in agents.values():
+            assert a.state.battery_kwh >= -sim.EPS
+            assert a.state.battery_kwh <= a.state.battery_capacity + sim.EPS
+
+
+# =============================================================================
+# 8. Edge feasibility and prompt ablation
+# =============================================================================
+
+def test_feasibility_reports_market_interval_verdicts():
+    tel = sim.Telemetry()
+    tel.blocks_run, tel.llm_calls = 3, 60
+    tel.latency_s, tel.prompt_tokens, tel.output_tokens = 90.0, 12000, 3000
+
+    feas = tel.feasibility(device_watts=7.0)
+    assert feas["seconds_per_block"] == 30.0
+    assert feas["joules_per_block_estimate"] == 210.0
+    assert feas["intervals"]["5 min (real-time market)"]["fits"] is True
+
+    slow = sim.Telemetry()
+    slow.blocks_run, slow.latency_s = 1, 600.0
+    assert slow.feasibility()["intervals"]["5 min (real-time market)"]["fits"] is False
+
+
+def test_prompt_ablation_changes_the_prompt():
+    """Each ablation must actually remove what it claims to remove."""
+    try:
+        sim.set_prompt_style("full")
+        full = sim.system_prompt("A", scen.SOLAR)
+        assert "at most 2 short sentences of reasoning" in full
+
+        sim.set_prompt_style("no-reason")
+        assert "NOTHING else" in sim.system_prompt("A", scen.SOLAR)
+
+        sim.set_prompt_style("terse")
+        terse = sim.system_prompt("A", scen.SOLAR)
+        assert len(terse) < len(full), "the terse baseline is not shorter"
+
+        # no-bounds must strip pre-computed arithmetic from the task prompts.
+        sim.set_prompt_style("no-bounds")
+        assert sim.bounded("computed ceiling 4.2 kWh") == ""
+        sim.set_prompt_style("full")
+        assert sim.bounded("computed ceiling 4.2 kWh") != ""
+    finally:
+        sim.set_prompt_style("full")
+
+
+# =============================================================================
+# 9. Fine-tuning dataset
+# =============================================================================
+
+def test_dataset_builder_produces_trainable_examples():
+    """
+    Training data is generated with no model in the loop — the LP supplies the
+    target. Every example must be well-formed chat, and no target may exceed a
+    limit the prompt states, or the model is taught to violate its own bounds.
+    """
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "finetune"))
+    import build_dataset as bd
+
+    examples = bd.synthesize(count=2, scenarios=["contended"], blocks=2,
+                             seed_start=500, label_with_oracle=True)
+    assert len(examples) > 20, "too few examples generated to be useful"
+
+    for ex in examples:
+        roles = [m["role"] for m in ex["messages"]]
+        assert roles == ["system", "user", "assistant"]
+        body = ex["messages"][2]["content"]
+        parsed = sim.extract_json_block(body)
+        assert parsed, f"target is not parseable by our own parser: {body!r}"
+
+        # Targets must respect the ceilings stated in the prompt they answer.
+        prompt = ex["messages"][1]["content"]
+        for seller, limit in bd.offered_limits(prompt).items():
+            value = parsed.get(seller)
+            if isinstance(value, (int, float)):
+                assert value <= limit + 1e-9, (
+                    f"target buys {value} from {seller} which offered only {limit}")
 
 
 # =============================================================================

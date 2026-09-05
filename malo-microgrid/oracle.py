@@ -124,6 +124,16 @@ def optimal_allocation(max_export: dict[str, float],
                     deficit.get(b, 0.0) > TOL or chargeable.get(b, 0.0) > TOL):
                 arcs.append((s, b, float(cap), float(loss)))
 
+    # Self-supply arcs: a node with both a deficit and dischargeable storage can
+    # cover itself with no line and no loss. Modelled as a zero-loss arc from a
+    # node to itself rather than netted out beforehand, so the LP *chooses* it
+    # when it is worthwhile instead of being forced into it. Forcing it makes
+    # the bound wrong in both directions: it can strand a neighbour who had no
+    # other seller, and it can be beaten by a simulation that exported instead.
+    for node, exportable in max_export.items():
+        if exportable > TOL and deficit.get(node, 0.0) > TOL:
+            arcs.append((node, node, min(exportable, deficit[node]), 0.0))
+
     if not arcs:
         result = _empty_result(exact=True)
         result["utility_import_kwh"] = _snap(sum(deficit.values()))
@@ -200,7 +210,8 @@ def _solve_lp(arcs, max_export, deficit, chargeable, surplus) -> dict:
         A_ub.append(row)
         b_ub.append(max(0.0, max_export.get(node, 0.0)))
 
-    # 2. line rating: both purposes share the same physical conductor
+    # 2. line rating: both purposes share the same physical conductor. Self-arcs
+    #    carry their own cap (min of export and own demand) and no real line.
     for k, (_s, _b, cap, _l) in enumerate(arcs):
         row = _row()
         row[idx_d[k]] = row[idx_s[k]] = 1.0
@@ -330,21 +341,13 @@ def oracle_for_block(grid, states) -> dict:
     chargeable = {n: s.chargeable() for n, s in states.items()}
     surplus = {n: s.surplus for n, s in states.items()}
 
-    # Self-supply is netted out before the trading problem is posed. A node with
-    # both a deficit and a charged pack covers itself locally — no wires, no
-    # counterparty, no loss — so every optimal solution does it, and the
-    # simulation does it too (at block close, as a last resort before the
-    # utility). Netting it here keeps the oracle measuring the same problem the
-    # agents actually negotiate over, instead of a strictly harder one that the
-    # simulation could then appear to "beat".
-    self_supplied = {}
-    for node, state in states.items():
-        own = min(deficit[node], max_export[node])
-        if own > TOL:
-            deficit[node] -= own
-            max_export[node] -= own
-            self_supplied[node] = round(own, 6)
-
+    # Self-supply is NOT netted out here — `optimal_allocation` adds it as a
+    # zero-loss self-arc so the LP decides for itself whether covering your own
+    # load beats selling that energy to a neighbour who has no other supplier.
     result = optimal_allocation(max_export, deficit, chargeable, surplus, links)
-    result["self_supplied_kwh"] = self_supplied
+    result["self_supplied_kwh"] = {
+        node: flow for key, flow in result["flows"].items()
+        for node in [key.split("->")[0]]
+        if key.split("->")[1].split(":")[0] == node
+    }
     return result

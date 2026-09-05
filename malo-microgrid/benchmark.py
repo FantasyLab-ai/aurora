@@ -82,6 +82,8 @@ def summarise_run(results: list[dict], agents: dict, tel: sim.Telemetry) -> dict
         "llm_calls": float(tel.llm_calls),
         "llm_failures": float(tel.llm_failures),
         "mean_latency_s": (tel.latency_s / tel.llm_calls) if tel.llm_calls else 0.0,
+        "seconds_per_block": tel.feasibility()["seconds_per_block"],
+        "tokens_per_block": tel.feasibility()["tokens_per_block"],
         # Marks the control arm so LLM-only rows can be suppressed when no model ran.
         "offline": 1.0 if tel.json_ok + tel.json_salvaged == 0 and tel.llm_calls else 0.0,
     }
@@ -115,11 +117,13 @@ def run_arm(label: str, seeds: list[int], args: argparse.Namespace,
     console = sim.Console(color=False, quiet=True)
     for i, seed in enumerate(seeds, start=1):
         started = time.time()
-        results, agents, tel = sim.run_simulation(
+        results, agents, tel, meta = sim.run_simulation(
             scenario=args.scenario, model=model, url=args.url, blocks=args.blocks,
             battery_soc=args.battery_soc, offline=offline, seed=seed,
-            jitter=args.jitter, timeout=args.timeout,
-            trace_path=args.trace, console=console)
+            jitter=args.jitter, timeout=args.timeout, trace_path=args.trace,
+            nodes=args.nodes, topology=args.topology, start_hour=args.start_hour,
+            prompt_style=args.prompt_style, adversary=args.adversary,
+            adversary_fraction=args.adversary_fraction, console=console)
         row = summarise_run(results, agents, tel)
         row.update({"arm": label, "seed": seed, "wall_s": time.time() - started})
         rows.append(row)
@@ -140,6 +144,8 @@ METRICS = [
     ("autonomy_pct", "decision autonomy", "%", True),
     ("clamps", "physics clamps", "n", False),
     ("mean_latency_s", "mean call latency", "s", False),
+    ("seconds_per_block", "wall clock per block", "s", False),
+    ("tokens_per_block", "tokens per block", "n", False),
 ]
 
 
@@ -154,7 +160,8 @@ def print_comparison(arms: dict[str, list[dict]], control: str) -> None:
     for key, label, unit, higher_better in METRICS:
         # Skip LLM-only metrics when nothing but the control arm ran.
         if key in ("structured_compliance_pct", "autonomy_pct", "mean_latency_s",
-                   "clamps") and all(r["offline"] for n in names for r in arms[n]):
+                   "clamps", "seconds_per_block", "tokens_per_block") \
+                and all(r["offline"] for n in names for r in arms[n]):
             continue
         print(f"\n  {label}  [{unit}]")
         base, _ = mean_ci([r[key] for r in arms[control]]) if control in arms else (None, None)
@@ -189,7 +196,15 @@ def main(argv: Optional[list[str]] = None) -> int:
                    help="Ollama model tags to benchmark against the control arm")
     p.add_argument("--seeds", type=int, default=10, help="number of scenario instances")
     p.add_argument("--seed-start", type=int, default=1, help="first seed value")
-    p.add_argument("--scenario", choices=("brief", "contended"), default="contended")
+    p.add_argument("--scenario", default="contended",
+                   help="brief, contended, or a generated preset: street, block, feeder, district")
+    p.add_argument("--nodes", type=int, help="override node count for generated presets")
+    p.add_argument("--topology", choices=sim.scen.TOPOLOGIES, help="override topology")
+    p.add_argument("--start-hour", type=int, default=15)
+    p.add_argument("--prompt-style", choices=sim.PROMPT_STYLES, default="full",
+                   help="prompt ablation to run this sweep under")
+    p.add_argument("--adversary", choices=sim.BEHAVIOURS, default="honest")
+    p.add_argument("--adversary-fraction", type=float, default=0.0)
     p.add_argument("--blocks", type=int, default=3)
     p.add_argument("--jitter", type=float, default=0.4,
                    help="scenario randomisation; 0 replays one fixed instance")
@@ -205,6 +220,8 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     seeds = list(range(args.seed_start, args.seed_start + args.seeds))
     print(f"\nscenario={args.scenario}  blocks={args.blocks}  jitter={args.jitter}  "
+          f"prompt={args.prompt_style}  adversary={args.adversary}"
+          f"@{args.adversary_fraction:g}  "
           f"instances={len(seeds)}  arms={'heuristic ' if not args.no_control else ''}"
           f"{' '.join(args.models)}\n")
 
