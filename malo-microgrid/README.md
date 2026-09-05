@@ -29,12 +29,19 @@ ollama serve
 ollama pull llama3.2:1b
 python microgrid_sim.py
 
-# 3. a larger model, more blocks, with a metrics plot
-python microgrid_sim.py --model qwen2.5:3b --blocks 5 --plot
+# 3. the benchmark that produces an actual result
+python benchmark.py --models llama3.2:1b --scenario contended --jitter 0.4 --seeds 20
 
 # 4. tests (no pytest required)
 python test_microgrid.py
 ```
+
+| File | |
+|------|---|
+| `microgrid_sim.py` | agents, negotiation protocol, physics, parser firewall |
+| `oracle.py` | LP optimal-allocation bound — the denominator for every result |
+| `benchmark.py` | paired multi-seed sweep with confidence intervals |
+| `test_microgrid.py` | 19 tests |
 
 The console prints the whole negotiation as it unfolds — every request, offer,
 counter-bid and settlement, with a marker showing whether each number came from
@@ -94,6 +101,50 @@ The constraint is enforced structurally, not by convention:
 * Buyers are discovered from physics (any node carrying a deficit), never
   assigned by a coordinator. Assessment order is randomised each block so no
   node holds structural priority.
+
+---
+
+## Measuring against the optimum
+
+`allocation_efficiency = locally-served demand ÷ the most any method could have
+served`, where the denominator comes from an exact linear program in
+`oracle.py` solved on the same state the agents were handed. Without it, "the
+agents served 93% of demand" is unfalsifiable — 93% of what?
+
+The LP is lexicographic, in physical priority order: **serve demand** (a fossil
+peaker not started), then **waste no clean energy** (curtailment destroys it
+outright), then **waste no line losses**. It is restricted to the same action
+space the agents have — single-hop trades between wired neighbours — so it is a
+tight bound on what the negotiation could have reached, not a fantasy one.
+
+A test asserts the simulation can never beat it. If it ever does, the bound is
+broken and every efficiency figure in the repo is meaningless.
+
+### Finding: the brief's 3-node scenario cannot measure anything
+
+The first thing the oracle revealed is that **the reference scenario is too
+easy**. It has one buyer, and with a single buyer cheapest-first greedy
+allocation is provably optimal — there is no competitor, so no ordering
+decision can be got wrong. Measured: the heuristic control arm scores **98.7%**
+of optimum, hitting exactly 100% on 2 of 3 blocks. No method can demonstrate an
+advantage in a 1.3% window that is smaller than a small model's sampling noise.
+
+Hence `--scenario contended`: 6 nodes, 2 prosumers, 3 loads, 1 storage hub, with
+buyers competing for partially overlapping sellers. `B` and `F` each reach only
+one prosumer, so supply claimed by the well-connected node `E` strands them.
+The order in which buyers claim supply now changes the system outcome, and
+sequential greedy has no way to see that coming.
+
+Measured baseline, `--scenario contended --jitter 0.4`, 8 instances:
+
+```
+  allocation efficiency  [%]
+    heuristic      92.45  ±  4.12   (n=8)
+```
+
+**That 7.5-point gap is the target.** If local LLM negotiation is worth
+anything, it closes some of it. If it does not, that is a real negative result
+about 1B-class models on constrained allocation — publish it either way.
 
 ---
 
@@ -190,12 +241,36 @@ report it rather than hide it.
 
 ## Status
 
-* Physics, negotiation protocol, parser firewall and control arm: implemented and
-  tested (`python test_microgrid.py`, 13 tests).
-* The LLM path is exercised end-to-end by a `MockModel` that reproduces observed
-  1B failure modes (clean JSON / dirty JSON / prose-only / refusal / impossible
-  numbers). It has **not** yet been run against a live `llama3.2:1b` — that needs
-  a machine with Ollama installed, which is the next validation step.
+Done:
+
+* Physics, P2P negotiation protocol, parser firewall, deterministic control arm.
+* LP optimality oracle + the efficiency metric, with the bound-invariant test.
+* Contended scenario, scenario jitter, paired benchmark sweep with CIs.
+* JSONL trace of every prompt/response pair (`--trace`) — Phase-4 training data
+  accumulates from ordinary runs, including the failures, which are the
+  interesting half.
+* 19 tests passing.
+
+Not done — in rough priority order:
+
+1. **A live model has never run this.** Everything downstream of the HTTP
+   response is exercised by a `MockModel` reproducing observed 1B failure modes,
+   but real compliance rates, latency and allocation quality are unmeasured.
+   This is the next step and it needs a machine with Ollama.
+2. **Real data.** Solar and demand curves are hand-built. NREL PVWatts, an EV
+   charging dataset and a real TOU tariff would make results defensible.
+3. **Scale and topology.** 3 and 6 nodes; decentralization claims want 20–50
+   nodes and varied topologies (line, ring, random geometric).
+4. **Edge feasibility.** Tokens and wall-clock per decision are logged, but not
+   joules, and there is no check that a negotiation round fits inside a real
+   market interval on Pi-class hardware.
+5. **Robustness.** No adversarial agent (misreporting capacity), no node
+   dropout mid-negotiation, no Byzantine case — all of which the grid-resilience
+   pitch implicitly claims.
+6. **Fine-tuning loop.** Traces are captured; the Unsloth training script and
+   the base-vs-LoRA eval are not written.
+7. **Prompt ablation.** Which prompt features actually buy compliance at 1B
+   (pre-computed bounds, reasoning-before-JSON, `format:json`) is untested.
 
 ## CLI reference
 
@@ -204,6 +279,9 @@ report it rather than hide it.
 | `--model` | `llama3.2:1b` | Ollama model tag |
 | `--url` | `http://localhost:11434/api/generate` | Ollama endpoint |
 | `--blocks` | `3` | number of trading blocks |
+| `--scenario` | `brief` | `brief` (3 nodes, single buyer) or `contended` (6 nodes, real contention) |
+| `--jitter` | `0.0` | randomise generation/demand by ±fraction; use with `--seed` to sample instances |
+| `--trace PATH` | — | append every prompt/response pair to JSONL for fine-tuning |
 | `--battery-soc` | `6.0` | node C's initial stored energy (net balance stays 0) |
 | `--offline` | off | heuristic control arm; never touches the network |
 | `--timeout` | `90` | per-call timeout (a 1B model on a Pi 4 is slow) |

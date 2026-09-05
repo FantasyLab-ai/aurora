@@ -1,6 +1,7 @@
 # Core (required)
 requests>=2.28
 networkx>=3.0
+scipy>=1.10          # exact optimality oracle; without it the bound is approximate
 
 # Optional: metrics export and plots. The simulation degrades gracefully
 # without them (falls back to the stdlib csv module and skips --plot).

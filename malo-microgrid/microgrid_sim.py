@@ -80,6 +80,13 @@ except ImportError:  # pragma: no cover - dependency guard
     print("FATAL: `networkx` is required.  pip install requests networkx", file=sys.stderr)
     raise
 
+try:
+    # The optimal-allocation oracle. Optional at import time so the simulation
+    # still runs on a machine without it, just without an optimality gap.
+    from oracle import oracle_for_block
+except ImportError:  # pragma: no cover
+    oracle_for_block = None
+
 
 # =============================================================================
 # SECTION 0 — Configuration constants
@@ -126,15 +133,25 @@ class Console:
         "A": "\033[93m",  # yellow  — solar
         "B": "\033[91m",  # red     — demand
         "C": "\033[94m",  # blue    — storage
+        "D": "\033[33m",  # dim yellow — second solar
+        "E": "\033[31m",  # dim red    — second demand
+        "F": "\033[35m",  # magenta    — third demand
         "SYS": "\033[90m",
         "OK": "\033[92m",
         "WARN": "\033[95m",
         "RESET": "\033[0m",
     }
 
-    def __init__(self, color: bool = True) -> None:
+    def __init__(self, color: bool = True, quiet: bool = False) -> None:
         # Disable ANSI when piped to a file or on a dumb terminal.
         self.color = color and sys.stdout.isatty() and os.environ.get("TERM") != "dumb"
+        # Quiet mode suppresses the transcript entirely — used by the benchmark
+        # sweep, where hundreds of blocks would bury the aggregate result.
+        self.quiet = quiet
+
+    def _print(self, *args) -> None:
+        if not self.quiet:
+            print(*args)
 
     def _c(self, key: str, text: str) -> str:
         if not self.color:
@@ -143,33 +160,33 @@ class Console:
 
     def block_header(self, index: int, hour: int, total: int) -> None:
         bar = "=" * 78
-        print("\n" + self._c("SYS", bar))
-        print(self._c("SYS", f"  TRADING BLOCK {index}/{total}   —   simulated hour {hour:02d}:00"))
-        print(self._c("SYS", bar))
+        self._print("\n" + self._c("SYS", bar))
+        self._print(self._c("SYS", f"  TRADING BLOCK {index}/{total}   —   simulated hour {hour:02d}:00"))
+        self._print(self._c("SYS", bar))
 
     def phase(self, title: str) -> None:
-        print("\n" + self._c("SYS", f"--- {title} " + "-" * max(0, 73 - len(title))))
+        self._print("\n" + self._c("SYS", f"--- {title} " + "-" * max(0, 73 - len(title))))
 
     def agent_say(self, node_id: str, text: str, source: str = "llm") -> None:
         """Print an agent's own words. `source` marks LLM output vs heuristic."""
         tag = f"[{node_id}]"
         badge = "" if source == "llm" else self._c("WARN", f" ({source})")
         wrapped = self._wrap(text, indent=6)
-        print(f"  {self._c(node_id, tag)}{badge} {wrapped.lstrip()}")
+        self._print(f"  {self._c(node_id, tag)}{badge} {wrapped.lstrip()}")
 
     def wire(self, sender: str, recipient: str, kind: str, summary: str) -> None:
         """Render a message physically crossing a line between two nodes."""
         arrow = f"{self._c(sender, sender)} --> {self._c(recipient, recipient)}"
-        print(f"    {arrow}  {kind:<8} {summary}")
+        self._print(f"    {arrow}  {kind:<8} {summary}")
 
     def note(self, text: str) -> None:
-        print(self._c("SYS", f"    · {text}"))
+        self._print(self._c("SYS", f"    · {text}"))
 
     def warn(self, text: str) -> None:
-        print(self._c("WARN", f"    ! {text}"))
+        self._print(self._c("WARN", f"    ! {text}"))
 
     def ok(self, text: str) -> None:
-        print(self._c("OK", f"    ✓ {text}"))
+        self._print(self._c("OK", f"    ✓ {text}"))
 
     @staticmethod
     def _wrap(text: str, indent: int = 6, width: int = 96) -> str:
@@ -455,6 +472,7 @@ class Telemetry:
     clamped_values: int = 0        # model proposed physically impossible numbers
     latency_s: float = 0.0
     events: list[dict] = field(default_factory=list)
+    trace_path: Optional[str] = None   # JSONL of (system, prompt, response) triples
 
     def record_call(self, node: str, task: str, res: LLMResult, parse_mode: str) -> None:
         self.llm_calls += 1
@@ -477,6 +495,26 @@ class Telemetry:
 
     def note_clamp(self) -> None:
         self.clamped_values += 1
+
+    def trace(self, node: str, task: str, system: str, prompt: str,
+              response: str, parse_mode: str, decision: dict) -> None:
+        """
+        Append one negotiation turn to a JSONL trace.
+
+        This is the raw material for Phase 4 (fine-tuning). Every turn is stored
+        with the prompt exactly as the model saw it, so a LoRA dataset can be
+        distilled from real runs — including the failures, which are the
+        interesting half: a turn where a 1B model produced garbage and a bigger
+        model (or the fallback rule) produced a valid decision is a training
+        pair. Written as it happens so a crashed or interrupted run still yields
+        usable data.
+        """
+        if not self.trace_path:
+            return
+        record = {"node": node, "task": task, "system": system, "prompt": prompt,
+                  "response": response, "parse": parse_mode, "decision": decision}
+        with open(self.trace_path, "a") as fh:
+            fh.write(json.dumps(record) + "\n")
 
     @property
     def structured_compliance(self) -> float:
@@ -669,24 +707,32 @@ SCHEMA_RULES = (
     "4. Never invent energy you do not have. Stay inside the stated limits.\n"
 )
 
+# Keyed by ROLE, not by node id, so a scenario can add any number of houses
+# without touching the prompts.
 ROLE_BRIEF = {
-    "A": ("You are node A, a rooftop-solar prosumer in a 3-house micro-grid. "
-          "Your goal: sell surplus solar to neighbours before it is curtailed (wasted). "
-          "Unsold surplus earns you nothing, so a low sale beats no sale."),
-    "B": ("You are node B, a house charging an electric vehicle in a 3-house micro-grid. "
-          "Your goal: cover your energy deficit as cheaply as possible from neighbours. "
-          "Anything you fail to buy locally must be bought from the utility at "
-          f"{GRID_IMPORT_PRICE:.2f} tokens/kWh, which is the worst outcome."),
-    "C": ("You are node C, a stationary battery balancer in a 3-house micro-grid. "
-          "Your goal: buy cheap energy, store it, and sell it when it is scarce. "
-          "You must keep a safety reserve and never exceed your pack limits."),
+    "solar_prosumer":
+        ("a rooftop-solar prosumer. "
+         "Your goal: sell surplus solar to neighbours before it is curtailed (wasted). "
+         "Unsold surplus earns you nothing, so a low sale beats no sale."),
+    "ev_consumer":
+        ("a house charging an electric vehicle. "
+         "Your goal: cover your energy deficit as cheaply as possible from neighbours. "
+         "Anything you fail to buy locally must be bought from the utility at "
+         f"{GRID_IMPORT_PRICE:.2f} tokens/kWh, which is the worst outcome."),
+    "battery_balancer":
+        ("a stationary battery balancer. "
+         "Your goal: buy cheap energy, store it, and sell it when it is scarce. "
+         "You must keep a safety reserve and never exceed your pack limits."),
 }
+ROLE_FALLBACK = ("a house trading energy with its neighbours. Your goal: meet your "
+                 "own needs at the lowest cost and sell anything you cannot use.")
 
 
-def system_prompt(node_id: str) -> str:
+def system_prompt(node_id: str, role: str) -> str:
     """Per-node system prompt. Identical structure, role-specific economics."""
     return (
-        f"{ROLE_BRIEF[node_id]}\n\n"
+        f"You are node {node_id} in a neighbourhood energy micro-grid: "
+        f"{ROLE_BRIEF.get(role, ROLE_FALLBACK)}\n\n"
         "You negotiate directly with neighbours. There is no central operator and "
         "no cloud. You are a careful, terse energy trader who reasons about "
         "numbers precisely and never exaggerates.\n\n"
@@ -728,7 +774,8 @@ class GridAgent:
         human watching the transcript always knows whether the model or the
         fallback rule produced a given number.
         """
-        res = self.llm.generate(system_prompt(self.state.node_id), prompt)
+        system = system_prompt(self.state.node_id, self.state.role)
+        res = self.llm.generate(system, prompt)
 
         decision, mode = None, "fallback"
         if res.ok:
@@ -745,6 +792,7 @@ class GridAgent:
             decision.setdefault("note", "deterministic fallback policy")
 
         self.tel.record_call(self.state.node_id, task, res, mode)
+        self.tel.trace(self.state.node_id, task, system, prompt, res.text, mode, decision)
 
         if say and res.ok and res.text:
             prose = re.sub(r"```.*?```", "", res.text, flags=re.S).strip()
@@ -1233,6 +1281,18 @@ def run_trading_block(index: int, total: int, profile: dict, grid: MicroGrid,
                      f"battery {s.battery_kwh:.2f}/{s.battery_capacity:.2f} kWh | "
                      f"{s.credits:.2f} credits")
 
+    # --- optimality bound for this exact block --------------------------------
+    # Computed on the state the agents are about to be handed, before a single
+    # message is sent. This is measurement, not coordination: the result is
+    # never shown to an agent, it only lands in the metrics.
+    bound = None
+    if oracle_for_block is not None:
+        bound = oracle_for_block(grid, {nid: a.state for nid, a in agents.items()})
+        console.note(f"optimum for this block: {bound['delivered_to_demand_kwh']:.2f} kWh "
+                     f"servable locally, {bound['utility_import_kwh']:.2f} kWh unavoidable "
+                     f"utility import, {bound['curtailed_kwh']:.2f} kWh unavoidable curtailment"
+                     + ("" if bound["exact"] else "  (approximate: scipy not installed)"))
+
     # --- 4.1 internal assessment (order randomised: no node has priority) -----
     console.phase("4.1  INTERNAL ASSESSMENT")
     order = list(agents.values())
@@ -1381,6 +1441,13 @@ def run_trading_block(index: int, total: int, profile: dict, grid: MicroGrid,
     unmet = sum(a.state.grid_import for a in agents.values())
     curtailed = sum(a.state.curtailed for a in agents.values())
 
+    # Allocation efficiency: locally-served demand as a fraction of the most any
+    # method could have served. This — not raw kWh — is the number that compares
+    # across models, scenarios and topologies.
+    served = demand - unmet
+    opt_served = (demand - bound["utility_import_kwh"]) if bound else None
+    efficiency = (100.0 * served / opt_served) if opt_served and opt_served > EPS else None
+
     return {
         "block": index,
         "hour": hour,
@@ -1392,6 +1459,10 @@ def run_trading_block(index: int, total: int, profile: dict, grid: MicroGrid,
         "utility_import_kwh": round(unmet, 3),
         "curtailed_kwh": round(curtailed, 3),
         "demand_served_locally_pct": round(100.0 * (1 - unmet / demand), 1) if demand > EPS else 100.0,
+        "optimal_utility_import_kwh": round(bound["utility_import_kwh"], 3) if bound else None,
+        "optimal_curtailed_kwh": round(bound["curtailed_kwh"], 3) if bound else None,
+        "allocation_efficiency_pct": round(efficiency, 1) if efficiency is not None else None,
+        "optimum_exact": bound["exact"] if bound else None,
         "trades": trades,
         "intents": intents,
     }
@@ -1401,36 +1472,110 @@ def run_trading_block(index: int, total: int, profile: dict, grid: MicroGrid,
 # SECTION 11 — Scenario definition
 # =============================================================================
 
-def build_scenario(blocks: int, battery_soc: float) -> tuple[MicroGrid, dict[str, GridAgent], list[dict]]:
+def build_scenario(blocks: int, battery_soc: float, jitter: float = 0.0,
+                   rng: Optional[random.Random] = None,
+                   name: str = "brief") -> tuple[MicroGrid, dict, list[dict]]:
     """
-    The 3-node reference micro-grid from the brief.
+    Build one of the benchmark scenarios.
 
-      A  solar prosumer   : +5 kWh surplus at block 1
-      B  EV consumer      : -8 kWh deficit at block 1
-      C  battery balancer :  0 kWh net, 10 kWh pack
+    "brief" — the 3-node reference grid from the project brief:
+        A solar prosumer +5.0 kWh, B EV consumer -8.0 kWh, C battery balancer
+        0.0 kWh net with a 10 kWh pack. Faithful to the specification and good
+        for watching a negotiation unfold, but see the warning below.
 
-    Blocks walk the afternoon: solar decays, EV demand decays more slowly, and
-    C's pack drains. Scarcity therefore *rises* over the run, which is what makes
-    price discovery non-trivial rather than a fixed cheapest-first lookup.
+    "contended" — 6 nodes, 2 prosumers, 3 consumers, 1 storage hub.
+
+    WHY THE SECOND SCENARIO EXISTS
+    ------------------------------
+    The 3-node grid has ONE buyer. With a single buyer, cheapest-first greedy
+    allocation is provably optimal: there is no one to compete with, so no
+    ordering decision can be got wrong. The optimality oracle confirms it — the
+    heuristic control arm scores ~99% of optimum on the brief scenario, and
+    exactly 100% on most blocks. A benchmark where the trivial method already
+    wins cannot demonstrate that LLM negotiation adds anything; any measured
+    difference would be noise.
+
+    "contended" fixes that. Multiple buyers compete for partially overlapping
+    sellers under line limits, so the ORDER in which buyers claim supply changes
+    the system outcome. B can only reach A and the storage hub; if E claims A's
+    output first, B is stranded and imports from the utility, even though E
+    could have been served by D at similar cost. Sequential greedy has no way to
+    see that; a negotiation protocol could. That gap is the thing worth
+    measuring — and if the LLMs cannot close it, that is the honest result.
     """
     grid = MicroGrid()
 
-    states = {
-        "A": NodeState("A", "solar_prosumer", net_kwh=0.0, credits=10.0),
-        "B": NodeState("B", "ev_consumer", net_kwh=0.0, credits=20.0),
-        "C": NodeState("C", "battery_balancer", net_kwh=0.0,
-                       battery_kwh=battery_soc, battery_capacity=10.0, credits=15.0),
-    }
+    if name == "brief":
+        states = {
+            "A": NodeState("A", "solar_prosumer", net_kwh=0.0, credits=10.0),
+            "B": NodeState("B", "ev_consumer", net_kwh=0.0, credits=20.0),
+            "C": NodeState("C", "battery_balancer", net_kwh=0.0,
+                           battery_kwh=battery_soc, battery_capacity=10.0, credits=15.0),
+        }
+        # Hourly profile. Block 1 reproduces the brief's initial conditions exactly.
+        curve = [
+            {"hour": 13, "exogenous": {"A": +5.0, "B": -8.0, "C": 0.0}},
+            {"hour": 14, "exogenous": {"A": +3.5, "B": -6.0, "C": 0.0}},
+            {"hour": 15, "exogenous": {"A": +1.5, "B": -4.0, "C": -0.5}},
+            {"hour": 16, "exogenous": {"A": +0.8, "B": -3.0, "C": -0.5}},
+            {"hour": 17, "exogenous": {"A": +0.2, "B": -2.5, "C": -0.5}},
+        ]
 
-    # Hourly profile. Block 1 reproduces the brief's initial conditions exactly.
-    curve = [
-        {"hour": 13, "exogenous": {"A": +5.0, "B": -8.0, "C": 0.0}},
-        {"hour": 14, "exogenous": {"A": +3.5, "B": -6.0, "C": 0.0}},
-        {"hour": 15, "exogenous": {"A": +1.5, "B": -4.0, "C": -0.5}},
-        {"hour": 16, "exogenous": {"A": +0.8, "B": -3.0, "C": -0.5}},
-        {"hour": 17, "exogenous": {"A": +0.2, "B": -2.5, "C": -0.5}},
-    ]
-    profiles = [curve[i % len(curve)] for i in range(blocks)]
+    elif name == "contended":
+        # Rebuild the topology: two solar nodes, three loads, one storage hub.
+        # B and F each reach only ONE prosumer, so supply claimed by the
+        # well-connected node E can strand them.
+        grid.g.clear()
+        grid.g.add_node("A", role="solar_prosumer")
+        grid.g.add_node("D", role="solar_prosumer")
+        grid.g.add_node("C", role="battery_balancer")
+        for node in ("B", "E", "F"):
+            grid.g.add_node(node, role="ev_consumer")
+        grid.g.add_edge("A", "B", capacity_kwh=4.0, loss=0.02)
+        grid.g.add_edge("A", "E", capacity_kwh=4.0, loss=0.03)
+        grid.g.add_edge("D", "E", capacity_kwh=4.0, loss=0.02)
+        grid.g.add_edge("D", "F", capacity_kwh=4.0, loss=0.03)
+        grid.g.add_edge("C", "B", capacity_kwh=3.0, loss=0.03)
+        grid.g.add_edge("C", "E", capacity_kwh=3.0, loss=0.03)
+        grid.g.add_edge("C", "F", capacity_kwh=3.0, loss=0.03)
+
+        states = {
+            "A": NodeState("A", "solar_prosumer", net_kwh=0.0, credits=10.0),
+            "D": NodeState("D", "solar_prosumer", net_kwh=0.0, credits=10.0),
+            "C": NodeState("C", "battery_balancer", net_kwh=0.0,
+                           battery_kwh=battery_soc, battery_capacity=10.0, credits=15.0),
+            "B": NodeState("B", "ev_consumer", net_kwh=0.0, credits=20.0),
+            "E": NodeState("E", "ev_consumer", net_kwh=0.0, credits=20.0),
+            "F": NodeState("F", "ev_consumer", net_kwh=0.0, credits=20.0),
+        }
+        curve = [
+            {"hour": 13, "exogenous": {"A": +6.0, "D": +4.0, "C": 0.0,
+                                       "B": -5.0, "E": -5.0, "F": -3.0}},
+            {"hour": 14, "exogenous": {"A": +4.0, "D": +2.5, "C": 0.0,
+                                       "B": -4.0, "E": -4.0, "F": -2.5}},
+            {"hour": 15, "exogenous": {"A": +2.0, "D": +1.0, "C": -0.5,
+                                       "B": -3.0, "E": -3.0, "F": -2.0}},
+            {"hour": 16, "exogenous": {"A": +1.0, "D": +0.5, "C": -0.5,
+                                       "B": -2.5, "E": -2.5, "F": -1.5}},
+            {"hour": 17, "exogenous": {"A": +0.3, "D": +0.2, "C": -0.5,
+                                       "B": -2.0, "E": -2.0, "F": -1.0}},
+        ]
+    else:
+        raise ValueError(f"unknown scenario {name!r}; choose 'brief' or 'contended'")
+
+    profiles = [dict(curve[i % len(curve)]) for i in range(blocks)]
+
+    # Weather and driving are not deterministic. Jitter perturbs generation and
+    # demand per block so that a seed sweep samples a distribution of instances
+    # rather than re-running one hand-picked scenario N times — otherwise the
+    # only variance measured is the model's sampling noise, and results overfit
+    # to a single problem the prompts were tuned on.
+    if jitter > 0.0:
+        r = rng or random.Random()
+        for p in profiles:
+            p["exogenous"] = {node: round(v * (1.0 + r.uniform(-jitter, jitter)), 3)
+                              for node, v in p["exogenous"].items()}
+
     return grid, states, profiles
 
 
@@ -1446,14 +1591,18 @@ def print_summary(results: list[dict], agents: dict[str, GridAgent],
     print("=" * 78)
 
     header = f"{'blk':>3} {'hr':>3} {'gen':>7} {'dem':>7} {'traded':>7} {'loss':>6} " \
-             f"{'price':>7} {'utility':>8} {'curtail':>8} {'local%':>7}"
+             f"{'price':>7} {'utility':>8} {'opt.util':>9} {'curtail':>8} {'eff%':>7}"
     print("\n" + header)
     print("-" * len(header))
     for r in results:
+        opt = r.get("optimal_utility_import_kwh")
+        eff = r.get("allocation_efficiency_pct")
         print(f"{r['block']:>3} {r['hour']:>3} {r['generation_kwh']:>7.2f} "
               f"{r['demand_kwh']:>7.2f} {r['traded_kwh']:>7.2f} {r['line_loss_kwh']:>6.2f} "
               f"{r['avg_price']:>7.3f} {r['utility_import_kwh']:>8.2f} "
-              f"{r['curtailed_kwh']:>8.2f} {r['demand_served_locally_pct']:>6.1f}%")
+              f"{opt if opt is None else f'{opt:9.2f}'} "
+              f"{r['curtailed_kwh']:>8.2f} "
+              f"{'    n/a' if eff is None else f'{eff:6.1f}%'}")
 
     demand = sum(r["demand_kwh"] for r in results)
     traded = sum(r["traded_kwh"] for r in results)
@@ -1469,6 +1618,23 @@ def print_summary(results: list[dict], agents: dict[str, GridAgent],
     print(f"    clean energy curtailed    : {curtailed:8.2f} kWh   <- the other number to drive to zero")
     print(f"    solar self-consumption    : "
           f"{100.0 * (1 - curtailed / generation) if generation else 0.0:8.1f} %")
+
+    # The optimality gap is the actual research result. Everything above it is
+    # just describing one run; this says how much of the achievable benefit the
+    # negotiation captured, and is comparable across models and scenarios.
+    opt_unmet = [r.get("optimal_utility_import_kwh") for r in results]
+    if all(o is not None for o in opt_unmet):
+        best_unmet = sum(opt_unmet)
+        served, opt_served = demand - unmet, demand - best_unmet
+        approx = any(r.get("optimum_exact") is False for r in results)
+        print("\n  VERSUS THE OPTIMAL ALLOCATION"
+              + ("   (approximate — install scipy for the exact bound)" if approx else ""))
+        print(f"    best possible utility import : {best_unmet:8.2f} kWh")
+        print(f"    achieved utility import      : {unmet:8.2f} kWh")
+        print(f"    excess import vs optimum     : {unmet - best_unmet:8.2f} kWh")
+        if opt_served > 1e-6:
+            print(f"    ALLOCATION EFFICIENCY        : {100.0 * served / opt_served:8.1f} %  "
+                  f"<- the headline number")
 
     print("\n  AGENT LEDGER")
     for node_id in sorted(agents):
@@ -1566,6 +1732,10 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     p.add_argument("--model", default=MODEL_DEFAULT, help="Ollama model tag")
     p.add_argument("--url", default=OLLAMA_URL_DEFAULT, help="Ollama /api/generate endpoint")
     p.add_argument("--blocks", type=int, default=3, help="number of trading blocks")
+    p.add_argument("--scenario", choices=("brief", "contended"), default="brief",
+                   help="'brief' = the 3-node reference grid (single buyer, greedy is "
+                        "near-optimal); 'contended' = 6 nodes where buyers compete for "
+                        "overlapping sellers and allocation order actually matters")
     p.add_argument("--battery-soc", type=float, default=6.0,
                    help="node C initial stored energy, kWh (net balance stays 0)")
     p.add_argument("--timeout", type=int, default=LLM_TIMEOUT_S, help="per-call timeout, seconds")
@@ -1573,6 +1743,12 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
                    help="never call Ollama; run the deterministic fallback policy only "
                         "(useful as a control arm and for CI)")
     p.add_argument("--seed", type=int, default=7, help="RNG seed for agent ordering")
+    p.add_argument("--jitter", type=float, default=0.0,
+                   help="randomly perturb generation/demand by +/- this fraction "
+                        "(e.g. 0.25); use with --seed to sample scenario instances")
+    p.add_argument("--trace", metavar="PATH",
+                   help="append every prompt/response pair to a JSONL file "
+                        "(training data for Phase 4 fine-tuning)")
     p.add_argument("--outdir", default="runs", help="directory for CSV/PNG output")
     p.add_argument("--no-export", action="store_true", help="skip CSV export")
     p.add_argument("--plot", action="store_true", help="render a metrics PNG (needs matplotlib)")
@@ -1580,31 +1756,51 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
+def run_simulation(scenario: str = "brief", model: str = MODEL_DEFAULT,
+                   url: str = OLLAMA_URL_DEFAULT, blocks: int = 3,
+                   battery_soc: float = 6.0, offline: bool = False, seed: int = 7,
+                   jitter: float = 0.0, timeout: int = LLM_TIMEOUT_S,
+                   trace_path: Optional[str] = None,
+                   console: Optional[Console] = None) -> tuple[list[dict], dict, Telemetry]:
+    """
+    Run one complete simulation and return (block_results, agents, telemetry).
+
+    Separated from `main` so the benchmark sweep can drive many runs in-process
+    without shelling out or re-parsing console output.
+    """
+    console = console or Console()
+    rng = random.Random(seed)
+    llm = OllamaClient(url=url, model=model, timeout=timeout,
+                       offline=offline, console=console)
+    if not offline:
+        llm.probe()
+
+    tel = Telemetry(trace_path=trace_path)
+    grid, states, profiles = build_scenario(blocks, battery_soc, jitter=jitter,
+                                            rng=rng, name=scenario)
+    agents = {nid: GridAgent(st, llm, tel, console) for nid, st in states.items()}
+    results = [run_trading_block(i, len(profiles), profile, grid, agents, console, tel, rng)
+               for i, profile in enumerate(profiles, start=1)]
+    return results, agents, tel
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
     console = Console(color=not args.no_color)
-    rng = random.Random(args.seed)
 
     print("\n" + "#" * 78)
     print("#  MALO — Multi-Agent Local-LLM Energy Micro-grid")
-    print(f"#  model={args.model}   blocks={args.blocks}   "
+    print(f"#  scenario={args.scenario}   model={args.model}   blocks={args.blocks}   seed={args.seed}   "
+          f"jitter={args.jitter:g}   "
           f"mode={'OFFLINE (heuristic control arm)' if args.offline else 'LLM negotiation'}")
     print("#  no central orchestrator — every allocation is decided inside an agent")
     print("#" * 78)
 
-    llm = OllamaClient(url=args.url, model=args.model, timeout=args.timeout,
-                       offline=args.offline, console=console)
-    if not args.offline:
-        llm.probe()
-
-    tel = Telemetry()
-    grid, states, profiles = build_scenario(args.blocks, args.battery_soc)
-    agents = {nid: GridAgent(st, llm, tel, console) for nid, st in states.items()}
-
-    results: list[dict] = []
-    for i, profile in enumerate(profiles, start=1):
-        results.append(run_trading_block(i, len(profiles), profile, grid,
-                                         agents, console, tel, rng))
+    results, agents, tel = run_simulation(
+        scenario=args.scenario, model=args.model, url=args.url, blocks=args.blocks,
+        battery_soc=args.battery_soc, offline=args.offline, seed=args.seed,
+        jitter=args.jitter, timeout=args.timeout, trace_path=args.trace,
+        console=console)
 
     print_summary(results, agents, tel, console)
     if not args.no_export:

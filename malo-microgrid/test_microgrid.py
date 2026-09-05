@@ -265,6 +265,125 @@ def test_agents_cannot_read_peer_state():
 
 
 # =============================================================================
+# 4. Optimal-allocation oracle
+# =============================================================================
+
+import oracle
+
+
+def test_oracle_matches_hand_computed_optimum():
+    """
+    Block 1 of the brief scenario, worked out by hand:
+      A holds 5.0 kWh and its line to B is capped at 5.0 with 2% loss.
+      C can discharge 4.75 kWh over a 3%-loss line.
+      B needs 8.0 kWh.
+    Best play is A sending its full 5.0 (delivering 4.90) and C topping up with
+    3.196 (delivering 3.10) — 8.0 kWh served, nothing curtailed, and the least
+    possible energy pushed over the wires.
+    """
+    r = oracle.optimal_allocation(
+        max_export={"A": 5.0, "C": 4.75}, deficit={"B": 8.0},
+        chargeable={"C": 4.21}, surplus={"A": 5.0},
+        links={("A", "B"): (5.0, 0.02), ("A", "C"): (5.0, 0.02), ("B", "C"): (6.0, 0.03)})
+
+    assert abs(r["delivered_to_demand_kwh"] - 8.0) < 1e-3
+    assert r["utility_import_kwh"] == 0.0
+    assert r["curtailed_kwh"] == 0.0, "an optimal plan never wastes sellable solar"
+    assert abs(r["flows"]["A->B:D"] - 5.0) < 1e-3, "A's cheap line should be saturated"
+
+
+def test_oracle_prefers_at_risk_generation_over_battery():
+    """
+    Stage 2 of the LP exists for this case. Demand can be met either from solar
+    that would otherwise be curtailed, or from a battery that keeps its charge
+    regardless. Both serve the same kWh, so stage 1 is indifferent — only the
+    curtailment objective breaks the tie the right way.
+    """
+    r = oracle.optimal_allocation(
+        max_export={"A": 4.0, "C": 4.0}, deficit={"B": 3.0},
+        chargeable={"C": 0.0}, surplus={"A": 4.0},   # C's export is stored, not at risk
+        links={("A", "B"): (5.0, 0.02), ("B", "C"): (5.0, 0.02)})
+    assert r["flows"].get("A->B:D", 0.0) > r["flows"].get("C->B:D", 0.0), \
+        "solar at risk of curtailment should be drawn before stored energy"
+
+
+def test_oracle_respects_line_capacity():
+    """A seller with plenty of energy but a thin wire cannot serve a big load."""
+    r = oracle.optimal_allocation(
+        max_export={"A": 50.0}, deficit={"B": 50.0}, chargeable={},
+        surplus={"A": 50.0}, links={("A", "B"): (4.0, 0.02)})
+    assert r["sent_kwh"] <= 4.0 + 1e-6
+    assert r["utility_import_kwh"] > 40.0, "the rest must fall through to the utility"
+
+
+def test_greedy_fallback_is_valid_but_not_better_than_lp():
+    """
+    Without scipy the oracle degrades to a greedy fill. That result must remain
+    a feasible allocation, and it must never exceed the true optimum — if it
+    did, efficiency ratios computed against it would exceed 100%.
+    """
+    kwargs = dict(
+        max_export={"A": 5.0, "C": 4.75}, deficit={"B": 8.0},
+        chargeable={"C": 4.21}, surplus={"A": 5.0},
+        links={("A", "B"): (5.0, 0.02), ("A", "C"): (5.0, 0.02), ("B", "C"): (6.0, 0.03)})
+
+    exact = oracle.optimal_allocation(**kwargs)
+    oracle._HAVE_SCIPY = False
+    try:
+        approx = oracle.optimal_allocation(**kwargs)
+    finally:
+        oracle._HAVE_SCIPY = True
+
+    assert approx["exact"] is False, "an approximate bound must declare itself"
+    assert approx["delivered_to_demand_kwh"] <= exact["delivered_to_demand_kwh"] + 1e-3
+
+
+def test_simulation_never_beats_the_oracle():
+    """
+    The invariant the whole metric rests on. If any run serves more demand than
+    the optimum says is possible, the bound is wrong and every efficiency figure
+    is meaningless. Checked across both scenarios and several instances.
+    """
+    console = sim.Console(color=False, quiet=True)
+    for scenario in ("brief", "contended"):
+        for seed in (1, 2, 3, 4, 5):
+            results, _agents, _tel = sim.run_simulation(
+                scenario=scenario, offline=True, blocks=3, seed=seed,
+                jitter=0.4, console=console)
+            for r in results:
+                opt = r.get("optimal_utility_import_kwh")
+                if opt is None:
+                    continue
+                assert r["utility_import_kwh"] >= opt - 1e-3, (
+                    f"{scenario} seed {seed} block {r['block']}: simulation imported "
+                    f"{r['utility_import_kwh']:.3f} kWh but the optimum claims "
+                    f"{opt:.3f} kWh was unavoidable — the bound is not a bound")
+                assert r["allocation_efficiency_pct"] <= 100.0 + 1e-6
+
+
+def test_contended_scenario_discriminates():
+    """
+    The brief's 3-node grid has a single buyer, which makes greedy allocation
+    optimal and the benchmark blind. The contended scenario must actually leave
+    a gap for a better method to close, or there is nothing to research.
+    """
+    console = sim.Console(color=False, quiet=True)
+    gaps = []
+    for seed in range(1, 9):
+        results, _a, _t = sim.run_simulation(scenario="contended", offline=True,
+                                             blocks=3, seed=seed, jitter=0.4,
+                                             console=console)
+        eff = [r["allocation_efficiency_pct"] for r in results
+               if r["allocation_efficiency_pct"] is not None]
+        if eff:
+            gaps.append(100.0 - sum(eff) / len(eff))
+    assert gaps, "no efficiency measured — is scipy installed?"
+    assert max(gaps) > 2.0, (
+        "greedy allocation is already near-optimal on every instance; the "
+        "benchmark cannot distinguish methods and needs harder scenarios")
+
+
+# =============================================================================
 # Runner (works with or without pytest)
 # =============================================================================
 
